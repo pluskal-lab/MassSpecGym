@@ -1,4 +1,5 @@
 BEGIN IONS
+ID=1
 NAME=DMAPT
 DESCRIPTION=MCE bioactive compounds library
 EXACTMASS=293.199094
@@ -96,6 +97,7 @@ Num peaks=61
 END IONS
 
 BEGIN IONS
+ID=2
 NAME=Mirk-IN-1
 DESCRIPTION=MCE bioactive compounds library
 EXACTMASS=497.065759
@@ -184,6 +186,7 @@ Num peaks=52
 END IONS
 
 BEGIN IONS
+ID=3
 NAME=1373215-15-6
 DESCRIPTION=MCE bioactive compounds library
 EXACTMASS=484.212198
@@ -235,6 +238,7 @@ Num peaks=15
 END IONS
 
 BEGIN IONS
+ID=4
 NAME=IPSU
 DESCRIPTION=MCE bioactive compounds library
 EXACTMASS=405.216475
@@ -279,6 +283,7 @@ Num peaks=9
 END IONS
 
 BEGIN IONS
+ID=5
 NAME=Vadimezan
 DESCRIPTION=MCE bioactive compounds library
 EXACTMASS=282.089209
