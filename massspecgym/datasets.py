@@ -54,7 +54,7 @@ class MassSpecDataModule(pl.LightningDataModule):
             num_workers: int = 0
         ):
         if set(split_mask) != {'train', 'val', 'test'}:
-            raise ValueError('Split mask must contain only and all of "train", "val", and "test" values.')
+            raise ValueError('Split mask must contain exactly "train", "val", and "test" values.')
 
         self.mgf_pth = mgf_pth
         self.spec_preproc = spec_preproc
