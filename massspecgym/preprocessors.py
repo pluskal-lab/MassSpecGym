@@ -3,10 +3,11 @@ import matchms
 import matchms.filtering as ms_filters
 import massspecgym.utils as utils
 from rdkit.Chem import AllChem as Chem
-from typing import Any, Optional
+from typing import Optional
+from abc import ABC, abstractmethod
 
 
-class SpecPreprocessor:
+class SpecPreprocessor(ABC):
     """
     Base class for spectrum preprocessors. Custom preprocessors should inherit from this class.
     The preprocessing consists of two consecutive steps:
@@ -14,17 +15,17 @@ class SpecPreprocessor:
         2. Convert the matchms spectrum to a numpy array (method `matchms_to_numpy`).
     """
 
+    @abstractmethod
     def matchms_transforms(self, spec: matchms.Spectrum) -> matchms.Spectrum:
         """
         Apply a series of matchms filters to the input spectrum. Abstract method.
         """
-        raise NotImplementedError('This method must be implemented in a SpecPreprocessor subclass.')
 
+    @abstractmethod
     def matchms_to_numpy(self, spec: matchms.Spectrum) -> np.ndarray:
         """
         Convert a matchms spectrum to a numpy array. Abstract method.
         """
-        raise NotImplementedError('This method must be implemented in a SpecPreprocessor subclass.')
 
     def __call__(self, spec: matchms.Spectrum) -> np.ndarray:
         """
@@ -71,9 +72,12 @@ class SpecBinner(SpecPreprocessor):
     pass
 
 
-class MolPreprocessor:
+class MolPreprocessor(ABC):
+    @abstractmethod
     def from_smiles(self, mol: str):
-        raise NotImplementedError('This method must be implemented in a MolPreprocessor subclass.')
+        """
+        Convert a SMILES string to a tensor-like representation. Abstract method.
+        """
 
     def __call__(self, mol: str):
         return self.from_smiles(mol)
