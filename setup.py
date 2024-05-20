@@ -22,8 +22,10 @@ setup(
     install_requires=[  # TODO: specify versions, requirements.txt 
         'torch',
         'pytorch-lightning',
+        'torchmetrics',
         'numpy',
         'rdkit',
-        'matchms'
+        'matchms',
+        'wandb'
     ],
 )
