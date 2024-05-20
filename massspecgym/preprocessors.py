@@ -99,3 +99,12 @@ class MolFingerprinter(MolPreprocessor):
     def from_smiles(self, mol: str):
         mol = Chem.MolFromSmiles(mol)
         return utils.morgan_fp(mol, fp_size=self.fp_size, radius=self.radius, to_np=True)
+    
+
+class MolToInChIKey(MolPreprocessor):
+    def from_smiles(self, mol: str, twod=True) -> str:
+        mol = Chem.MolFromSmiles(mol)
+        mol = Chem.MolToInchiKey(mol)
+        if twod:
+            mol = mol.split('-')[0]
+        return mol
