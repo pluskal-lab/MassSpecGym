@@ -53,6 +53,8 @@ class MassSpecDataModule(pl.LightningDataModule):
             batch_size: int,
             num_workers: int = 0
         ):
+        super().__init__()
+
         if set(split_mask) != {'train', 'val', 'test'}:
             raise ValueError('Split mask must contain exactly "train", "val", and "test" values.')
 
