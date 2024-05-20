@@ -62,6 +62,8 @@ class MassSpecDataModule(pl.LightningDataModule):
         :param split_pth: Path to a .csv file with columns "id", corresponding to dataset item IDs, and "fold", containg
                           "train", "val", "test" values.
         """
+        super().__init__()
+        
         self.spec_preproc = spec_preproc
         self.mol_preproc = mol_preproc
         self.batch_size = batch_size
