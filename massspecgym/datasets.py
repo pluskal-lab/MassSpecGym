@@ -6,7 +6,7 @@ from torch.utils.data.dataloader import DataLoader
 from matchms.importing import load_from_mgf
 from pathlib import Path
 from typing import Iterable
-from massspecgym.transforms import SpecTransform, MolTransform
+from massspecgym.transforms import SpecTransform, MolTransform, MolToInChIKey
 
 
 class MassSpecDataset(Dataset):
@@ -43,6 +43,23 @@ class MassSpecDataset(Dataset):
 
 
 def RetrievalDataset(MassSpecDataset):
+    """
+    TODO
+    """
+    def __init__(
+            self,
+            candidates_pth: Path,
+            candidate_mol_transform: MolTransform = MolToInChIKey()
+        ):
+        self.candidates = pd.read_json(candidates_pth)
+        self.candidates_idx = np.array(self.candidates.index)
+        self.candidate_mol_transform = candidate_mol_transform
+
+    def __getitem__(self, i):
+        item = super().__getitem__(i)
+        item['candidates'] = self.candidates.loc[self.candidates_idx[i]]
+        return item
+
     # Constructur:
     #   - path to candidates json
     #   - candidate_mol_transform: MolTransform = MolToInChIKey()
@@ -61,11 +78,9 @@ class MassSpecDataModule(pl.LightningDataModule):
     """
     def __init__(
             self,
-            spec_preproc: SpecTransform,
-            mol_preproc: MolTransform,
-            batch_size: int,
-            mgf_pth: Path,  # TODO: default value
+            dataset: MassSpecDataset,
             split_pth: Path,  # TODO: default value
+            batch_size: int,
             num_workers: int = 0
         ):
         """
@@ -74,19 +89,12 @@ class MassSpecDataModule(pl.LightningDataModule):
                           "train", "val", "test" values.
         """
         super().__init__()
-        
-        self.spec_preproc = spec_preproc
-        self.mol_preproc = mol_preproc
-        self.batch_size = batch_size
-        self.mgf_pth = mgf_pth
+        self.dataset = dataset
         self.split_pth = split_pth
+        self.batch_size = batch_size
         self.num_workers = num_workers
 
     def prepare_data(self):
-
-        # Load dataset
-        self.dataset = MassSpecDataset(self.mgf_pth, self.spec_preproc, self.mol_preproc)
-
         # Load split
         self.split = pd.read_csv(self.split_pth)
         if set(self.split.columns) != {'id', 'fold'}:
