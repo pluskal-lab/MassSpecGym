@@ -7,10 +7,10 @@ from typing import Optional
 from abc import ABC, abstractmethod
 
 
-class SpecPreprocessor(ABC):
+class SpecTransform(ABC):
     """
-    Base class for spectrum preprocessors. Custom preprocessors should inherit from this class.
-    The preprocessing consists of two consecutive steps:
+    Base class for spectrum transformations. Custom transformatios should inherit from this class.
+    The transformation consists of two consecutive steps:
         1. Apply a series of matchms filters to the input spectrum (method `matchms_transforms`).
         2. Convert the matchms spectrum to a numpy array (method `matchms_to_numpy`).
     """
@@ -46,7 +46,7 @@ def default_matchms_transforms(
     return spec
 
 
-class SpecTokenizer(SpecPreprocessor):
+class SpecTokenizer(SpecTransform):
     def __init__(
         self,
         n_peaks: Optional[int] = 60,
@@ -67,12 +67,12 @@ class SpecTokenizer(SpecPreprocessor):
         return spec
 
 
-class SpecBinner(SpecPreprocessor):
+class SpecBinner(SpecTransform):
     # TODO
     pass
 
 
-class MolPreprocessor(ABC):
+class MolTransform(ABC):
     @abstractmethod
     def from_smiles(self, mol: str):
         """
@@ -83,7 +83,7 @@ class MolPreprocessor(ABC):
         return self.from_smiles(mol)
 
 
-class MolFingerprinter(MolPreprocessor):
+class MolFingerprinter(MolTransform):
     def __init__(
             self,
             type: str = 'morgan',
@@ -101,8 +101,12 @@ class MolFingerprinter(MolPreprocessor):
         return utils.morgan_fp(mol, fp_size=self.fp_size, radius=self.radius, to_np=True)
     
 
-class MolToInChIKey(MolPreprocessor):
-    def from_smiles(self, mol: str, twod=True) -> str:
+class MolToInChIKey(MolTransform):
+    def from_smiles(
+            self,
+            mol: str,
+            twod: bool = True
+        ) -> str:
         mol = Chem.MolFromSmiles(mol)
         mol = Chem.MolToInchiKey(mol)
         if twod:

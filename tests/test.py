@@ -1,7 +1,7 @@
 import numpy as np
 import matchms
 from rdkit.Chem import AllChem as Chem
-from massspecgym.preprocessors import SpecTokenizer
+from massspecgym.transforms import SpecTokenizer
 from massspecgym.utils import pad_spectrum, morgan_fp
 
 

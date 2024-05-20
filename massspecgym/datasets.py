@@ -1,3 +1,4 @@
+import json
 import pytorch_lightning as pl
 import pandas as pd
 import numpy as np
@@ -6,19 +7,19 @@ from torch.utils.data.dataloader import DataLoader
 from matchms.importing import load_from_mgf
 from pathlib import Path
 from typing import Iterable
-from massspecgym.preprocessors import SpecPreprocessor, MolPreprocessor
+from massspecgym.transforms import SpecTransform, MolTransform, MolToInChIKey
 
 
 class MassSpecDataset(Dataset):
     """
     Dataset containing mass spectra and their corresponding molecular structures. This class is responsible for loading
-    the data from disk and applying preprocessing steps to the spectra and molecules.
+    the data from disk and applying transformation steps to the spectra and molecules.
     """
     def __init__(
             self,
             mgf_pth: Path,
-            spec_preproc: SpecPreprocessor,
-            mol_preproc: MolPreprocessor
+            spec_transform: SpecTransform,
+            mol_transform: MolTransform
         ):
         self.mgf_pth = mgf_pth
         self.spectra = list(load_from_mgf(mgf_pth))
@@ -26,13 +27,13 @@ class MassSpecDataset(Dataset):
         self.spec_preproc = spec_preproc
         self.mol_preproc = mol_preproc
     
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.spectra)
 
-    def __getitem__(self, i):
+    def __getitem__(self, i) -> dict:
         item = {
-            'spec': self.spec_preproc(self.spectra[i]),
-            'mol': self.mol_preproc(self.spectra[i].get('smiles'))
+            'spec': self.spec_transform(self.spectra[i]),
+            'mol': self.mol_transform(self.spectra[i].get('smiles'))
         }
         item.update({
             # TODO: collission energy, instrument type
@@ -41,15 +42,47 @@ class MassSpecDataset(Dataset):
         return item
 
 
-def RetrievalDataset(MassSpecDataset):
-    # Constructur:
+class RetrievalDataset(MassSpecDataset):
+    # Constructor:
     #   - path to candidates json
     #   - candidate_mol_transform: MolTransform = MolToInChIKey()
     # __getitem__:
     #   - return item with candidates
     #   - return mask similar to torchmetrics.retrieval.RetrievalRecall
-    #   - custom collate_fn to handle candidates        
-    pass
+    # custom collate_fn to handle candidates        
+    """
+    TODO
+    """
+    def __init__(
+            self,
+            candidates_pth: Path,
+            candidate_mol_transform: MolTransform = MolToInChIKey(),
+            **kwargs
+        ):
+        super().__init__(**kwargs)
+
+        # Read candidates_pth from json to dict: SMILES -> respective candidate SMILES
+        with open(candidates_pth, 'r') as file:
+            self.candidates = json.load(file)
+
+        self.candidate_mol_transform = candidate_mol_transform
+
+    def __getitem__(self, i) -> dict:
+        item = super().__getitem__(i)
+
+        # Read and transform candidate molecules
+        item['candidates'] = self.candidates[item['mol']]
+        item['candidates'] = [self.candidate_mol_transform(c) for c in item['candidates']]
+
+        # Transform the query molecule
+        mol = self.mol_transform(self.spectra[i].get('smiles'))
+
+        # Create neg/pos target mask by matching the query molecule with the candidates
+        item['targets'] = [True if c == mol else False for c in item['candidates']]
+
+        # TODO How to collate?
+
+        return item
 
 
 class MassSpecDataModule(pl.LightningDataModule):
@@ -59,32 +92,24 @@ class MassSpecDataModule(pl.LightningDataModule):
     """
     def __init__(
             self,
-            spec_preproc: SpecPreprocessor,
-            mol_preproc: MolPreprocessor,
-            batch_size: int,
-            mgf_pth: Path,  # TODO: default value
+            dataset: MassSpecDataset,
             split_pth: Path,  # TODO: default value
-            num_workers: int = 0
+            batch_size: int,
+            num_workers: int = 0,
+            **kwargs
         ):
         """
         :param mgf_pth: Path to a .mgf file containing mass spectra.
         :param split_pth: Path to a .tsv file with columns "id", corresponding to dataset item IDs, and "fold", containg
                           "train", "val", "test" values.
         """
-        super().__init__()
-        
-        self.spec_preproc = spec_preproc
-        self.mol_preproc = mol_preproc
-        self.batch_size = batch_size
-        self.mgf_pth = mgf_pth
+        super().__init__(**kwargs)
+        self.dataset = dataset
         self.split_pth = split_pth
+        self.batch_size = batch_size
         self.num_workers = num_workers
 
     def prepare_data(self):
-
-        # Load dataset
-        self.dataset = MassSpecDataset(self.mgf_pth, self.spec_preproc, self.mol_preproc)
-
         # Load split
         self.split = pd.read_csv(self.split_pth, sep='\t')
         if set(self.split.columns) != {'id', 'fold'}:
