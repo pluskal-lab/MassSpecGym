@@ -14,7 +14,6 @@ class MassSpecDataset(Dataset):
     """
     Dataset containing mass spectra and their corresponding molecular structures. This class is responsible for loading
     the data from disk and applying transformation steps to the spectra and molecules.
-    # TODO: "id" is temporary
     """
     def __init__(
             self,
@@ -24,9 +23,9 @@ class MassSpecDataset(Dataset):
         ):
         self.mgf_pth = mgf_pth
         self.spectra = list(load_from_mgf(mgf_pth))
-        self.spectra_idx = np.array([int(s.get('id')) for s in self.spectra])
-        self.spec_transform = spec_transform
-        self.mol_transform = mol_transform
+        self.spectra_idx = np.array([s.get('id') for s in self.spectra])
+        self.spec_preproc = spec_preproc
+        self.mol_preproc = mol_preproc
     
     def __len__(self) -> int:
         return len(self.spectra)
@@ -44,13 +43,13 @@ class MassSpecDataset(Dataset):
 
 
 class RetrievalDataset(MassSpecDataset):
-        # Constructur:
+    # Constructor:
     #   - path to candidates json
     #   - candidate_mol_transform: MolTransform = MolToInChIKey()
     # __getitem__:
     #   - return item with candidates
     #   - return mask similar to torchmetrics.retrieval.RetrievalRecall
-    #   - custom collate_fn to handle candidates        
+    # custom collate_fn to handle candidates        
     """
     TODO
     """
@@ -90,7 +89,6 @@ class MassSpecDataModule(pl.LightningDataModule):
     """
     Data module containing a mass spectrometry dataset. This class is responsible for loading, splitting, and wrapping
     the dataset into data loaders according to pre-defined train, validation, test folds.
-    # TODO: "id" is temporary
     """
     def __init__(
             self,
@@ -102,7 +100,7 @@ class MassSpecDataModule(pl.LightningDataModule):
         ):
         """
         :param mgf_pth: Path to a .mgf file containing mass spectra.
-        :param split_pth: Path to a .csv file with columns "id", corresponding to dataset item IDs, and "fold", containg
+        :param split_pth: Path to a .tsv file with columns "id", corresponding to dataset item IDs, and "fold", containg
                           "train", "val", "test" values.
         """
         super().__init__(**kwargs)
@@ -113,27 +111,39 @@ class MassSpecDataModule(pl.LightningDataModule):
 
     def prepare_data(self):
         # Load split
-        self.split = pd.read_csv(self.split_pth)
+        self.split = pd.read_csv(self.split_pth, sep='\t')
         if set(self.split.columns) != {'id', 'fold'}:
             raise ValueError('Split file must contain "id" and "fold" columns.')
+        
+        self.split['id'] = self.split['id'].astype(str)
         self.split = self.split.set_index('id')['fold']
+
         if set(self.split) != {'train', 'val', 'test'}:
             raise ValueError('"Folds" column must contain only and all of "train", "val", and "test" values.')
-        print(self.split)
+        if set(self.dataset.spectra_idx) != set(self.split.index):
+            raise ValueError('Dataset item IDs must match the IDs in the split file.')
 
     def setup(self, stage=None):
-        split_mask = np.array([self.split[i] for i in self.dataset.spectra_idx])
-        self.train_dataset = Subset(self.dataset, np.where(split_mask == 'train')[0])
-        self.val_dataset = Subset(self.dataset, np.where(split_mask == 'val')[0])
-        self.test_dataset = Subset(self.dataset, np.where(split_mask == 'test')[0])
+        split_mask = self.split.loc[self.dataset.spectra_idx].values
+        if stage == 'fit' or stage is None:
+            self.train_dataset = Subset(self.dataset, np.where(split_mask == 'train')[0])
+            self.val_dataset = Subset(self.dataset, np.where(split_mask == 'val')[0])
+        if stage == 'test':
+            self.test_dataset = Subset(self.dataset, np.where(split_mask == 'test')[0])
 
     def train_dataloader(self):
-        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
+        return DataLoader(
+            self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers, drop_last=False
+        )
 
     def val_dataloader(self):
-        return DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
+        return DataLoader(
+            self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers, drop_last=False
+        )
     
     def test_dataloader(self):
-        return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
+        return DataLoader(
+            self.test_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers, drop_last=False
+        )
 
 # TODO: Datasets for unlabeled data.
