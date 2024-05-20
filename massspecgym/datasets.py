@@ -2,13 +2,14 @@ import json
 import pytorch_lightning as pl
 import pandas as pd
 import numpy as np
+from pathlib import Path
+from typing import Optional
 from torch.utils.data.dataset import Dataset, Subset
 from torch.utils.data.dataloader import DataLoader
 from matchms.importing import load_from_mgf
-from pathlib import Path
-from typing import Iterable
+from huggingface_hub import hf_hub_download
 from massspecgym.transforms import SpecTransform, MolTransform, MolToInChIKey
-
+from massspecgym.definitions import HUGGING_FACE_REPO
 
 class MassSpecDataset(Dataset):
     """
@@ -17,15 +18,28 @@ class MassSpecDataset(Dataset):
     """
     def __init__(
             self,
-            mgf_pth: Path,
             spec_transform: SpecTransform,
-            mol_transform: MolTransform
+            mol_transform: MolTransform,
+            mgf_pth: Optional[Path] = None
         ):
+        """
+        :param mgf_pth: Path to the .mgf file containing the mass spectra. Default is None, in which case the
+                        MassSpecGym dataset is used.
+        """
         self.mgf_pth = mgf_pth
-        self.spectra = list(load_from_mgf(mgf_pth))
+        self.spec_transform = spec_transform
+        self.mol_transform = mol_transform
+
+        # Download MassSpecGym dataset from HuggigFace Hub
+        if self.mgf_pth is None:
+            self.mgf_pth = hf_hub_download(
+                repo_id=HUGGING_FACE_REPO,
+                filename='data/MassSpecGym_labeled_data.mgf',
+                repo_type='dataset'
+            )
+        
+        self.spectra = list(load_from_mgf(self.mgf_pth))
         self.spectra_idx = np.array([s.get('id') for s in self.spectra])
-        self.spec_preproc = spec_preproc
-        self.mol_preproc = mol_preproc
     
     def __len__(self) -> int:
         return len(self.spectra)
@@ -55,17 +69,26 @@ class RetrievalDataset(MassSpecDataset):
     """
     def __init__(
             self,
-            candidates_pth: Path,
             candidate_mol_transform: MolTransform = MolToInChIKey(),
+            candidates_pth: Optional[Path] = None,
             **kwargs
         ):
         super().__init__(**kwargs)
 
+        self.candidates_pth = candidates_pth
+        self.candidate_mol_transform = candidate_mol_transform
+
+        # Download candidates from HuggigFace Hub
+        if self.candidates_pth is None:
+            self.candidates_pth = hf_hub_download(
+                repo_id=HUGGING_FACE_REPO,
+                filename='data/MassSpecGym_labeled_data_candidates.json',
+                repo_type='dataset'
+            )
+
         # Read candidates_pth from json to dict: SMILES -> respective candidate SMILES
         with open(candidates_pth, 'r') as file:
             self.candidates = json.load(file)
-
-        self.candidate_mol_transform = candidate_mol_transform
 
     def __getitem__(self, i) -> dict:
         item = super().__getitem__(i)
@@ -93,21 +116,28 @@ class MassSpecDataModule(pl.LightningDataModule):
     def __init__(
             self,
             dataset: MassSpecDataset,
-            split_pth: Path,  # TODO: default value
             batch_size: int,
             num_workers: int = 0,
+            split_pth: Optional[Path] = None,
             **kwargs
         ):
         """
-        :param mgf_pth: Path to a .mgf file containing mass spectra.
         :param split_pth: Path to a .tsv file with columns "id", corresponding to dataset item IDs, and "fold", containg
-                          "train", "val", "test" values.
+                          "train", "val", "test" values. Default is None, in which case the MassSpecGym split is used.
         """
         super().__init__(**kwargs)
         self.dataset = dataset
         self.split_pth = split_pth
         self.batch_size = batch_size
         self.num_workers = num_workers
+
+        # Download MassSpecGym split from HuggigFace Hub
+        if self.split_pth is None:
+            self.split_pth = hf_hub_download(
+                repo_id=HUGGING_FACE_REPO,
+                filename='data/MassSpecGym_labeled_data_split.tsv',
+                repo_type='dataset'
+            )
 
     def prepare_data(self):
         # Load split

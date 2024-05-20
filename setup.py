@@ -26,6 +26,7 @@ setup(
         'numpy',
         'rdkit',
         'matchms',
-        'wandb'
+        'wandb',
+        'huggingface-hub'
     ],
 )
