@@ -102,13 +102,12 @@ class MolFingerprinter(MolTransform):
     
 
 class MolToInChIKey(MolTransform):
-    def from_smiles(
-            self,
-            mol: str,
-            twod: bool = True
-        ) -> str:
+    def __init__(self, twod: bool = True) -> None:
+        self.twod = twod
+
+    def from_smiles(self, mol: str) -> str:
         mol = Chem.MolFromSmiles(mol)
         mol = Chem.MolToInchiKey(mol)
-        if twod:
+        if self.twod:
             mol = mol.split('-')[0]
         return mol
