@@ -42,6 +42,17 @@ class MassSpecDataset(Dataset):
         return item
 
 
+def RetrievalDataset(MassSpecDataset):
+    # Constructur:
+    #   - path to candidates json
+    #   - candidate_mol_transform: MolTransform = MolToInChIKey()
+    # __getitem__:
+    #   - return item with candidates
+    #   - return mask similar to torchmetrics.retrieval.RetrievalRecall
+    #   - custom collate_fn to handle candidates        
+    pass
+
+
 class MassSpecDataModule(pl.LightningDataModule):
     """
     Data module containing a mass spectrometry dataset. This class is responsible for loading, splitting, and wrapping
