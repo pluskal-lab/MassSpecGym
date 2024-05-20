@@ -1,5 +1,5 @@
 import typing as T
-from abc import ABC
+from abc import ABC, abstractmethod
 
 import torch
 import pytorch_lightning as pl
@@ -18,12 +18,13 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         self.lr = lr
         self.weight_decay = weight_decay
 
+    @abstractmethod
     def step(
         self, 
         batch: dict, 
         metric_pref: str = ''
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        raise NotImplementedError()
+        raise NotImplementedError('Method `step` must be implemented in the child class.')
 
     def training_step(
         self,
