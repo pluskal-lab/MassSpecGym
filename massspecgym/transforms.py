@@ -9,8 +9,8 @@ from abc import ABC, abstractmethod
 
 class SpecTransform(ABC):
     """
-    Base class for spectrum preprocessors. Custom preprocessors should inherit from this class.
-    The preprocessing consists of two consecutive steps:
+    Base class for spectrum transformations. Custom transformatios should inherit from this class.
+    The transformation consists of two consecutive steps:
         1. Apply a series of matchms filters to the input spectrum (method `matchms_transforms`).
         2. Convert the matchms spectrum to a numpy array (method `matchms_to_numpy`).
     """
