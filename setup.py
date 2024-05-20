@@ -8,10 +8,7 @@ with open(os.path.join(here, 'README.md'), encoding='utf-8') as f:
 
 setup(
     name='massspecgym',
-    packages=find_packages(include=[
-        'massspecgym',
-        'massspecgym.utils',
-    ]),
+    packages=find_packages(),
     version='0.0.1',  # TODO: Update version automatically
     description='MassSpecGym: Benchmark For the Discovery of New Molecules From Mass Spectra',
     author='MassSpecGym developers',
