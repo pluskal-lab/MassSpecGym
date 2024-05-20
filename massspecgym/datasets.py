@@ -6,7 +6,7 @@ from torch.utils.data.dataloader import DataLoader
 from matchms.importing import load_from_mgf
 from pathlib import Path
 from typing import Iterable
-from massspecgym.preprocessors import SpecPreprocessor, MolPreprocessor
+from massspecgym.transforms import SpecTransform, MolTransform
 
 
 class MassSpecDataset(Dataset):
@@ -18,8 +18,8 @@ class MassSpecDataset(Dataset):
     def __init__(
             self,
             mgf_pth: Path,
-            spec_preproc: SpecPreprocessor,
-            mol_preproc: MolPreprocessor
+            spec_preproc: SpecTransform,
+            mol_preproc: MolTransform
         ):
         self.mgf_pth = mgf_pth
         self.spectra = list(load_from_mgf(mgf_pth))
@@ -61,8 +61,8 @@ class MassSpecDataModule(pl.LightningDataModule):
     """
     def __init__(
             self,
-            spec_preproc: SpecPreprocessor,
-            mol_preproc: MolPreprocessor,
+            spec_preproc: SpecTransform,
+            mol_preproc: MolTransform,
             batch_size: int,
             mgf_pth: Path,  # TODO: default value
             split_pth: Path,  # TODO: default value
