@@ -44,22 +44,26 @@ class MassSpecDataset(Dataset):
     def __len__(self) -> int:
         return len(self.spectra)
 
-    def __getitem__(self, i) -> dict:
+    def __getitem__(self, i, transform_mol=True) -> dict:
+        spec = self.spec_transform(self.spectra[i])
+        mol = self.spectra[i].get('smiles')
         item = {
-            'spec': self.spec_transform(self.spectra[i]),
-            'mol': self.mol_transform(self.spectra[i].get('smiles'))
+            'spec': spec,
+            'mol': self.mol_transform(mol) if transform_mol else mol,
         }
+
         item.update({
             # TODO: collission energy, instrument type
             k: self.spectra[i].metadata[k] for k in ['precursor_mz', 'adduct']
         })
+
         return item
 
 
 class RetrievalDataset(MassSpecDataset):
     # Constructor:
     #   - path to candidates json
-    #   - candidate_mol_transform: MolTransform = MolToInChIKey()
+    #   - mol_label_transform: MolTransform = MolToInChIKey()
     # __getitem__:
     #   - return item with candidates
     #   - return mask similar to torchmetrics.retrieval.RetrievalRecall
@@ -69,14 +73,14 @@ class RetrievalDataset(MassSpecDataset):
     """
     def __init__(
             self,
-            candidate_mol_transform: MolTransform = MolToInChIKey(),
+            mol_label_transform: MolTransform = MolToInChIKey(),
             candidates_pth: Optional[Path] = None,
             **kwargs
         ):
         super().__init__(**kwargs)
 
         self.candidates_pth = candidates_pth
-        self.candidate_mol_transform = candidate_mol_transform
+        self.mol_label_transform = mol_label_transform
 
         # Download candidates from HuggigFace Hub
         if self.candidates_pth is None:
@@ -91,17 +95,19 @@ class RetrievalDataset(MassSpecDataset):
             self.candidates = json.load(file)
 
     def __getitem__(self, i) -> dict:
-        item = super().__getitem__(i)
+        item = super().__getitem__(i, transform_mol=False)
 
-        # Read and transform candidate molecules
+        # Create neg/pos label mask by matching the query molecule with the candidates
         item['candidates'] = self.candidates[item['mol']]
-        item['candidates'] = [self.candidate_mol_transform(c) for c in item['candidates']]
+        item_label = self.mol_label_transform(item['mol'])
+        item['labels'] = [self.mol_label_transform(c) == item_label for c in item['candidates']]
 
-        # Transform the query molecule
-        mol = self.mol_transform(self.spectra[i].get('smiles'))
+        if not any(item['labels']):
+            raise ValueError('Query molecule not found in the candidates list.')
 
-        # Create neg/pos target mask by matching the query molecule with the candidates
-        item['targets'] = [True if c == mol else False for c in item['candidates']]
+        # Transform the query and candidate molecule
+        item['mol'] = self.mol_transform(item['mol'])
+        item['candidates'] = [self.mol_transform(c) for c in item['candidates']]
 
         # TODO How to collate?
 
