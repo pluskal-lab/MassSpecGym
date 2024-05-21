@@ -5,7 +5,9 @@ from rdkit.Chem import AllChem as Chem
 from rdkit.Chem import DataStructs
 
 
-def pad_spectrum(spec: np.ndarray, max_n_peaks: int, pad_value: float = 0.0) -> np.ndarray:
+def pad_spectrum(
+    spec: np.ndarray, max_n_peaks: int, pad_value: float = 0.0
+) -> np.ndarray:
     """
     Pad a spectrum to a fixed number of peaks by appending zeros to the end of the spectrum.
     :param spec: Spectrum to pad represented as numpy array of shape (n_peaks, 2).
@@ -14,10 +16,17 @@ def pad_spectrum(spec: np.ndarray, max_n_peaks: int, pad_value: float = 0.0) -> 
     """
     n_peaks = spec.shape[0]
     if n_peaks > max_n_peaks:
-        raise ValueError(f'Number of peaks in the spectrum ({n_peaks}) is greater than the maximum number of peaks.')                         
+        raise ValueError(
+            f"Number of peaks in the spectrum ({n_peaks}) is greater than the maximum number of peaks."
+        )
     else:
-        return np.pad(spec, ((0, max_n_peaks - n_peaks), (0, 0)), mode='constant', constant_values=pad_value)
-    
+        return np.pad(
+            spec,
+            ((0, max_n_peaks - n_peaks), (0, 0)),
+            mode="constant",
+            constant_values=pad_value,
+        )
+
 
 def morgan_fp(mol: Chem.Mol, fp_size=4096, radius=2, to_np=True):
     """
@@ -35,11 +44,11 @@ def morgan_fp(mol: Chem.Mol, fp_size=4096, radius=2, to_np=True):
     return fp
 
 
-def init_plotting(figsize=(6, 2), font_scale=0.95, style='whitegrid'):
+def init_plotting(figsize=(6, 2), font_scale=0.95, style="whitegrid"):
     # Set default figure size
     plt.show()  # Does not work without this line for some reason
-    sns.set_theme(rc={'figure.figsize': figsize})
+    sns.set_theme(rc={"figure.figsize": figsize})
     # Set default style and font scale
     sns.set_style(style)
-    sns.set_context('paper', font_scale=font_scale)
-    sns.set_palette(['#009473', '#D94F70', '#5A5B9F', '#F0C05A', '#7BC4C4', '#FF6F61'])
+    sns.set_context("paper", font_scale=font_scale)
+    sns.set_palette(["#009473", "#D94F70", "#5A5B9F", "#F0C05A", "#7BC4C4", "#FF6F61"])

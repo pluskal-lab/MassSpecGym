@@ -1,4 +1,4 @@
-HUGGING_FACE_REPO = 'roman-bushuiev/MassSpecGym_beta'  # TODO: not beta
+HUGGING_FACE_REPO = "roman-bushuiev/MassSpecGym_beta"  # TODO: not beta
 
 # SPECTRUM = 'spectrum'
 # MOLECULE = 'molecule'

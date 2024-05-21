@@ -35,11 +35,11 @@ class SpecTransform(ABC):
 
 
 def default_matchms_transforms(
-        spec: matchms.Spectrum,
-        n_max_peaks: int = 60,
-        mz_from: float = 10,
-        mz_to: float = 1000
-    ) -> matchms.Spectrum:
+    spec: matchms.Spectrum,
+    n_max_peaks: int = 60,
+    mz_from: float = 10,
+    mz_to: float = 1000,
+) -> matchms.Spectrum:
     spec = ms_filters.normalize_intensities(spec)
     spec = ms_filters.reduce_to_number_of_peaks(spec, n_max=n_max_peaks)
     spec = ms_filters.select_by_mz(spec, mz_from=mz_from, mz_to=mz_to)
@@ -84,22 +84,21 @@ class MolTransform(ABC):
 
 
 class MolFingerprinter(MolTransform):
-    def __init__(
-            self,
-            type: str = 'morgan',
-            fp_size: int = 2048,
-            radius: int = 2
-        ):
-        if type != 'morgan':
-            raise NotImplementedError('Only Morgan fingerprints are implemented at the moment.')
+    def __init__(self, type: str = "morgan", fp_size: int = 2048, radius: int = 2):
+        if type != "morgan":
+            raise NotImplementedError(
+                "Only Morgan fingerprints are implemented at the moment."
+            )
         self.type = type
         self.fp_size = fp_size
         self.radius = radius
 
     def from_smiles(self, mol: str):
         mol = Chem.MolFromSmiles(mol)
-        return utils.morgan_fp(mol, fp_size=self.fp_size, radius=self.radius, to_np=True)
-    
+        return utils.morgan_fp(
+            mol, fp_size=self.fp_size, radius=self.radius, to_np=True
+        )
+
 
 class MolToInChIKey(MolTransform):
     def __init__(self, twod: bool = True) -> None:
@@ -109,5 +108,5 @@ class MolToInChIKey(MolTransform):
         mol = Chem.MolFromSmiles(mol)
         mol = Chem.MolToInchiKey(mol)
         if self.twod:
-            mol = mol.split('-')[0]
+            mol = mol.split("-")[0]
         return mol
