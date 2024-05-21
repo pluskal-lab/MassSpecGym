@@ -4,14 +4,13 @@ import pandas as pd
 import numpy as np
 import torch
 import pytorch_lightning as pl
+import massspecgym.utils as utils
 from pathlib import Path
 from typing import Optional
 from torch.utils.data.dataset import Dataset, Subset
 from torch.utils.data.dataloader import DataLoader, default_collate
 from matchms.importing import load_from_mgf
-from huggingface_hub import hf_hub_download
 from massspecgym.transforms import SpecTransform, MolTransform, MolToInChIKey
-from massspecgym.definitions import HUGGING_FACE_REPO
 
 
 class MassSpecDataset(Dataset):
@@ -36,11 +35,7 @@ class MassSpecDataset(Dataset):
 
         # Download MassSpecGym dataset from HuggigFace Hub
         if self.mgf_pth is None:
-            self.mgf_pth = hf_hub_download(
-                repo_id=HUGGING_FACE_REPO,
-                filename="data/MassSpecGym_labeled_data.mgf",
-                repo_type="dataset",
-            )
+            self.mgf_pth = utils.hugging_face_download("MassSpecGym_labeled_data.mgf")
 
         self.spectra = list(load_from_mgf(self.mgf_pth))
         self.spectra_idx = np.array([s.get("id") for s in self.spectra])
@@ -75,9 +70,6 @@ class MassSpecDataset(Dataset):
 
 
 class RetrievalDataset(MassSpecDataset):
-    """
-    TODO
-    """
 
     def __init__(
         self,
@@ -92,14 +84,10 @@ class RetrievalDataset(MassSpecDataset):
 
         # Download candidates from HuggigFace Hub
         if self.candidates_pth is None:
-            self.candidates_pth = hf_hub_download(
-                repo_id=HUGGING_FACE_REPO,
-                filename="data/MassSpecGym_labeled_data_candidates.json",
-                repo_type="dataset",
-            )
+            self.candidates_pth = utils.hugging_face_download("MassSpecGym_labeled_data_candidates.json")
 
         # Read candidates_pth from json to dict: SMILES -> respective candidate SMILES
-        with open(candidates_pth, "r") as file:
+        with open(self.candidates_pth, "r") as file:
             self.candidates = json.load(file)
 
     def __getitem__(self, i) -> dict:
@@ -174,11 +162,7 @@ class MassSpecDataModule(pl.LightningDataModule):
 
         # Download MassSpecGym split from HuggigFace Hub
         if self.split_pth is None:
-            self.split_pth = hf_hub_download(
-                repo_id=HUGGING_FACE_REPO,
-                filename="data/MassSpecGym_labeled_data_split.tsv",
-                repo_type="dataset",
-            )
+            self.split_pth = utils.hugging_face_download("MassSpecGym_labeled_data_split.tsv")
 
     def prepare_data(self):
         # Load split

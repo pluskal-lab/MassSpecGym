@@ -3,6 +3,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from rdkit.Chem import AllChem as Chem
 from rdkit.Chem import DataStructs
+from huggingface_hub import hf_hub_download
 
 
 def pad_spectrum(
@@ -42,6 +43,18 @@ def morgan_fp(mol: Chem.Mol, fp_size=4096, radius=2, to_np=True):
         DataStructs.ConvertToNumpyArray(fp, fp_np)
         fp = fp_np
     return fp
+
+
+def hugging_face_download(file_name: str) -> str:
+    """
+    Download a file from the Hugging Face Hub and return its location on disk.
+    :param file_name: Name of the file to download.
+    """
+    return hf_hub_download(
+        repo_id="roman-bushuiev/MassSpecGym_beta",  # TODO: not beta
+        filename='data/' + file_name,
+        repo_type='dataset'
+    )
 
 
 def init_plotting(figsize=(6, 2), font_scale=0.95, style="whitegrid"):
