@@ -24,21 +24,41 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         batch: dict, 
         metric_pref: str = ''
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        raise NotImplementedError('Method `step` must be implemented in the child class.')
+        raise NotImplementedError('Method `step` must be implemented in the model-specific child class.')
 
     def training_step(
         self,
         batch: dict,
         batch_idx: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        return self.step(batch, metric_pref='train_')[0]
+        return self.step(batch, metric_pref='train_')
     
     def validation_step(
         self,
         batch: dict,
         batch_idx: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        return self.step(batch, metric_pref='val_')[0]
+        return self.step(batch, metric_pref='val_')
+    
+    @abstractmethod
+    def on_batch_end(
+        self,
+        outputs: T.Any,
+        batch: dict,
+        batch_idx: int,
+        metric_pref: str = ''
+    ) -> None:
+        """
+        Method to be called at the end of each batch. This method should be implemented by a child,
+        task-dedicated class and contain the evaluation necessary for the task.
+        """
+        raise NotImplementedError('Method `on_batch_end` must be implemented in the task-specific child class.')
+    
+    def on_train_batch_end(self, *args, **kwargs):
+        return self.on_batch_end(*args, **kwargs, metric_pref='train_')
+        
+    def on_validation_batch_end(self, *args, **kwargs):
+        return self.on_batch_end(*args, **kwargs, metric_pref='val_')
     
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
