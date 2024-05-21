@@ -1,4 +1,6 @@
 import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
 from rdkit.Chem import AllChem as Chem
 from rdkit.Chem import DataStructs
 
@@ -31,3 +33,13 @@ def morgan_fp(mol: Chem.Mol, fp_size=4096, radius=2, to_np=True):
         DataStructs.ConvertToNumpyArray(fp, fp_np)
         fp = fp_np
     return fp
+
+
+def init_plotting(figsize=(6, 2), font_scale=0.95, style='whitegrid'):
+    # Set default figure size
+    plt.show()  # Does not work without this line for some reason
+    sns.set_theme(rc={'figure.figsize': figsize})
+    # Set default style and font scale
+    sns.set_style(style)
+    sns.set_context('paper', font_scale=font_scale)
+    sns.set_palette(['#009473', '#D94F70', '#5A5B9F', '#F0C05A', '#7BC4C4', '#FF6F61'])
