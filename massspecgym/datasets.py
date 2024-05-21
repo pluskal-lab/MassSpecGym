@@ -1,15 +1,18 @@
 import json
-import pytorch_lightning as pl
+import typing as T
 import pandas as pd
 import numpy as np
+import torch
+import pytorch_lightning as pl
 from pathlib import Path
 from typing import Optional
 from torch.utils.data.dataset import Dataset, Subset
-from torch.utils.data.dataloader import DataLoader
+from torch.utils.data.dataloader import DataLoader, default_collate
 from matchms.importing import load_from_mgf
 from huggingface_hub import hf_hub_download
 from massspecgym.transforms import SpecTransform, MolTransform, MolToInChIKey
 from massspecgym.definitions import HUGGING_FACE_REPO
+
 
 class MassSpecDataset(Dataset):
     """
@@ -53,21 +56,21 @@ class MassSpecDataset(Dataset):
         }
 
         item.update({
-            # TODO: collission energy, instrument type
+            # TODO: collision energy, instrument type
             k: self.spectra[i].metadata[k] for k in ['precursor_mz', 'adduct']
         })
 
         return item
+    
+    @staticmethod
+    def collate_fn(batch: T.Iterable[dict]) -> dict:
+        """
+        Custom collate function to handle the outputs of __getitem__.
+        """
+        return default_collate(batch)
 
 
-class RetrievalDataset(MassSpecDataset):
-    # Constructor:
-    #   - path to candidates json
-    #   - mol_label_transform: MolTransform = MolToInChIKey()
-    # __getitem__:
-    #   - return item with candidates
-    #   - return mask similar to torchmetrics.retrieval.RetrievalRecall
-    # custom collate_fn to handle candidates        
+class RetrievalDataset(MassSpecDataset):     
     """
     TODO
     """
@@ -97,21 +100,37 @@ class RetrievalDataset(MassSpecDataset):
     def __getitem__(self, i) -> dict:
         item = super().__getitem__(i, transform_mol=False)
 
+        if item['mol'] not in self.candidates:
+            raise ValueError(f'No candidates for the query molecule {item["mol"]}.')
+        
         # Create neg/pos label mask by matching the query molecule with the candidates
         item['candidates'] = self.candidates[item['mol']]
         item_label = self.mol_label_transform(item['mol'])
         item['labels'] = [self.mol_label_transform(c) == item_label for c in item['candidates']]
 
         if not any(item['labels']):
-            raise ValueError('Query molecule not found in the candidates list.')
+            raise ValueError(f'Query molecule {item["mol"]} not found in the candidates list.')
 
-        # Transform the query and candidate molecule
+        # Transform the query and candidate molecules
         item['mol'] = self.mol_transform(item['mol'])
         item['candidates'] = [self.mol_transform(c) for c in item['candidates']]
 
-        # TODO How to collate?
-
         return item
+    
+    @staticmethod
+    def collate_fn(batch: T.Iterable[dict]) -> dict:
+        # Standard collate for everything except candidates and their labels (which may have different length per sample)
+        collated_batch = {}
+        for k in batch[0].keys():
+            if k not in ['candidates', 'labels']:
+                collated_batch[k] = default_collate([item[k] for item in batch])
+        
+        # Collate candidates and labels by concatenating and storing pointers to the start of each list
+        collated_batch['candidates'] = sum([item['candidates'] for item in batch], start=[])
+        collated_batch['labels'] = sum([item['labels'] for item in batch], start=[])
+        collated_batch['batch_ptr'] = [len(item['candidates']) for item in batch]
+
+        return collated_batch
 
 
 class MassSpecDataModule(pl.LightningDataModule):
@@ -169,17 +188,20 @@ class MassSpecDataModule(pl.LightningDataModule):
 
     def train_dataloader(self):
         return DataLoader(
-            self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers, drop_last=False
+            self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers,
+            drop_last=False, collate_fn=self.dataset.collate_fn
         )
 
     def val_dataloader(self):
         return DataLoader(
-            self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers, drop_last=False
+            self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers,
+            drop_last=False, collate_fn=self.dataset.collate_fn
         )
     
     def test_dataloader(self):
         return DataLoader(
-            self.test_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers, drop_last=False
+            self.test_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers,
+            drop_last=False, collate_fn=self.dataset.collate_fn
         )
 
 # TODO: Datasets for unlabeled data.
