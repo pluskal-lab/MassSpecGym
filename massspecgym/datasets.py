@@ -126,9 +126,9 @@ class RetrievalDataset(MassSpecDataset):
                 collated_batch[k] = default_collate([item[k] for item in batch])
         
         # Collate candidates and labels by concatenating and storing pointers to the start of each list
-        collated_batch['candidates'] = sum([item['candidates'] for item in batch], start=[])
-        collated_batch['labels'] = sum([item['labels'] for item in batch], start=[])
-        collated_batch['batch_ptr'] = [len(item['candidates']) for item in batch]
+        collated_batch['candidates'] = torch.as_tensor(np.concatenate([item['candidates'] for item in batch]))
+        collated_batch['labels'] = torch.as_tensor(sum([item['labels'] for item in batch], start=[]))
+        collated_batch['batch_ptr'] = torch.as_tensor([len(item['candidates']) for item in batch])
 
         return collated_batch
 
