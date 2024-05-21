@@ -37,14 +37,17 @@ class DeepSetsRetrieval(RetrievalMassSpecGymModel):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         # Unpack inputs
         x = batch['spec'].float()  # TODO Remove retyping
-        y_true = batch['mol']
+        fp_true = batch['mol']
+        cands = batch['candidates']
+        labels = batch['labels']
+        batch_ptr = batch['batch_ptr']
 
-        # Predict
-        y_pred = self.forward(x)
+        # Predict fingerprint
+        fp_pred = self.forward(x)
 
         # Calculate loss
-        y_true = y_true.type_as(y_pred)  # convert fingerprint from int to float/double
-        loss = nn.functional.mse_loss(y_true, y_pred)  # TODO Change to cosine similarity?
+        fp_true = fp_true.type_as(fp_pred)  # convert fingerprint from int to float/double
+        loss = nn.functional.mse_loss(fp_true, fp_pred)  # TODO Change to cosine similarity?
 
         # Log loss
         self.log(
@@ -55,11 +58,19 @@ class DeepSetsRetrieval(RetrievalMassSpecGymModel):
             prog_bar=True,
         )
 
-        # Evaluation performance on fingerprint prediction
+        # Evaluation performance on fingerprint prediction (optional)
         self.evaluate_fingerprint_step(
-            y_true,
-            y_pred, 
+            fp_true,
+            fp_pred, 
             metric_pref=metric_pref
         )
 
-        return loss, y_pred
+        # Calculate final similarity scores between predicted fingerprints and corresponding
+        # candidate fingerprints for retrieval    
+        fp_pred_repeated = fp_pred.repeat_interleave(batch_ptr, dim=0)
+        cos_sim = nn.functional.cosine_similarity(fp_pred_repeated, cands)
+
+        return dict(
+            loss=loss,
+            cos_sim=cos_sim
+        )
