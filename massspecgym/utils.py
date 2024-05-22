@@ -45,6 +45,13 @@ def morgan_fp(mol: Chem.Mol, fp_size=4096, radius=2, to_np=True):
     return fp
 
 
+def standardize_smiles(smiles: str) -> str:
+    """
+    Standardize SMILES representation of a molecule.
+    """
+    pass  # TODO: ChEMBL or PubChem standardization
+
+
 def hugging_face_download(file_name: str) -> str:
     """
     Download a file from the Hugging Face Hub and return its location on disk.
