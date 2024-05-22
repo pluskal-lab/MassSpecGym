@@ -1,9 +1,14 @@
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
+import typing as T
 from rdkit.Chem import AllChem as Chem
 from rdkit.Chem import DataStructs
 from huggingface_hub import hf_hub_download
+from standardizeUtils.standardizeUtils import (
+    standardize_structure_with_pubchem,
+    standardize_structure_list_with_pubchem,
+)
 
 
 def pad_spectrum(
@@ -45,11 +50,16 @@ def morgan_fp(mol: Chem.Mol, fp_size=4096, radius=2, to_np=True):
     return fp
 
 
-def standardize_smiles(smiles: str) -> str:
+def standardize_smiles(smiles: T.Union[str, T.List[str]]) -> T.Union[str, T.List[str]]:
     """
-    Standardize SMILES representation of a molecule.
+    Standardize SMILES representation of a molecule using PubChem standardization.
     """
-    pass  # TODO: ChEMBL or PubChem standardization
+    if isinstance(smiles, str):
+        return standardize_structure_with_pubchem(smiles, 'smiles')
+    elif isinstance(smiles, list):
+        return standardize_structure_list_with_pubchem(smiles, 'smiles')
+    else:
+        raise ValueError("Input should be a SMILES tring or a list of SMILES strings.")
 
 
 def hugging_face_download(file_name: str) -> str:
@@ -59,8 +69,8 @@ def hugging_face_download(file_name: str) -> str:
     """
     return hf_hub_download(
         repo_id="roman-bushuiev/MassSpecGym_beta",  # TODO: not beta
-        filename='data/' + file_name,
-        repo_type='dataset'
+        filename="data/" + file_name,
+        repo_type="dataset",
     )
 
 

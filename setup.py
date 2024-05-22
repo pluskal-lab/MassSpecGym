@@ -25,5 +25,6 @@ setup(
         "matchms",
         "wandb",
         "huggingface-hub",
+        "git+https://github.com/boecker-lab/standardizeUtils/#egg=standardizeUtils"
     ],
 )
