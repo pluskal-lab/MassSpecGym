@@ -19,10 +19,10 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
         self, outputs: T.Any, batch: dict, batch_idx: int, metric_pref: str = ""
     ) -> None:
         assert (
-            isinstance(outputs, dict) and "cos_sim" in outputs
-        ), "No cosine similarity in the model outputs."
+            isinstance(outputs, dict) and "scores" in outputs
+        ), "No predicted candidate scores in the model outputs."
         self.evaluate_retrieval_step(
-            outputs["cos_sim"],
+            outputs["scores"],
             batch["labels"],
             batch["batch_ptr"],
             metric_pref=metric_pref,
@@ -30,7 +30,7 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
 
     def evaluate_retrieval_step(
         self,
-        cos_sim: torch.Tensor,
+        scores: torch.Tensor,
         labels: torch.Tensor,
         batch_ptr: torch.Tensor,
         metric_pref: str = "",
@@ -40,7 +40,7 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
             self._update_metric(
                 metric_pref + f"hit_rate@{top_k}",
                 RetrievalHitRate,
-                (cos_sim, labels, indexes),
+                (scores, labels, indexes),
                 batch_size=batch_ptr.size(0),
                 metric_kwargs=dict(top_k=top_k),
             )
