@@ -26,8 +26,9 @@ class MassSpecDataset(Dataset):
         mgf_pth: Optional[Path] = None,
     ):
         """
-        :param mgf_pth: Path to the .mgf file containing the mass spectra. Default is None, in which case the
-                        MassSpecGym dataset is used.
+        Args:
+            mgf_pth (Optional[Path], optional): Path to the .mgf file containing the mass spectra. 
+                Default is None, in which case the MassSpecGym dataset is used.
         """
         self.mgf_pth = mgf_pth
         self.spec_transform = spec_transform
@@ -151,8 +152,10 @@ class MassSpecDataModule(pl.LightningDataModule):
         **kwargs,
     ):
         """
-        :param split_pth: Path to a .tsv file with columns "id", corresponding to dataset item IDs, and "fold", containg
-                          "train", "val", "test" values. Default is None, in which case the MassSpecGym split is used.
+        Args:
+            split_pth (Optional[Path], optional): Path to a .tsv file with columns "id", 
+                corresponding to dataset item IDs, and "fold", containg "train", "val", "test" 
+                values. Default is None, in which case the MassSpecGym split is used.
         """
         super().__init__(**kwargs)
         self.dataset = dataset
