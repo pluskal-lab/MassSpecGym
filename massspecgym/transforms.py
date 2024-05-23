@@ -106,7 +106,4 @@ class MolToInChIKey(MolTransform):
 
     def from_smiles(self, mol: str) -> str:
         mol = Chem.MolFromSmiles(mol)
-        mol = Chem.MolToInchiKey(mol)
-        if self.twod:
-            mol = mol.split("-")[0]
-        return mol
+        return utils.mol_to_inchi_key(mol, twod=self.twod)

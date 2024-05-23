@@ -67,6 +67,20 @@ def standardize_smiles(smiles: T.Union[str, T.List[str]]) -> T.Union[str, T.List
         raise ValueError("Input should be a SMILES tring or a list of SMILES strings.")
 
 
+def mol_to_inchi_key(mol: Chem.Mol, twod: bool = True) -> str:
+    """
+    Convert a molecule to InChI Key representation.
+    
+    Args:
+        mol (Chem.Mol): RDKit molecule object.
+        twod (bool, optional): Return 2D InChI Key (first 14 characers of InChI Key).
+    """
+    inchi_key = Chem.MolToInchiKey(mol)
+    if twod:
+        inchi_key = inchi_key.split("-")[0]
+    return inchi_key
+
+
 def hugging_face_download(file_name: str) -> str:
     """
     Download a file from the Hugging Face Hub and return its location on disk.
