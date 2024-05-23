@@ -60,6 +60,6 @@ class DeepSetsRetrieval(RetrievalMassSpecGymModel):
         # Calculate final similarity scores between predicted fingerprints and corresponding
         # candidate fingerprints for retrieval
         fp_pred_repeated = fp_pred.repeat_interleave(batch_ptr, dim=0)
-        cos_sim = nn.functional.cosine_similarity(fp_pred_repeated, cands)
+        scores = nn.functional.cosine_similarity(fp_pred_repeated, cands)
 
-        return dict(loss=loss, cos_sim=cos_sim)
+        return dict(loss=loss, scores=scores)

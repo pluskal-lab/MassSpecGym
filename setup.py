@@ -25,6 +25,7 @@ setup(
         "matchms",
         "wandb",
         "huggingface-hub",
+        "seaborn",
         "standardizeUtils @ git+https://github.com/boecker-lab/standardizeUtils/#egg=standardizeUtils"
     ],
 )

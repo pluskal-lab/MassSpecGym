@@ -18,11 +18,15 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
     def on_batch_end(
         self, outputs: T.Any, batch: dict, batch_idx: int, metric_pref: str = ""
     ) -> None:
+        """
+        Compute evaluation metrics for the retrieval model based on the batch and corresponding
+        predictions.
+        """
         assert (
-            isinstance(outputs, dict) and "cos_sim" in outputs
-        ), "No cosine similarity in the model outputs."
+            isinstance(outputs, dict) and "scores" in outputs
+        ), "No predicted candidate scores in the model outputs."
         self.evaluate_retrieval_step(
-            outputs["cos_sim"],
+            outputs["scores"],
             batch["labels"],
             batch["batch_ptr"],
             metric_pref=metric_pref,
@@ -30,17 +34,29 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
 
     def evaluate_retrieval_step(
         self,
-        cos_sim: torch.Tensor,
+        scores: torch.Tensor,
         labels: torch.Tensor,
         batch_ptr: torch.Tensor,
         metric_pref: str = "",
     ) -> None:
+        """
+        Main evaluation method for the retrieval models. The retrieval step is evaluated by 
+        computing the hit rate at different top-k values.
+
+        Args:
+            scores (torch.Tensor): Concatenated scores for all candidates for all samples in the 
+                batch
+            labels (torch.Tensor): Concatenated True/False labels for all candidates for all samples
+                 in the batch
+            batch_ptr (torch.Tensor): Pointer to the start of each sample's candidates in the 
+                concatenated tensors
+        """
         indexes = torch.repeat_interleave(torch.arange(batch_ptr.size(0)), batch_ptr)
         for top_k in self.top_ks:
             self._update_metric(
                 metric_pref + f"hit_rate@{top_k}",
                 RetrievalHitRate,
-                (cos_sim, labels, indexes),
+                (scores, labels, indexes),
                 batch_size=batch_ptr.size(0),
                 metric_kwargs=dict(top_k=top_k),
             )
@@ -52,6 +68,15 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
         batch_idx: T.Optional[torch.Tensor] = None,
         metric_pref: str = "",
     ) -> None:
+        """
+        Utility evaluation method to assess the quality of predicted fingerprints. This method is
+        not a part of the necessary evaluation logic (not called in the `on_batch_end` method)
+        since retrieval models are not bound to predict fingerprints.
+
+        Args:
+            y_true (torch.Tensor): [batch_size, fingerprint_size] tensor of true fingerprints
+            y_pred (torch.Tensor): [batch_size, fingerprint_size] tensor of predicted fingerprints
+        """
         # Cosine similarity between predicted and true fingerprints
         self._update_metric(
             metric_pref + "fingerprint_cos_sim",

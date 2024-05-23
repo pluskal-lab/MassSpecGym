@@ -16,9 +16,11 @@ def pad_spectrum(
 ) -> np.ndarray:
     """
     Pad a spectrum to a fixed number of peaks by appending zeros to the end of the spectrum.
-    :param spec: Spectrum to pad represented as numpy array of shape (n_peaks, 2).
-    :param max_n_peaks: Maximum number of peaks in the padded spectrum.
-    :param pad_value: Value to use for padding.
+    
+    Args:
+        spec (np.ndarray): Spectrum to pad represented as numpy array of shape (n_peaks, 2).
+        max_n_peaks (int): Maximum number of peaks in the padded spectrum.
+        pad_value (float, optional): Value to use for padding.
     """
     n_peaks = spec.shape[0]
     if n_peaks > max_n_peaks:
@@ -37,9 +39,12 @@ def pad_spectrum(
 def morgan_fp(mol: Chem.Mol, fp_size=4096, radius=2, to_np=True):
     """
     Compute Morgan fingerprint for a molecule.
-    :param fp_size: Size of the fingerprint.
-    :param radius: Radius of the fingerprint.
-    :param to_np: Convert the fingerprint to numpy array.
+    
+    Args:
+        mol (Chem.Mol): _description_
+        fp_size (int, optional): Size of the fingerprint.
+        radius (int, optional): Radius of the fingerprint.
+        to_np (bool, optional): Convert the fingerprint to numpy array.
     """
 
     fp = Chem.GetMorganFingerprintAsBitVect(mol, radius=radius, nBits=fp_size)
@@ -65,7 +70,9 @@ def standardize_smiles(smiles: T.Union[str, T.List[str]]) -> T.Union[str, T.List
 def hugging_face_download(file_name: str) -> str:
     """
     Download a file from the Hugging Face Hub and return its location on disk.
-    :param file_name: Name of the file to download.
+    
+    Args:
+        file_name (str): Name of the file to download.
     """
     return hf_hub_download(
         repo_id="roman-bushuiev/MassSpecGym_beta",  # TODO: not beta
