@@ -40,8 +40,8 @@ def default_matchms_transforms(
     mz_from: float = 10,
     mz_to: float = 1000,
 ) -> matchms.Spectrum:
-    spec = ms_filters.reduce_to_number_of_peaks(spec, n_max=n_max_peaks)
     spec = ms_filters.select_by_mz(spec, mz_from=mz_from, mz_to=mz_to)
+    spec = ms_filters.reduce_to_number_of_peaks(spec, n_max=n_max_peaks)
     spec = ms_filters.normalize_intensities(spec)
     return spec
 
