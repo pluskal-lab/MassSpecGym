@@ -5,6 +5,7 @@ import torch
 import massspecgym.utils as utils
 from pathlib import Path
 from typing import Optional
+from rdkit import Chem
 from torch.utils.data.dataset import Dataset
 from torch.utils.data.dataloader import default_collate
 from matchms.importing import load_from_mgf
@@ -13,14 +14,15 @@ from massspecgym.transforms import SpecTransform, MolTransform, MolToInChIKey
 
 class MassSpecDataset(Dataset):
     """
-    Dataset containing mass spectra and their corresponding molecular structures. This class is responsible for loading
-    the data from disk and applying transformation steps to the spectra and molecules.
+    Dataset containing mass spectra and their corresponding molecular structures. This class is 
+    responsible for loading the data from disk and applying transformation steps to the spectra and
+    molecules.
     """
 
     def __init__(
         self,
-        spec_transform: SpecTransform,
-        mol_transform: MolTransform,
+        spec_transform: Optional[SpecTransform] = None,
+        mol_transform: Optional[MolTransform] = None,
         mgf_pth: Optional[Path] = None,
     ):
         """
@@ -43,13 +45,13 @@ class MassSpecDataset(Dataset):
         return len(self.spectra)
 
     def __getitem__(self, i, transform_mol=True) -> dict:
-        spec = self.spec_transform(self.spectra[i])
-        mol = self.spectra[i].get("smiles")
-        item = {
-            "spec": spec,
-            "mol": self.mol_transform(mol) if transform_mol else mol,
-        }
+        spec = self.spectra[i]
+        spec = self.spec_transform(spec) if self.spec_transform else spec
 
+        mol = self.spectra[i].get("smiles")
+        mol = self.mol_transform(mol) if transform_mol and self.mol_transform else mol
+
+        item = {"spec": spec, "mol": mol}
         item.update(
             {
                 # TODO: collision energy, instrument type
@@ -69,6 +71,10 @@ class MassSpecDataset(Dataset):
 
 
 class RetrievalDataset(MassSpecDataset):
+    """
+    Dataset containing mass spectra and their corresponding molecular structures, with additional
+    candidates of molecules for retrieval based on spectral similarity.
+    """
 
     def __init__(
         self,
