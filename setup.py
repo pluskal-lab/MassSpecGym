@@ -28,4 +28,9 @@ setup(
         "seaborn",
         "standardizeUtils @ git+https://github.com/boecker-lab/standardizeUtils/#egg=standardizeUtils"
     ],
+    extras_require={"dev": ["black",
+                            "pytest",
+                            "pytest-cov",
+                            ],
+    }
 )
