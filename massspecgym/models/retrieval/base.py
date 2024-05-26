@@ -11,8 +11,8 @@ from massspecgym.models.base import MassSpecGymModel
 
 class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
 
-    def __init__(self, top_ks: T.Iterable[int] = (1, 5, 10), **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, top_ks: T.Iterable[int] = (1, 5, 10), *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.top_ks = top_ks
 
     def on_batch_end(
