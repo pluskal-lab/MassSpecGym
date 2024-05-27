@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 import matchms
 from massspecgym.transforms import SpecTokenizer
 
@@ -37,5 +38,7 @@ def test_spec_tokenizer():
     tokenizer = SpecTokenizer(n_peaks=60)
     spec_np = tokenizer(spec)
     assert spec_np.shape == (60, 2)
-    assert (spec_np[:spec.peaks.mz.shape[0], 0] == spec.peaks.mz).all()
-    assert (spec_np[:spec.peaks.intensities.shape[0], 1] == spec.peaks.intensities).all()
+    print(spec_np[:spec.peaks.mz.shape[0], 0])
+    print(torch.from_numpy(spec.peaks.mz))
+    assert (spec_np[:spec.peaks.mz.shape[0], 0] == torch.from_numpy(spec.peaks.mz)).all()
+    assert (spec_np[:spec.peaks.intensities.shape[0], 1] == torch.from_numpy(spec.peaks.intensities)).all()
