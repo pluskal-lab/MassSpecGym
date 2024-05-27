@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 import matchms
 import matchms.filtering as ms_filters
 import massspecgym.utils as utils
@@ -12,7 +13,7 @@ class SpecTransform(ABC):
     Base class for spectrum transformations. Custom transformatios should inherit from this class.
     The transformation consists of two consecutive steps:
         1. Apply a series of matchms filters to the input spectrum (method `matchms_transforms`).
-        2. Convert the matchms spectrum to a numpy array (method `matchms_to_numpy`).
+        2. Convert the matchms spectrum to a torch tensor (method `matchms_to_torch`).
     """
 
     @abstractmethod
@@ -22,16 +23,16 @@ class SpecTransform(ABC):
         """
 
     @abstractmethod
-    def matchms_to_numpy(self, spec: matchms.Spectrum) -> np.ndarray:
+    def matchms_to_torch(self, spec: matchms.Spectrum) -> torch.Tensor:
         """
-        Convert a matchms spectrum to a numpy array. Abstract method.
+        Convert a matchms spectrum to a torch tensor. Abstract method.
         """
 
-    def __call__(self, spec: matchms.Spectrum) -> np.ndarray:
+    def __call__(self, spec: matchms.Spectrum) -> torch.Tensor:
         """
-        Compose the matchms filters and the numpy conversion.
+        Compose the matchms filters and the torch conversion.
         """
-        return self.matchms_to_numpy(self.matchms_transforms(spec))
+        return self.matchms_to_torch(self.matchms_transforms(spec))
 
 
 def default_matchms_transforms(
@@ -56,7 +57,7 @@ class SpecTokenizer(SpecTransform):
     def matchms_transforms(self, spec: matchms.Spectrum) -> matchms.Spectrum:
         return default_matchms_transforms(spec, n_max_peaks=self.n_peaks)
 
-    def matchms_to_numpy(self, spec: matchms.Spectrum) -> np.ndarray:
+    def matchms_to_torch(self, spec: matchms.Spectrum) -> torch.Tensor:
         """
         Stack arrays of mz and intensities into a matrix of shape (num_peaks, 2).
         If the number of peaks is less than `n_peaks`, pad the matrix with zeros.
@@ -64,6 +65,7 @@ class SpecTokenizer(SpecTransform):
         spec = np.vstack([spec.peaks.mz, spec.peaks.intensities]).T
         if self.n_peaks is not None:
             spec = utils.pad_spectrum(spec, self.n_peaks)
+        spec = torch.from_numpy(spec)
         return spec
 
 
