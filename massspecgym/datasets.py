@@ -10,7 +10,7 @@ from typing import Optional
 from torch.utils.data.dataset import Dataset, Subset
 from torch.utils.data.dataloader import DataLoader, default_collate
 from matchms.importing import load_from_mgf
-from massspecgym.transforms import SpecTransform, MolTransform, MolToInChIKey
+from massspecgym.transforms import SpecTransform, MolTransform, MolToInChIKey, MetaTransform, FragTransform
 
 
 class MassSpecDataset(Dataset):
@@ -51,14 +51,6 @@ class MassSpecDataset(Dataset):
             "spec": spec,
             "mol": self.mol_transform(mol) if transform_mol else mol,
         }
-
-        item.update(
-            {
-                # TODO: collision energy, instrument type
-                k: self.spectra[i].metadata[k]
-                for k in ["precursor_mz", "adduct"]
-            }
-        )
 
         return item
 
@@ -135,6 +127,110 @@ class RetrievalDataset(MassSpecDataset):
         )
 
         return collated_batch
+
+
+class SimulationDataset(MassSpecDataset):
+
+    def __init__(
+        self,
+        spec_transform: SpecTransform,
+        mol_transform: MolTransform,
+        meta_keys: T.List[str],
+        meta_transform: MetaTransform,
+        frag_transform: FragTransform,
+        csv_pth: Path,
+        frag_pth: Path, # TODO: support frag stuff
+        cache_feats: bool,
+        sparse: bool): 
+        
+        self.csv_pth = csv_pth
+        self.frag_pth = frag_pth
+        self.meta_keys = meta_keys
+        self.spec_transform = spec_transform
+        self.mol_transform = mol_transform
+        self.meta_transform = meta_transform
+        self.frag_transform = frag_transform
+        self.cache_feats = cache_feats
+        self.sparse = sparse
+        self.spec_feats = {}
+        self.mol_feats = {}
+        self.meta_feats = {}
+        self.process()
+        self._compute_counts()
+
+    def process(self):
+
+        entry_df = pd.read_csv(self.csv_pth)
+        entry_df = entry_df[["spec_id", "mol_id", "spectrum", "smiles"] + self.meta_keys]
+        self.entry_df = entry_df
+        if self.frag_pth is not None:
+            raise NotImplementedError("Frag DAGs not yet supported.")        
+
+    def _get_spec_feats(self, i):
+
+        entry = self.entry_df.iloc[i]
+        spec_id = entry["spec_id"]
+        if i in self.spec_feats:
+            spec_feats = self.spec_feats[spec_id]
+        else:
+            spec_feats = self.spec_transform(entry["spectrum"])
+            if self.cache_feats:
+                self.spec_feats[i] = spec_feats
+        return spec_feats
+
+    def _get_mol_feats(self, i):
+
+        entry = self.entry_df.iloc[i]
+        mol_id = entry["mol_id"]
+        if mol_id in self.mol_feats:
+            mol_feats = self.mol_feats[mol_id]
+        else:
+            mol_feats = self.mol_transform(entry["smiles"])
+            if self.cache_feats:
+                self.mol_feats[mol_id] = mol_feats
+        return mol_feats
+
+    def _get_meta_feats(self, i):
+
+        entry = self.entry_df.iloc[i]
+        spec_id = entry["spec_id"]
+        if spec_id in self.mol_feats:
+            meta_feats = self.meta_feats[spec_id]
+        else:
+            meta_feats = self.meta_transform({entry[k] for k in self.meta_keys})
+            if self.cache_feats:
+                self.meta_feats[spec_id] = meta_feats
+        return meta_feats
+
+    def _get_weight(self, i):
+
+        spec_id = self.entry_df[i]["spec_id"]
+        weight = 1./float(self.spec_per_mol[spec_id])
+        return weight
+
+    def _get_frag_feats(self, i):
+
+        return None
+
+    def _compute_counts(self):
+
+        self.spec_per_mol = self.entry_df[["mol_id","spec_id"]].drop_duplicates().groupby("mol_id").size().to_dict()
+
+    def __getitem__(self, i) -> dict:
+        item = {
+            "spec": self._get_spec_feats(i),
+            "mol": self._get_mol_feats(i),
+            "frag": self._get_frag_feats(i),
+            "weight": self._get_weight(i),
+        }
+        item.update(self._get_meta_feats(i))
+        return item
+    
+    def collate_fn(self):
+
+        if self.sparse:
+            
+        else:
 
 
 class MassSpecDataModule(pl.LightningDataModule):
