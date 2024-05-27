@@ -1,6 +1,6 @@
 import torch
 
-from massspecgym.models.denovo.base import DeNovoMassSpecGymModel
+from massspecgym.models.de_novo.base import DeNovoMassSpecGymModel
 
 
 class RandomDeNovo(DeNovoMassSpecGymModel):
