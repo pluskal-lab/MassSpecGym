@@ -36,7 +36,7 @@ def pad_spectrum(
         )
 
 
-def morgan_fp(mol: Chem.Mol, fp_size=4096, radius=2, to_np=True):
+def morgan_fp(mol: Chem.Mol, fp_size=2048, radius=2, to_np=True):
     """
     Compute Morgan fingerprint for a molecule.
     

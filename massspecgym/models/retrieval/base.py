@@ -11,9 +11,9 @@ from massspecgym.models.base import MassSpecGymModel
 
 class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
 
-    def __init__(self, top_ks: T.Iterable[int] = (1, 5, 10), **kwargs):
-        super().__init__(**kwargs)
-        self.top_ks = top_ks
+    def __init__(self, at_ks: T.Iterable[int] = (1, 5, 10), *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.at_ks = at_ks
 
     def on_batch_end(
         self, outputs: T.Any, batch: dict, batch_idx: int, metric_pref: str = ""
@@ -52,13 +52,13 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
                 concatenated tensors
         """
         indexes = torch.repeat_interleave(torch.arange(batch_ptr.size(0)), batch_ptr)
-        for top_k in self.top_ks:
+        for at_k in self.at_ks:
             self._update_metric(
-                metric_pref + f"hit_rate@{top_k}",
+                metric_pref + f"hit_rate@{at_k}",
                 RetrievalHitRate,
                 (scores, labels, indexes),
                 batch_size=batch_ptr.size(0),
-                metric_kwargs=dict(top_k=top_k),
+                metric_kwargs=dict(top_k=at_k),
             )
 
     def evaluate_fingerprint_step(
