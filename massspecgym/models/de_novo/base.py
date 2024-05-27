@@ -2,6 +2,7 @@ import typing as T
 from abc import ABC
 
 from rdkit import Chem
+from rdkit.DataStructs import TanimotoSimilarity
 import pulp
 from myopic_mces.myopic_mces import MCES
 import torch
@@ -11,6 +12,7 @@ from torchmetrics.classification import BinaryJaccardIndex
 from torchmetrics.aggregation import MeanMetric
 
 from massspecgym.models.base import MassSpecGymModel
+from massspecgym.utils import morgan_fp, mol_to_inchi_key
 
 
 class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
@@ -50,70 +52,80 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
     def evaluate_de_novo_step(
         self,
         mols_pred: list[list[Chem.Mol | str]],
-        mol_label: list[str],
+        mol_true: list[str],
         metric_pref: str = "",
     ) -> None:
         """
         Main evaluation method for the models for de novo molecule generation from mass spectra.
 
         Args:
-            scores (list[list[Mol | str]]): (bs, k) list of generated rdkit molecules or SMILES
+            mols_pred (list[list[Mol | str]]): (bs, k) list of generated rdkit molecules or SMILES
                 strings
-            labels (list[str]): (bs) list of ground truth SMILES strings
+            mol_true (list[str]): (bs) list of ground-truth SMILES strings
         """
-        # Convert SMILEs from Mol objects if needed
-        if not isinstance(mols_pred[0][0], str):
-            mols_pred = [Chem.MolToSmiles(m) for ms in mols_pred for m in ms]
+        # Get SMILES and RDKit molecule objects for all predictions
+        if isinstance(mols_pred[0][0], str):  # SMILES passed
+            smiles_pred = mols_pred
+            mols_pred = [[Chem.MolFromSmiles(sm) for sm in sms] for sms in mols_pred]
+        else:  # RDKit molecules passed
+            smiles_pred = [[Chem.MolToSmiles(m) for m in ms] for ms in mols_pred]
 
+        # Get RDKit molecule objects for ground truth
+        smile_true = mol_true
+        mol_true = [Chem.MolFromSmiles(sm) for sm in mol_true]
+
+        # Evaluate top-k metrics
         for top_k in self.top_ks:
+            # Get top-k predicted molecules for each ground-truth sample
+            smiles_pred_top_k = [smiles_pred_sample[:top_k] for smiles_pred_sample in smiles_pred]
+            mols_pred_top_k = [mols_pred_sample[:top_k] for mols_pred_sample in mols_pred]
+
             # 1. Evaluate minimum common edge subgraph:
             # Calculate MCES distance between top-k predicted molecules and ground truth and
             # report the minimum distance. The minimum distances for each sample in the batch are
             # averaged across the epoch.
             min_mces_dists = []
             # Iterate over batch
-            for mols_pred_sample, mol_label_sample in zip(mols_pred, mol_label):
+            for preds, true in zip(smiles_pred_top_k, smile_true):
                 # Iterate over top-k predicted molecule samples
-                dists = [
-                    MCES(s1=mol_pred, s2=mol_label_sample, **self.myopic_mces_kwargs)[1]
-                    for mol_pred in mols_pred_sample[:top_k]
-                ]
+                dists = [MCES(s1=true, s2=pred, **self.myopic_mces_kwargs)[1] for pred in preds]
                 min_mces_dists.append(min(dists))
             self._update_metric(
                 metric_pref + f"top_{top_k}_min_mces_dist",
                 MeanMetric,
                 (min_mces_dists,),
                 batch_size=len(min_mces_dists),
-                
             )
 
-        # TODO
-        # For k in (1, 10)
-            # A
-            #   https://github.com/AlBi-HHU/myopic-mces/blob/main/src/myopic_mces/myopic_mces.py#L16
-            #   1. mol_label agains all mols_pred
-            #   MCES(ind=1, s1, s2, threshold=15, solver='CPLEX_CMD')
-            #   2. Choose min dist [:k]
-            #   3. Report average mean across epoch
+            # 2. Evaluate Tanimoto similarity:
+            # Calculate Tanimoto similarity between top-k predicted molecules and ground truth and
+            # report the maximum similarity. The maximum similarities for each sample in the batch
+            # are averaged across the epoch.
+            fps_pred_top_k = [[morgan_fp(m, to_np=False) for m in ms] for ms in mols_pred_top_k]
+            fp_true = [morgan_fp(m, to_np=False) for m in mol_true]            
+            max_tanimoto_sims = []
+            # Iterate over batch
+            for preds, true in zip(fps_pred_top_k, fp_true):
+                # Iterate over top-k predicted molecule samples
+                sims = [TanimotoSimilarity(true, pred) for pred in preds]
+                max_tanimoto_sims.append(max(sims))
+            self._update_metric(
+                metric_pref + f"top_{top_k}_max_tanimoto_sim",
+                MeanMetric,
+                (max_tanimoto_sims,),
+                batch_size=len(max_tanimoto_sims),
+            )
 
-            # B
-            # Same as A but with Tanimoto similarity instead of MCES (max instead of min)
-
-            # C
-            # utils.mol_to_inchi_key(mol_label) in utils.mol_to_inchi_key(mols_pred[:k])
-
-        # self._update_metric(
-        #     metric_pref + "tanimoto",
-        #     BinaryJaccardIndex,
-        #     (y_pred, y_true),
-        #     batch_size=y_true.size(0),
-        #     metric_kwargs=dict(reduction="mean"),
-        # )
-
-        # torch.from_numpy(mol_label)
-        # from torch import tensor
-        
-        # target = tensor([1, 1, 0, 0])
-        # preds = tensor([0, 1, 0, 0])
-        # metric = BinaryJaccardIndex()
-        # metric(preds, target)
+            # 3. Evaluate exact match (accuracy):
+            # Calculate if the ground truth molecule is in the top-k predicted molecules and report
+            # the average across the epoch.
+            in_top_k = [
+                mol_to_inchi_key(true) in [mol_to_inchi_key(pred) for pred in preds]
+                for true, preds in zip(mol_true, mols_pred_top_k)
+            ]
+            self._update_metric(
+                metric_pref + f"top_{top_k}_accuracy",
+                MeanMetric,
+                (in_top_k,),
+                batch_size=len(in_top_k)
+            )
