@@ -22,6 +22,7 @@ setup(
         "torchmetrics",
         "numpy",
         "rdkit",
+        "myopic-mces",
         "matchms",
         "wandb",
         "huggingface-hub",
