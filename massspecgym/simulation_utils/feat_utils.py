@@ -21,9 +21,7 @@ import scipy
 #     # get_edge_feats,
 # )
 
-CANONICAL_ELEMENT_ORDER = sorted([
-	"C",
-	"H",
+CANONICAL_ELEMENT_ORDER = ["C", "H"] + sorted([
 	"O",
 	"N",
 	"P",
@@ -53,7 +51,7 @@ def register_atom_feat(cls):
 
 def get_mol_feats_sizes(atom_feats,bond_feats,pe_embed_k):
 
-	mg = MolGraph(atom_feats,bond_feats,pe_embed_k)
+	mg = MolGraphFeaturizer(atom_feats,bond_feats,pe_embed_k)
 	return mg.num_atom_feats,mg.num_bond_feats
 
 class MolGraphFeaturizer:
