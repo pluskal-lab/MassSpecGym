@@ -22,13 +22,13 @@ class MassSpecDataModule(pl.LightningDataModule):
         batch_size: int,
         num_workers: int = 0,
         split_pth: Optional[Path] = None,
-        **kwargs,
+        **kwargs
     ):
         """
         Args:
-            split_pth (Optional[Path], optional): Path to a .tsv file with columns "id", 
-                corresponding to dataset item IDs, and "fold", containg "train", "val", "test" 
-                values. Default is None, in which case the MassSpecGym split is used.
+            split_pth (Optional[Path], optional): Path to a .tsv file with columns "identifier" and "fold",
+                corresponding to dataset item IDs, and "fold", containg "train", "val", "test"
+                values. Default is None, in which case the split from the `dataset` is used.
         """
         super().__init__(**kwargs)
         self.dataset = dataset
@@ -36,28 +36,28 @@ class MassSpecDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = num_workers
 
-        # Download MassSpecGym split from HuggigFace Hub
-        if self.split_pth is None:
-            self.split_pth = utils.hugging_face_download("MassSpecGym_labeled_data_split.tsv")
-
     def prepare_data(self):
-        # Load split
-        self.split = pd.read_csv(self.split_pth, sep="\t")
-        if set(self.split.columns) != {"id", "fold"}:
-            raise ValueError('Split file must contain "id" and "fold" columns.')
+        if self.split_pth is None:
+            self.split = self.dataset.metadata[["identifier", "fold"]]
+        else:
+            # NOTE: custom split is not tested
+            self.split = pd.read_csv(self.split_pth, sep="\t")
+            if set(self.split.columns) != {"identifier", "fold"}:
+                raise ValueError('Split file must contain "id" and "fold" columns.')
+            self.split["identifier"] = self.split["identifier"].astype(str)
+            if set(self.dataset.metadata["identifier"]) != set(self.split["identifier"]):
+                raise ValueError(
+                    "Dataset item IDs must match the IDs in the split file."
+                )
 
-        self.split["id"] = self.split["id"].astype(str)
-        self.split = self.split.set_index("id")["fold"]
-
+        self.split = self.split.set_index("identifier")["fold"]
         if set(self.split) != {"train", "val", "test"}:
             raise ValueError(
                 '"Folds" column must contain only and all of "train", "val", and "test" values.'
             )
-        if set(self.dataset.spectra_idx) != set(self.split.index):
-            raise ValueError("Dataset item IDs must match the IDs in the split file.")
 
     def setup(self, stage=None):
-        split_mask = self.split.loc[self.dataset.spectra_idx].values
+        split_mask = self.split.loc[self.dataset.metadata["identifier"]].values
         if stage == "fit" or stage is None:
             self.train_dataset = Subset(
                 self.dataset, np.where(split_mask == "train")[0]

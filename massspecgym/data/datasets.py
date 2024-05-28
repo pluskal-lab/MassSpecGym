@@ -1,7 +1,9 @@
+import pandas as pd
 import json
 import typing as T
 import numpy as np
 import torch
+import matchms
 import massspecgym.utils as utils
 from pathlib import Path
 from typing import Optional
@@ -14,7 +16,7 @@ from massspecgym.transforms import SpecTransform, MolTransform, MolToInChIKey
 
 class MassSpecDataset(Dataset):
     """
-    Dataset containing mass spectra and their corresponding molecular structures. This class is 
+    Dataset containing mass spectra and their corresponding molecular structures. This class is
     responsible for loading the data from disk and applying transformation steps to the spectra and
     molecules.
     """
@@ -23,42 +25,64 @@ class MassSpecDataset(Dataset):
         self,
         spec_transform: Optional[SpecTransform] = None,
         mol_transform: Optional[MolTransform] = None,
-        mgf_pth: Optional[Path] = None,
+        pth: Optional[Path] = None,
     ):
         """
         Args:
-            mgf_pth (Optional[Path], optional): Path to the .mgf file containing the mass spectra. 
-                Default is None, in which case the MassSpecGym dataset is used.
+            mgf_pth (Optional[Path], optional): Path to the .tsv or .mgf file containing the mass spectra.
+                Default is None, in which case the MassSpecGym dataset is downloaded from HuggingFace Hub.
         """
-        self.mgf_pth = mgf_pth
+        self.pth = pth
         self.spec_transform = spec_transform
         self.mol_transform = mol_transform
 
-        # Download MassSpecGym dataset from HuggigFace Hub
-        if self.mgf_pth is None:
-            self.mgf_pth = utils.hugging_face_download("MassSpecGym_labeled_data.mgf")
+        if self.pth is None:
+            self.pth = utils.hugging_face_download("MassSpecGym.tsv")
 
-        self.spectra = list(load_from_mgf(self.mgf_pth))
-        self.spectra_idx = np.array([s.get("id") for s in self.spectra])
+        if isinstance(self.pth, str):
+            self.pth = Path(self.pth)
+
+        if self.pth.suffix == ".tsv":
+            self.metadata = pd.read_csv(self.pth, sep="\t")
+            self.spectra = self.metadata.apply(
+                lambda row: matchms.Spectrum(
+                    mz=np.array([float(m) for m in row["mzs"].split(",")]),
+                    intensities=np.array(
+                        [float(i) for i in row["intensities"].split(",")]
+                    ),
+                    metadata={"precursor_mz": row["precursor_mz"]},
+                ),
+                axis=1,
+            )
+            self.metadata = self.metadata.drop(columns=["mzs", "intensities"])
+        elif self.pth.suffix == ".mgf":
+            raise NotImplementedError("Reading .mgf files is not yet supported.")
+        else:
+            raise ValueError(f"{self.pth.suffix} file format not supported.")
 
     def __len__(self) -> int:
         return len(self.spectra)
 
-    def __getitem__(self, i, transform_mol=True) -> dict:
+    def __getitem__(
+        self, i: int, transform_spec: bool = True, transform_mol: bool = True
+    ) -> dict:
         spec = self.spectra[i]
-        spec = self.spec_transform(spec) if self.spec_transform else spec
+        spec = (
+            self.spec_transform(spec)
+            if transform_spec and self.spec_transform
+            else spec
+        )
 
-        mol = self.spectra[i].get("smiles")
+        metadata = self.metadata.iloc[i]
+        mol = metadata["smiles"]
         mol = self.mol_transform(mol) if transform_mol and self.mol_transform else mol
 
         item = {"spec": spec, "mol": mol}
-        item.update(
-            {
-                # TODO: collision energy, instrument type
-                k: self.spectra[i].metadata[k]
-                for k in ["precursor_mz", "adduct"]
-            }
-        )
+
+        # TODO: Add other metadata to the item. Should it be just done in subclasses?
+        item.update({
+            k: metadata[k] for k in ["precursor_mz", "adduct"]
+        })
 
         return item
 
@@ -89,7 +113,9 @@ class RetrievalDataset(MassSpecDataset):
 
         # Download candidates from HuggigFace Hub
         if self.candidates_pth is None:
-            self.candidates_pth = utils.hugging_face_download("MassSpecGym_labeled_data_candidates.json")
+            self.candidates_pth = utils.hugging_face_download(
+                "MassSpecGym_labeled_data_candidates.json"
+            )
 
         # Read candidates_pth from json to dict: SMILES -> respective candidate SMILES
         with open(self.candidates_pth, "r") as file:
