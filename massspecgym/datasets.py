@@ -11,7 +11,7 @@ from torch.utils.data.dataset import Dataset, Subset
 from torch.utils.data.dataloader import DataLoader, default_collate
 from matchms.importing import load_from_mgf
 from massspecgym.transforms import SpecTransform, MolTransform, MolToInChIKey, MetaTransform, FragTransform
-
+from massspecgym.utils import peaks_to_matchms
 
 class MassSpecDataset(Dataset):
     """
@@ -133,15 +133,14 @@ class SimulationDataset(MassSpecDataset):
 
     def __init__(
         self,
-        spec_transform: SpecTransform,
-        mol_transform: MolTransform,
-        meta_keys: T.List[str],
-        meta_transform: MetaTransform,
-        frag_transform: FragTransform,
         csv_pth: Path,
         frag_pth: Path, # TODO: support frag stuff
-        cache_feats: bool,
-        sparse: bool): 
+        meta_keys: T.List[str],
+        spec_transform: SpecTransform,
+        mol_transform: MolTransform,
+        meta_transform: MetaTransform,
+        frag_transform: FragTransform,
+        cache_feats: bool): 
         
         self.csv_pth = csv_pth
         self.frag_pth = frag_pth
@@ -151,20 +150,25 @@ class SimulationDataset(MassSpecDataset):
         self.meta_transform = meta_transform
         self.frag_transform = frag_transform
         self.cache_feats = cache_feats
-        self.sparse = sparse
         self.spec_feats = {}
         self.mol_feats = {}
         self.meta_feats = {}
         self.process()
-        self._compute_counts()
+        self.compute_counts()
 
     def process(self):
 
         entry_df = pd.read_csv(self.csv_pth)
-        entry_df = entry_df[["spec_id", "mol_id", "spectrum", "smiles"] + self.meta_keys]
+        entry_df = entry_df[["spec_id", "mol_id", "peaks", "smiles"] + self.meta_keys]
+        entry_df["spectrum"] = entry_df.apply(lambda row: peaks_to_matchms(row["peaks"], row["precursor_mz"]), axis=1)
+        entry_df = entry_df.drop(columns=["peaks"])
         self.entry_df = entry_df
         if self.frag_pth is not None:
             raise NotImplementedError("Frag DAGs not yet supported.")        
+
+    def __len__(self) -> int:
+
+        return self.entry_df.shape[0]
 
     def _get_spec_feats(self, i):
 
@@ -197,41 +201,45 @@ class SimulationDataset(MassSpecDataset):
         if spec_id in self.mol_feats:
             meta_feats = self.meta_feats[spec_id]
         else:
-            meta_feats = self.meta_transform({entry[k] for k in self.meta_keys})
+            meta_feats = self.meta_transform({k: entry[k] for k in self.meta_keys})
             if self.cache_feats:
                 self.meta_feats[spec_id] = meta_feats
-        return meta_feats
-
-    def _get_weight(self, i):
-
-        spec_id = self.entry_df[i]["spec_id"]
         weight = 1./float(self.spec_per_mol[spec_id])
-        return weight
+        meta_feats["weight"] = weight 
+        return meta_feats
 
     def _get_frag_feats(self, i):
 
-        return None
+        raise NotImplementedError
 
-    def _compute_counts(self):
+    def compute_counts(self):
 
-        self.spec_per_mol = self.entry_df[["mol_id","spec_id"]].drop_duplicates().groupby("mol_id").size().to_dict()
+        spec_per_mol = self.entry_df[["mol_id","spec_id"]].drop_duplicates().groupby("mol_id").size().reset_index(name="count")
+        spec_per_mol = spec_per_mol.merge(self.entry_df[["spec_id","mol_id"]], on="mol_id", how="inner")[["spec_id","count"]]
+        self.spec_per_mol = spec_per_mol.set_index("spec_id")["count"].to_dict()
 
     def __getitem__(self, i) -> dict:
-        item = {
-            "spec": self._get_spec_feats(i),
-            "mol": self._get_mol_feats(i),
-            "frag": self._get_frag_feats(i),
-            "weight": self._get_weight(i),
-        }
+        item = {}
+        item.update(self._get_spec_feats(i))
+        item.update(self._get_mol_feats(i))
         item.update(self._get_meta_feats(i))
         return item
     
-    def collate_fn(self):
+    def collate_fn(self, data_list):
 
-        if self.sparse:
-            
-        else:
-
+        keys = list(data_list[0].keys())
+        collate_data = {key: [] for key in keys}
+        for data in data_list:
+            for key in keys:
+                collate_data[key].append(data[key])
+        # handle spectrum
+        self.spec_transform.collate_fn(collate_data)
+        # handle molecule
+        self.mol_transform.collate_fn(collate_data)
+        # handle metadata
+        self.meta_transform.collate_fn(collate_data)
+        return collate_data
+        
 
 class MassSpecDataModule(pl.LightningDataModule):
     """

@@ -5,6 +5,7 @@ and bonds. Inspired by the dgllife library.
 
 """
 from rdkit import Chem
+import rdkit.DataStructs as ds
 import numpy as np
 import torch as th
 import networkx as nx
@@ -12,13 +13,28 @@ import torch_geometric as pyg
 from copy import deepcopy
 import scipy
 
-# from frag_gnn.utils.frag_utils import (
+# from massspecgym.simulation_utils.frag_utils import (
 #     CANONICAL_ELEMENT_ORDER,
-#     NODE_FEAT_TO_IDX,
-#     EDGE_FEAT_TO_IDX,
-#     get_node_feats,
-#     get_edge_feats,
+#     # NODE_FEAT_TO_IDX,
+#     # EDGE_FEAT_TO_IDX,
+#     # get_node_feats,
+#     # get_edge_feats,
 # )
+
+CANONICAL_ELEMENT_ORDER = sorted([
+	"C",
+	"H",
+	"O",
+	"N",
+	"P",
+	"S",
+	"F",
+	"Cl",
+	"Br",
+	"I",
+	"Se",
+	"Si"
+])
 
 atom_feat_registry = {}
 bond_feat_registry = {}
@@ -545,3 +561,21 @@ def random_walk_pe(g, k):
 	PE = th.as_tensor(PE,dtype=th.float32)
 	return PE
 
+
+def get_fingerprints(mol, fp_types):
+
+	fp_arrs = []
+	for fp_type in sorted(fp_types):
+		if fp_type == "morgan":
+			fp = Chem.rdMolDescriptors.GetHashedMorganFingerprint(mol,3)
+		elif fp_type == "maccs":
+			fp = Chem.rdMolDescriptors.GetMACCSKeysFingerprint(mol)
+		elif fp_type == "rdkit":
+			fp = Chem.RDKFingerprint(mol)
+		else:
+			raise ValueError(f"Invalid fingerprint type: {fp_type}")
+		fp_arr = np.zeros(1)
+		ds.ConvertToNumpyArray(fp, fp_arr)
+		fp_arrs.append(fp_arr)
+	fp_arrs = np.concatenate(fp_arrs,axis=0)
+	return fp_arrs
