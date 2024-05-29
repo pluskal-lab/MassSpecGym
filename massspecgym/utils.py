@@ -106,17 +106,15 @@ def init_plotting(figsize=(6, 2), font_scale=0.95, style="whitegrid"):
     sns.set_palette(["#009473", "#D94F70", "#5A5B9F", "#F0C05A", "#7BC4C4", "#FF6F61"])
 
 
-def peaks_to_matchms(peaks_str: str, precursor_mz: float) -> matchms.Spectrum:
+def peaks_to_matchms(mzs_str: str, intensities_str: str, precursor_mz: float) -> matchms.Spectrum:
 
-    peaks = json.loads(peaks_str)
-    mzs, ints = [], []
-    for peak in peaks:
-        mzs.append(peak[0])
-        ints.append(peak[1])
+    
+    mzs = [float(mz) for mz in mzs_str.split(",")]
+    intensities = [float(intensity) for intensity in intensities_str.split(",")]
     mzs = np.array(mzs)
-    ints = np.array(ints)
+    intensities = np.array(intensities)
     spectrum = matchms.Spectrum(
         mz=mzs, 
-        intensities=ints,
+        intensities=intensities,
         metadata=dict(precursor_mz=precursor_mz))
     return spectrum

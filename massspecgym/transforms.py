@@ -104,8 +104,12 @@ class SpecToMzsInts(SpecTransform):
     def collate_fn(self, collate_data_d: dict) -> None:
         # mutates dict!
 
+        device = collate_data_d["spec_mzs"].device
+        counts = th.tensor([spec_mzs.shape[0] for spec_mzs in collate_data_d["spec_mzs"]],device=device)
+        batch_idxs = th.repeat_interleave(th.arange(counts.shape[0],device=device),counts,dim=0)
         collate_data_d["spec_mzs"] = th.cat(collate_data_d["spec_mzs"],dim=0)
         collate_data_d["spec_ints"] = th.cat(collate_data_d["spec_ints"],dim=0)
+        collate_data_d["spec_batch_idxs"] = batch_idxs
         
 
 class MolTransform(ABC):

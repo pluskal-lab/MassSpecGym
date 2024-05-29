@@ -133,7 +133,7 @@ class SimulationDataset(MassSpecDataset):
 
     def __init__(
         self,
-        csv_pth: Path,
+        tsv_pth: Path,
         frag_pth: Path, # TODO: support frag stuff
         meta_keys: T.List[str],
         spec_transform: SpecTransform,
@@ -142,7 +142,7 @@ class SimulationDataset(MassSpecDataset):
         frag_transform: FragTransform,
         cache_feats: bool): 
         
-        self.csv_pth = csv_pth
+        self.tsv_pth = tsv_pth
         self.frag_pth = frag_pth
         self.meta_keys = meta_keys
         self.spec_transform = spec_transform
@@ -158,10 +158,12 @@ class SimulationDataset(MassSpecDataset):
 
     def process(self):
 
-        entry_df = pd.read_csv(self.csv_pth)
-        entry_df = entry_df[["spec_id", "mol_id", "peaks", "smiles"] + self.meta_keys]
-        entry_df["spectrum"] = entry_df.apply(lambda row: peaks_to_matchms(row["peaks"], row["precursor_mz"]), axis=1)
-        entry_df = entry_df.drop(columns=["peaks"])
+        entry_df = pd.read_csv(self.tsv_pth, sep="\t")
+        # entry_df = entry_df[["spec_id", "mol_id", "peaks", "smiles"] + self.meta_keys]
+        entry_df["spectrum"] = entry_df.apply(lambda row: peaks_to_matchms(row["mzs"], row["intensities"], row["precursor_mz"]), axis=1)
+        entry_df["collision_energy"] = entry_df["collision_energy"].apply(lambda ce_str: float(ce_str.split(" ")[0]))
+        entry_df = entry_df.drop(columns=["mzs","intensities"])
+        entry_df = entry_df[entry_df["adduct"]=="[M+H]+"]
         self.entry_df = entry_df
         if self.frag_pth is not None:
             raise NotImplementedError("Frag DAGs not yet supported.")        
