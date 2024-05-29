@@ -92,7 +92,7 @@ def hugging_face_download(file_name: str) -> str:
         file_name (str): Name of the file to download.
     """
     return hf_hub_download(
-        repo_id="roman-bushuiev/MassSpecGym_beta",  # TODO: not beta
+        repo_id="roman-bushuiev/MassSpecGym",
         filename="data/" + file_name,
         repo_type="dataset",
     )
