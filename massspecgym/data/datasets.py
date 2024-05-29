@@ -115,7 +115,7 @@ class RetrievalDataset(MassSpecDataset):
         # Download candidates from HuggigFace Hub
         if self.candidates_pth is None:
             self.candidates_pth = utils.hugging_face_download(
-                "MassSpecGym_labeled_data_candidates.json"
+                "molecules/MassSpecGym_retrieval_candidates_mass.json"
             )
 
         # Read candidates_pth from json to dict: SMILES -> respective candidate SMILES
