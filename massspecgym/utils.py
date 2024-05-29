@@ -9,7 +9,8 @@ from standardizeUtils.standardizeUtils import (
     standardize_structure_with_pubchem,
     standardize_structure_list_with_pubchem,
 )
-
+import matchms
+import json
 
 def pad_spectrum(
     spec: np.ndarray, max_n_peaks: int, pad_value: float = 0.0
@@ -106,3 +107,17 @@ def init_plotting(figsize=(6, 2), font_scale=0.95, style="whitegrid"):
     sns.set_style(style)
     sns.set_context("paper", font_scale=font_scale)
     sns.set_palette(["#009473", "#D94F70", "#5A5B9F", "#F0C05A", "#7BC4C4", "#FF6F61"])
+
+
+def peaks_to_matchms(mzs_str: str, intensities_str: str, precursor_mz: float) -> matchms.Spectrum:
+
+    
+    mzs = [float(mz) for mz in mzs_str.split(",")]
+    intensities = [float(intensity) for intensity in intensities_str.split(",")]
+    mzs = np.array(mzs)
+    intensities = np.array(intensities)
+    spectrum = matchms.Spectrum(
+        mz=mzs, 
+        intensities=intensities,
+        metadata=dict(precursor_mz=precursor_mz))
+    return spectrum
