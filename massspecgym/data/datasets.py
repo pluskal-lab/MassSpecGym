@@ -56,7 +56,8 @@ class MassSpecDataset(Dataset):
             )
             self.metadata = self.metadata.drop(columns=["mzs", "intensities"])
         elif self.pth.suffix == ".mgf":
-            raise NotImplementedError("Reading .mgf files is not yet supported.")
+            self.spectra = list(load_from_mgf(str(self.pth)))
+            self.metadata = pd.DataFrame([s.metadata for s in self.spectra])
         else:
             raise ValueError(f"{self.pth.suffix} file format not supported.")
 
