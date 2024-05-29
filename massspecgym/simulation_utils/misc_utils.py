@@ -3,7 +3,7 @@ from functools import wraps
 from distutils.util import strtobool
 from contextlib import contextmanager
 import numpy as np
-import torch as th
+import torch
 import os
 import joblib
 import tqdm
@@ -19,15 +19,15 @@ PPM = 1/1000000
 EPS = 1e-9
 LOG_HALF = float(np.log(0.5))
 LOG_TWO = float(np.log(2.0))
-LOG_ZERO_FP32 = float(th.finfo(th.float32).min)
-LOG_ZERO_FP16 = float(th.finfo(th.float16).min)
+LOG_ZERO_FP32 = float(torch.finfo(torch.float32).min)
+LOG_ZERO_FP16 = float(torch.finfo(torch.float16).min)
 MAX_CROSS_ENTROPY = 1e19
 TOLERANCE_MIN_MZ = 200.0
 
 def LOG_ZERO(dtype):
-    if dtype == th.float32:
+    if dtype == torch.float32:
         return LOG_ZERO_FP32
-    elif dtype == th.float16:
+    elif dtype == torch.float16:
         return LOG_ZERO_FP16
     else:
         raise ValueError(dtype)
@@ -70,12 +70,12 @@ def np_temp_seed(seed):
 
 @contextmanager
 def th_temp_seed(seed):
-    state = th.get_rng_state()
-    th.manual_seed(seed)
+    state = torch.get_rng_state()
+    torch.manual_seed(seed)
     try:
         yield
     finally:
-        th.set_rng_state(state)
+        torch.set_rng_state(state)
 
 def flatten_lol(lol):
     return [item for sublist in lol for item in sublist]
@@ -169,7 +169,7 @@ def get_tensor_memory_usage(tensor):
 def get_tensor_dict_memory_usage(**tensor_dict):
     total_memory = 0
     for k,v in tensor_dict.items():
-        if isinstance(v,th.Tensor):
+        if isinstance(v,torch.Tensor):
             total_memory += get_tensor_memory_usage(v)
     return total_memory
 
@@ -181,9 +181,9 @@ def scatter_masked_softmax(logits,mask,subset_idxs,mask_logprob=None,log=True):
     if mask_logprob is None:
         mask_logprob = LOG_ZERO(logits.dtype)	
     # calculate appropriate mask value
-    with th.no_grad():
+    with torch.no_grad():
         c = scatter_masked_logsumexp(logits,mask,subset_idxs)
-        lm = th.gather(
+        lm = torch.gather(
             input=c,
             index=subset_idxs,
             dim=0
@@ -195,7 +195,7 @@ def scatter_masked_softmax(logits,mask,subset_idxs,mask_logprob=None,log=True):
     masked_logits = scatter_logsoftmax(masked_logits,subset_idxs)
     if not log:
         # exponentiate
-        return th.exp(masked_logits)
+        return torch.exp(masked_logits)
     else:
         return masked_logits
 
@@ -212,9 +212,9 @@ def scatter_masked_logsumexp(logits,mask,subset_idxs,mask_value=None):
 def scatter_logsumexp(logits,subset_idxs,eps=EPS,dim_size=None):
 
     if dim_size is None:
-        k = th.max(subset_idxs)+1
+        k = torch.max(subset_idxs)+1
     else:
-        assert dim_size >= th.max(subset_idxs)+1
+        assert dim_size >= torch.max(subset_idxs)+1
         k = dim_size
     sm = scatter_reduce(
         src=logits,
@@ -223,20 +223,20 @@ def scatter_logsumexp(logits,subset_idxs,eps=EPS,dim_size=None):
         dim_size=k,
         default=LOG_ZERO(logits.dtype)
     )
-    lm = th.gather(
+    lm = torch.gather(
         input=sm,
         index=subset_idxs,
         dim=0
     )
     logits = logits - lm
     se = scatter_reduce(
-        src=th.exp(logits),
+        src=torch.exp(logits),
         index=subset_idxs,
         reduce="sum",
         dim_size=k,
         default=0.
     )
-    return sm + th.log(se + eps)
+    return sm + torch.log(se + eps)
 
 def scatter_logsoftmax(logits,subset_idxs):
     # calculate normalizing constant
@@ -247,7 +247,7 @@ def scatter_logsoftmax(logits,subset_idxs):
 
 def scatter_softmax(logits,subset_idxs):
 
-    return th.exp(scatter_logsoftmax(logits,subset_idxs))
+    return torch.exp(scatter_logsoftmax(logits,subset_idxs))
 
 def scatter_l1normalize(vals,subset_idxs):
     # calculate normalizing constant
@@ -255,9 +255,9 @@ def scatter_l1normalize(vals,subset_idxs):
         src=vals,
         index=subset_idxs,
         reduce="sum",
-        dim_size=th.max(subset_idxs)+1
+        dim_size=torch.max(subset_idxs)+1
     )
-    c = th.clamp(c,min=EPS)
+    c = torch.clamp(c,min=EPS)
     # apply normalizing constant
     vals = vals/c[subset_idxs]
     return vals
@@ -268,9 +268,9 @@ def scatter_l2normalize(vals,subset_idxs):
         src=vals**2,
         index=subset_idxs,
         reduce="sum",
-        dim_size=th.max(subset_idxs)+1
+        dim_size=torch.max(subset_idxs)+1
     )
-    c = th.clamp(th.sqrt(c),min=EPS)
+    c = torch.clamp(torch.sqrt(c),min=EPS)
     # apply normalizing constant
     vals = vals/c[subset_idxs]
     return vals
@@ -286,9 +286,9 @@ def scatter_var(src,index,dim_size=None,correction=1,sqrt=False):
 
     # calculate dim_size
     if dim_size is None:
-        dim_size = th.max(index)+1
+        dim_size = torch.max(index)+1
     else:
-        assert dim_size >= th.max(index)+1
+        assert dim_size >= torch.max(index)+1
     # calculate mean
     m = scatter_reduce(
         src=src,
@@ -305,23 +305,23 @@ def scatter_var(src,index,dim_size=None,correction=1,sqrt=False):
         dim_size=dim_size
     )
     v_den = scatter_reduce(
-        src=th.ones_like(src),
+        src=torch.ones_like(src),
         index=index,
         reduce="sum",
         dim_size=dim_size
     )
-    v = v_num/th.clamp(v_den-correction,min=EPS)
+    v = v_num/torch.clamp(v_den-correction,min=EPS)
     if sqrt:
-        v = th.sqrt(v)
+        v = torch.sqrt(v)
     return v
 
 def scatter_argmax(src,index,other_index,dim_size=None,return_max=False):
 
     # calculate dim_size
     if dim_size is None:
-        dim_size = th.max(index)+1
+        dim_size = torch.max(index)+1
     else:
-        assert dim_size >= th.max(index)+1
+        assert dim_size >= torch.max(index)+1
     # calculate max
     mx = scatter_reduce(
         src=src,
@@ -352,11 +352,11 @@ def scatter_reduce(src,index,reduce,dim=0,dim_size=None,default=0.,include_self=
     if reduce == "mean" and include_self:
         print("scatter_reduce: mean reduce with include_self=True is not recommended")
     if dim_size is None:
-        dim_size = th.max(index)+1
+        dim_size = torch.max(index)+1
     else:
-        assert dim_size >= th.max(index)+1
+        assert dim_size >= torch.max(index)+1
     result_shape = src.shape[:dim] + (dim_size,) + src.shape[dim+1:]
-    results = th.full(result_shape,default,dtype=src.dtype,device=src.device)
+    results = torch.full(result_shape,default,dtype=src.dtype,device=src.device)
     results.scatter_reduce_(
         dim=dim,
         index=index,
@@ -367,30 +367,30 @@ def scatter_reduce(src,index,reduce,dim=0,dim_size=None,default=0.,include_self=
     return results
 
 def safelog(x,eps=EPS):
-    return th.log(th.clamp(x,min=eps))
+    return torch.log(torch.clamp(x,min=eps))
 
 def batchwise_max(xs, batch_idxs):
     """ for debugging """
 
-    batch_size = th.max(batch_idxs)+1
-    maxs = th.zeros([batch_size],device=xs.device,dtype=xs.dtype)
+    batch_size = torch.max(batch_idxs)+1
+    maxs = torch.zeros([batch_size],device=xs.device,dtype=xs.dtype)
     for b in range(batch_size):
-        maxs[b] = th.max(xs[batch_idxs==b])
+        maxs[b] = torch.max(xs[batch_idxs==b])
     return maxs
 
 def batchwise_lse(xs, batch_idxs):
     """ for debugging """
 
-    batch_size = th.max(batch_idxs)+1
-    lses = th.zeros([batch_size],device=xs.device,dtype=xs.dtype)
+    batch_size = torch.max(batch_idxs)+1
+    lses = torch.zeros([batch_size],device=xs.device,dtype=xs.dtype)
     for b in range(batch_size):
-        lses[b] = th.logsumexp(xs[batch_idxs==b],0)
+        lses[b] = torch.logsumexp(xs[batch_idxs==b],0)
     return lses
 
 def to_cpu(data_d, non_blocking=True, detach=False):
 
     for k in data_d.keys():
-        if isinstance(data_d[k],th.Tensor):
+        if isinstance(data_d[k],torch.Tensor):
             data = data_d[k]
             if detach:
                 data = data.detach()
@@ -402,8 +402,8 @@ def to_device(data_d, device, non_blocking=True):
 
     for k in data_d.keys():
         v = data_d[k]
-        # if isinstance(v, th.Tensor) or isinstance(v, dgl.DGLGraph) or isinstance(v, pyg.data.Data):
-        if isinstance(v, th.Tensor) or isinstance(v, pyg.data.Data):
+        # if isinstance(v, torch.Tensor) or isinstance(v, dgl.DGLGraph) or isinstance(v, pyg.data.Data):
+        if isinstance(v, torch.Tensor) or isinstance(v, pyg.data.Data):
             v = v.to(device,non_blocking=non_blocking)
             data_d[k] = v
     return data_d
@@ -425,7 +425,7 @@ def deep_update(mapping, *updating_mappings):
 def print_shapes(input_dict):
 
     for k,v in input_dict.items():
-        if isinstance(v,th.Tensor) or isinstance(v,np.ndarray):
+        if isinstance(v,torch.Tensor) or isinstance(v,np.ndarray):
             print(k,"-",tuple(v.shape),"-",type(v))
         elif isinstance(v,list) or isinstance(v,tuple):
             print(k,"-",len(v),"-",type(v))
@@ -438,8 +438,8 @@ def print_shapes(input_dict):
 
 def th_setdiff1d(t1, t2):
 
-    t1 = th.unique(t1)
-    t2 = th.unique(t2)
+    t1 = torch.unique(t1)
+    t2 = torch.unique(t2)
     return t1[(t1[:, None] != t2).all(dim=1)]
 
 def get_package_version(package):

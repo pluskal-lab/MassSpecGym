@@ -1,5 +1,5 @@
 from abc import ABC
-import torch as th
+import torch
 import torch.nn as nn
 
 

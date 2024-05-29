@@ -6,7 +6,7 @@ and bonds. Inspired by the dgllife library.
 """
 from rdkit import Chem
 import numpy as np
-import torch as th
+import torch
 import networkx as nx
 import torch_geometric as pyg
 from copy import deepcopy
@@ -178,9 +178,9 @@ class MolGraphFeaturizer:
 		atom_feats = mol_graph["atom_feats"]
 
 		g = pyg.data.Data(
-			x=th.from_numpy(atom_feats).float(),
-			edge_index=th.from_numpy(bond_inds).long().transpose(1, 0),
-			edge_attr=th.from_numpy(bond_feats).float(),
+			x=torch.from_numpy(atom_feats).float(),
+			edge_index=torch.from_numpy(bond_inds).long().transpose(1, 0),
+			edge_attr=torch.from_numpy(bond_feats).float(),
 		)
 
 		if self.pe_embed_k > 0:
@@ -188,7 +188,7 @@ class MolGraphFeaturizer:
 				g,
 				k=self.pe_embed_k,
 			)
-			g.x = th.cat((g.x, pe_embeds), dim=-1)
+			g.x = torch.cat((g.x, pe_embeds), dim=-1)
 		
 		return g		
 
@@ -407,12 +407,12 @@ def one_hot_encoding(x, allowable_set, encode_unknown=False) -> list:
 # 	mol_pyg = pyg.data.Batch.from_data_list(mol_pyg_list)
 # 	frag_pyg = pyg.data.Batch.from_data_list(frag_pyg_list)
 # 	assert mol_pyg.num_graphs == frag_pyg.num_graphs == batch_size
-# 	assert all(th.all(frag_pyg.node_feat_idxs[0] == frag_pyg.node_feat_idxs[i]) for i in range(batch_size))
-# 	assert all(th.all(frag_pyg.edge_feat_idxs[0] == frag_pyg.edge_feat_idxs[i]) for i in range(batch_size))
+# 	assert all(torch.all(frag_pyg.node_feat_idxs[0] == frag_pyg.node_feat_idxs[i]) for i in range(batch_size))
+# 	assert all(torch.all(frag_pyg.edge_feat_idxs[0] == frag_pyg.edge_feat_idxs[i]) for i in range(batch_size))
 # 	mol_num_nodes = [g.num_nodes for g in mol_pyg_list]
 # 	frag_num_nodes = [g.num_nodes for g in frag_pyg_list]
-# 	mol_num_nodes = th.cumsum(th.tensor([0]+mol_num_nodes),dim=0)
-# 	frag_num_nodes = th.cumsum(th.tensor([0]+frag_num_nodes),dim=0)
+# 	mol_num_nodes = torch.cumsum(torch.tensor([0]+mol_num_nodes),dim=0)
+# 	frag_num_nodes = torch.cumsum(torch.tensor([0]+frag_num_nodes),dim=0)
 # 	frag_formula_peak_idxs = []
 # 	frag_formula_peak_mzs = []
 # 	frag_formula_peak_probs = []
@@ -420,20 +420,20 @@ def one_hot_encoding(x, allowable_set, encode_unknown=False) -> list:
 # 	frag_formula_peak_sizes = []
 # 	for mzs, probs in zip(formula_peak_mzs_list,formula_peak_probs_list):
 # 		# sparsify
-# 		idx = th.nonzero(probs)
+# 		idx = torch.nonzero(probs)
 # 		mzs = mzs[idx[:,0],idx[:,1]]
 # 		probs = probs[idx[:,0],idx[:,1]]
 # 		frag_formula_peak_idxs.append(idx[:,0])
 # 		frag_formula_peak_mzs.append(mzs)
 # 		frag_formula_peak_probs.append(probs)
-# 		frag_formula_sizes.append(th.unique(idx,sorted=True).shape[0])
+# 		frag_formula_sizes.append(torch.unique(idx,sorted=True).shape[0])
 # 		frag_formula_peak_sizes.append(idx.shape[0])
-# 	frag_formula_peak_idxs = th.cat(frag_formula_peak_idxs,dim=0)
-# 	frag_formula_peak_mzs = th.cat(frag_formula_peak_mzs,dim=0)
-# 	frag_formula_peak_probs = th.cat(frag_formula_peak_probs,dim=0)
-# 	frag_formula_cumsizes = th.cumsum(th.tensor([0]+frag_formula_sizes),dim=0)
-# 	frag_formula_sizes = th.tensor(frag_formula_sizes)
-# 	frag_formula_peak_sizes = th.tensor(frag_formula_peak_sizes)	
+# 	frag_formula_peak_idxs = torch.cat(frag_formula_peak_idxs,dim=0)
+# 	frag_formula_peak_mzs = torch.cat(frag_formula_peak_mzs,dim=0)
+# 	frag_formula_peak_probs = torch.cat(frag_formula_peak_probs,dim=0)
+# 	frag_formula_cumsizes = torch.cumsum(torch.tensor([0]+frag_formula_sizes),dim=0)
+# 	frag_formula_sizes = torch.tensor(frag_formula_sizes)
+# 	frag_formula_peak_sizes = torch.tensor(frag_formula_peak_sizes)	
 # 	batched_mol_frag = {
 # 		"mol_pyg": mol_pyg,
 # 		"frag_pyg": frag_pyg,
@@ -469,8 +469,8 @@ def one_hot_encoding(x, allowable_set, encode_unknown=False) -> list:
 # 			_node_feat_size += _x_cur.shape[1]
 # 			# print(feat,feat_idx,_node_feat_size)
 # 		_node_feat_idxs.append(_node_feat_size)
-# 	_x = th.cat(_x,dim=1)
-# 	_node_feat_idxs = th.tensor(_node_feat_idxs,device=device,dtype=th.int64).reshape(1,-1)
+# 	_x = torch.cat(_x,dim=1)
+# 	_node_feat_idxs = torch.tensor(_node_feat_idxs,device=device,dtype=torch.int64).reshape(1,-1)
 # 	# select edge features
 # 	_edge_index = edge_index.clone()
 # 	_edge_attr = []
@@ -480,7 +480,7 @@ def one_hot_encoding(x, allowable_set, encode_unknown=False) -> list:
 # 		if feat in frag_edge_feats:
 # 			assert edges
 # 			if feat == "complement":
-# 				_edge_attr_cur = th.zeros(edge_attr.shape[0],1,device=device,dtype=th.int64)
+# 				_edge_attr_cur = torch.zeros(edge_attr.shape[0],1,device=device,dtype=torch.int64)
 # 			else:
 # 				_edge_attr_cur = get_edge_feats(edge_attr,edge_feat_idxs[0],feat)
 # 			_edge_attr.append(_edge_attr_cur)
@@ -488,19 +488,19 @@ def one_hot_encoding(x, allowable_set, encode_unknown=False) -> list:
 # 			# print(feat,feat_idx,_edge_feat_size)
 # 		_edge_feat_idxs.append(_edge_feat_size)
 # 	if len(_edge_attr) == 0:
-# 		_edge_attr = [th.zeros(edge_attr.shape[0],1,device=device,dtype=th.int64)]
-# 	_edge_attr = th.cat(_edge_attr,dim=1)
-# 	_edge_feat_idxs = th.tensor(_edge_feat_idxs,device=device,dtype=th.int64).reshape(1,-1)
+# 		_edge_attr = [torch.zeros(edge_attr.shape[0],1,device=device,dtype=torch.int64)]
+# 	_edge_attr = torch.cat(_edge_attr,dim=1)
+# 	_edge_feat_idxs = torch.tensor(_edge_feat_idxs,device=device,dtype=torch.int64).reshape(1,-1)
 # 	# convert to undirected
 # 	if bigraph:
 # 		assert edges
-# 		_edge_index_c = th.stack([_edge_index[1],_edge_index[0]],dim=0)
-# 		assert not th.any(th.all(_edge_index==_edge_index_c,dim=0),dim=0)
+# 		_edge_index_c = torch.stack([_edge_index[1],_edge_index[0]],dim=0)
+# 		assert not torch.any(torch.all(_edge_index==_edge_index_c,dim=0),dim=0)
 # 		_edge_attr_c = _edge_attr.clone()
 # 		if "complement" in frag_edge_feats:
 # 			_edge_attr_c[:,-1] = 1 - _edge_attr_c[:,-1]
-# 		_edge_index = th.cat([_edge_index,_edge_index_c],dim=1)
-# 		_edge_attr = th.cat([_edge_attr,_edge_attr_c],dim=0)
+# 		_edge_index = torch.cat([_edge_index,_edge_index_c],dim=1)
+# 		_edge_attr = torch.cat([_edge_attr,_edge_attr_c],dim=0)
 # 	if not edges:
 # 		assert not bigraph
 # 		_edge_index = _edge_index[:,:0]
@@ -526,7 +526,7 @@ def random_walk_pe(g, k):
 	# sparse adjacency matrix
 	A = scipy.sparse.csr_matrix(
 		(
-			th.ones_like(g.edge_index[0]).numpy(),
+			torch.ones_like(g.edge_index[0]).numpy(),
 			(
 				g.edge_index[0].numpy(),
 				g.edge_index[1].numpy()
@@ -542,6 +542,6 @@ def random_walk_pe(g, k):
 		RW_power = RW_power @ RW
 		PE.append(RW_power.diagonal())
 	PE = np.stack(PE, axis=-1)
-	PE = th.as_tensor(PE,dtype=th.float32)
+	PE = torch.as_tensor(PE,dtype=torch.float32)
 	return PE
 

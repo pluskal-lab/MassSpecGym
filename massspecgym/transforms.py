@@ -7,7 +7,7 @@ from rdkit.Chem import AllChem as Chem
 
 from typing import Optional
 from abc import ABC, abstractmethod
-import torch as th
+import torch
 from torch_geometric.data import Batch
 
 from massspecgym.simulation_utils.feat_utils import MolGraphFeaturizer, get_fingerprints
@@ -94,23 +94,23 @@ class SpecToMzsInts(SpecTransform):
         spec = ms_filters.normalize_intensities(spec)
         return spec
 
-    def matchms_to_numeric(self, spec: matchms.Spectrum) -> dict:
+    def matchms_to_torch(self, spec: matchms.Spectrum) -> dict:
         """
         Stack arrays of mz and intensities into a matrix of shape (num_peaks, 2).
         If the number of peaks is less than `n_peaks`, pad the matrix with zeros.
         """
-        mzs = th.as_tensor(spec.peaks.mz)
-        ints = th.as_tensor(spec.peaks.intensities)
+        mzs = torch.as_tensor(spec.peaks.mz)
+        ints = torch.as_tensor(spec.peaks.intensities)
         return {"spec_mzs": mzs, "spec_ints": ints}
     
     def collate_fn(self, collate_data_d: dict) -> None:
         # mutates dict!
 
-        device = collate_data_d["spec_mzs"].device
-        counts = th.tensor([spec_mzs.shape[0] for spec_mzs in collate_data_d["spec_mzs"]],device=device)
-        batch_idxs = th.repeat_interleave(th.arange(counts.shape[0],device=device),counts,dim=0)
-        collate_data_d["spec_mzs"] = th.cat(collate_data_d["spec_mzs"],dim=0)
-        collate_data_d["spec_ints"] = th.cat(collate_data_d["spec_ints"],dim=0)
+        device = collate_data_d["spec_mzs"][0].device
+        counts = torch.tensor([spec_mzs.shape[0] for spec_mzs in collate_data_d["spec_mzs"]],device=device)
+        batch_idxs = torch.repeat_interleave(torch.arange(counts.shape[0],device=device),counts,dim=0)
+        collate_data_d["spec_mzs"] = torch.cat(collate_data_d["spec_mzs"],dim=0)
+        collate_data_d["spec_ints"] = torch.cat(collate_data_d["spec_ints"],dim=0)
         collate_data_d["spec_batch_idxs"] = batch_idxs
         
 
@@ -208,12 +208,12 @@ class MolToFingerprints(MolTransform):
 
         self.fp_types = sorted(fp_types)
 
-    def from_smiles(self, mol: str) -> th.Tensor:
+    def from_smiles(self, mol: str) -> torch.Tensor:
         
         fps = []
         mol = Chem.MolFromSmiles(mol)
         fps = get_fingerprints(mol, self.fp_types)
-        fps = th.as_tensor(fps)
+        fps = torch.as_tensor(fps)
         return {"fps": fps}
     
     def get_fp_size(self) -> int:
@@ -225,7 +225,7 @@ class MolToFingerprints(MolTransform):
     def collate_fn(self, collate_data_d: dict) -> None:
         # mutates dict!
 
-        collate_data_d["fps"] = th.stack(collate_data_d["fps"],dim=0)
+        collate_data_d["fps"] = torch.stack(collate_data_d["fps"],dim=0)
 
 
 class MetaTransform(ABC):
@@ -261,10 +261,10 @@ class StandardMeta(MetaTransform):
         inst_idx = self.inst_to_idx.get(metadata["instrument_type"],self.num_insts)
         ce_idx = self.transform_ce(metadata["collision_energy"])
         meta_d = {
-            "precursor_mz": th.tensor(prec_mz),
-            "adduct": th.tensor(adduct_idx),
-            "instrument_type": th.tensor(inst_idx),
-            "collision_energy": th.tensor(ce_idx)
+            "precursor_mz": torch.tensor(prec_mz),
+            "adduct": torch.tensor(adduct_idx),
+            "instrument_type": torch.tensor(inst_idx),
+            "collision_energy": torch.tensor(ce_idx)
         }
         return meta_d
 
@@ -282,7 +282,7 @@ class StandardMeta(MetaTransform):
         # mutates dict!
 
         for key in ["adduct","instrument_type","collision_energy","precursor_mz"]:
-            collate_data_d[key] = th.stack(collate_data_d[key],dim=0)
+            collate_data_d[key] = torch.stack(collate_data_d[key],dim=0)
 
 
 class FragTransform:

@@ -197,11 +197,18 @@ class SimulationDataset(MassSpecDataset):
     def process(self):
 
         entry_df = pd.read_csv(self.tsv_pth, sep="\t")
-        # entry_df = entry_df[["spec_id", "mol_id", "peaks", "smiles"] + self.meta_keys]
+        # remove any spectra not included in the simulation challenge
+        entry_df = entry_df[entry_df["simulation_challenge"]]
+        # remove examples in train split that might be missing metadata
+        entry_df = entry_df[(entry_df["adduct"]=="[M+H]+") & (~entry_df["collision_energy"].isna())] 
+        # convert spectrum and CE to usable formats
         entry_df["spectrum"] = entry_df.apply(lambda row: utils.peaks_to_matchms(row["mzs"], row["intensities"], row["precursor_mz"]), axis=1)
-        entry_df["collision_energy"] = entry_df["collision_energy"].apply(lambda ce_str: float(ce_str.split(" ")[0]))
+        entry_df["collision_energy"] = entry_df["collision_energy"].apply(utils.ce_str_to_float)
         entry_df = entry_df.drop(columns=["mzs","intensities"])
-        entry_df = entry_df[entry_df["adduct"]=="[M+H]+"]
+        entry_df["spec_id"] = np.arange(entry_df.shape[0])
+        inchikey_map = {ik:idx for idx, ik in enumerate(sorted(entry_df["inchikey"].unique()))}
+        entry_df["mol_id"] = entry_df["inchikey"].map(inchikey_map)
+
         self.entry_df = entry_df
         if self.frag_pth is not None:
             raise NotImplementedError("Frag DAGs not yet supported.")        
@@ -245,7 +252,7 @@ class SimulationDataset(MassSpecDataset):
             if self.cache_feats:
                 self.meta_feats[spec_id] = meta_feats
         weight = 1./float(self.spec_per_mol[spec_id])
-        meta_feats["weight"] = weight 
+        meta_feats["weight"] = torch.tensor(weight) 
         return meta_feats
 
     def _get_frag_feats(self, i):
@@ -278,6 +285,8 @@ class SimulationDataset(MassSpecDataset):
         self.mol_transform.collate_fn(collate_data)
         # handle metadata
         self.meta_transform.collate_fn(collate_data)
+        # handle weights
+        collate_data["weight"] = torch.stack(collate_data["weight"])
         return collate_data
         
 

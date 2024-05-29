@@ -1,7 +1,7 @@
 import typing as T
 from abc import ABC
 
-import torch as th
+import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 
@@ -14,22 +14,22 @@ def get_batch_metric_reduce_fn(sample_weight):
     def _batch_metric_reduce(scores, weights):
         if sample_weight == "none":
             # ignore weights (uniform averaging)
-            weights = th.ones_like(weights)
-        return th.sum(scores * weights, dim=0) / th.sum(weights, dim=0)
+            weights = torch.ones_like(weights)
+        return torch.sum(scores * weights, dim=0) / torch.sum(weights, dim=0)
 
     return _batch_metric_reduce
 
 
 def sparse_cosine_distance(
-        true_mzs: th.Tensor, 
-        true_logprobs: th.Tensor,
-        true_batch_idxs: th.Tensor,
-        pred_mzs: th.Tensor,
-        pred_logprobs: th.Tensor,
-        pred_batch_idxs: th.Tensor,
+        true_mzs: torch.Tensor, 
+        true_logprobs: torch.Tensor,
+        true_batch_idxs: torch.Tensor,
+        pred_mzs: torch.Tensor,
+        pred_logprobs: torch.Tensor,
+        pred_batch_idxs: torch.Tensor,
         mz_max: float=1500.,
         mz_bin_res: float=0.01,
-        log_distance: bool=False) -> th.Tensor:
+        log_distance: bool=False) -> torch.Tensor:
 
     # sparse bin
     true_bin_idxs, true_bin_logprobs, true_bin_batch_idxs = batched_bin_func(
@@ -60,19 +60,19 @@ def sparse_cosine_distance(
         pred_bin_batch_idxs
     )
     # dot product
-    pred_mask = th.isin(pred_bin_idxs, true_bin_idxs)
-    true_mask = th.isin(true_bin_idxs, pred_bin_idxs)
+    pred_mask = torch.isin(pred_bin_idxs, true_bin_idxs)
+    true_mask = torch.isin(true_bin_idxs, pred_bin_idxs)
     both_bin_logprobs = pred_bin_logprobs[pred_mask] + true_bin_logprobs[true_mask]
-    assert th.all(pred_bin_batch_idxs[pred_mask] == true_bin_batch_idxs[true_mask])
+    assert torch.all(pred_bin_batch_idxs[pred_mask] == true_bin_batch_idxs[true_mask])
     log_cos_sim = scatter_logsumexp(
         both_bin_logprobs,
         pred_bin_batch_idxs[pred_mask],
-        dim_size=th.max(true_bin_batch_idxs)+1
+        dim_size=torch.max(true_bin_batch_idxs)+1
     )
     if log_distance:
-        cos_dist = th.log1p(-th.exp(log_cos_sim))
+        cos_dist = torch.log1p(-torch.exp(log_cos_sim))
     else:
-        cos_dist = 1.-th.exp(log_cos_sim)
+        cos_dist = 1.-torch.exp(log_cos_sim)
     return cos_dist
 
 
@@ -182,12 +182,12 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
 
     def evaluate_simulation_step(
         self,
-        pred_mzs: th.Tensor,
-        pred_logprobs: th.Tensor,
-        pred_batch_idxs: th.Tensor,
-        true_mzs: th.Tensor,
-        true_logprobs: th.Tensor,
-        true_batch_idxs: th.Tensor,
+        pred_mzs: torch.Tensor,
+        pred_logprobs: torch.Tensor,
+        pred_batch_idxs: torch.Tensor,
+        true_mzs: torch.Tensor,
+        true_logprobs: torch.Tensor,
+        true_batch_idxs: torch.Tensor,
         metric_pref: str,
     ) -> None:
         """
@@ -195,16 +195,16 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         computing the hit rate at different top-k values.
 
         Args:
-            scores (th.Tensor): Concatenated scores for all candidates for all samples in the 
+            scores (torch.Tensor): Concatenated scores for all candidates for all samples in the 
                 batch
-            labels (th.Tensor): Concatenated True/False labels for all candidates for all samples
+            labels (torch.Tensor): Concatenated True/False labels for all candidates for all samples
                  in the batch
-            batch_ptr (th.Tensor): Pointer to the start of each sample's candidates in the 
+            batch_ptr (torch.Tensor): Pointer to the start of each sample's candidates in the 
                 concatenated tensors
         """
         
         # Cosine similarity between predicted and true fingerprints
-        batch_size = th.max(pred_batch_idxs)+1
+        batch_size = torch.max(pred_batch_idxs)+1
         self._update_metric(
             metric_pref + "spec_cos_sim",
             None, # must be initialized

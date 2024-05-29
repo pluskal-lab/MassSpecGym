@@ -1,5 +1,5 @@
 import numpy as np
-import torch as th
+import torch
 import torch.nn.functional as F
 import scipy
 import scipy.optimize
@@ -30,13 +30,13 @@ def get_ints_transform_func(ints_transform):
 
 	_func = None
 	if ints_transform == "log10":
-		_func = lambda ints: th.log10(ints+1.)
+		_func = lambda ints: torch.log10(ints+1.)
 	elif ints_transform == "log10t3":
-		_func = lambda ints: th.log10(ints/3.+1.)
+		_func = lambda ints: torch.log10(ints/3.+1.)
 	elif ints_transform == "loge":
-		_func = lambda ints: th.log(ints+1.)
+		_func = lambda ints: torch.log(ints+1.)
 	elif ints_transform == "sqrt":
-		_func = lambda ints: th.sqrt(ints)
+		_func = lambda ints: torch.sqrt(ints)
 	elif ints_transform == "none":
 		_func = lambda ints: ints
 	else:
@@ -64,7 +64,7 @@ def get_ints_untransform_func(ints_transform):
 		def _untransform_fn(x): return 10**(3 * x) - 1.
 	elif ints_transform == "loge":
 		max_ints = float(np.log(1000. + 1.))
-		def _untransform_fn(x): return th.exp(x) - 1.
+		def _untransform_fn(x): return torch.exp(x) - 1.
 	elif ints_transform == "sqrt":
 		max_ints = float(np.sqrt(1000.))
 		def _untransform_fn(x): return x**2
@@ -74,10 +74,10 @@ def get_ints_untransform_func(ints_transform):
 	else:
 		raise ValueError("invalid transform")
 	def _func(ints):
-		ints = ints / (th.max(ints) + EPS) * max_ints
+		ints = ints / (torch.max(ints) + EPS) * max_ints
 		ints = _untransform_fn(ints)
-		ints = th.clamp(ints, min=0.)
-		assert not th.isnan(ints).any()
+		ints = torch.clamp(ints, min=0.)
+		assert not torch.isnan(ints).any()
 		return ints
 	return _func
 
@@ -111,19 +111,19 @@ def transform_ace(ace:float) -> float:
 	raise NotImplementedError
 	#return ace/100 	
 
-def filter_func(mzs: Union[th.Tensor,np.ndarray], 
-				ints:Union[th.Tensor,np.ndarray], 
-				ints_thresh:float, mz_max:float) -> Tuple[Union[th.Tensor,np.ndarray], Union[th.Tensor,np.ndarray]]:
+def filter_func(mzs: Union[torch.Tensor,np.ndarray], 
+				ints:Union[torch.Tensor,np.ndarray], 
+				ints_thresh:float, mz_max:float) -> Tuple[Union[torch.Tensor,np.ndarray], Union[torch.Tensor,np.ndarray]]:
 	"""filter spectrum by intesnity value and max mz
 
 	Args:
-		mzs (Union[th.Tensor,np.ndarray]): m/z s
-		ints (Union[th.Tensor,np.ndarray]): intesnities 
+		mzs (Union[torch.Tensor,np.ndarray]): m/z s
+		ints (Union[torch.Tensor,np.ndarray]): intesnities 
 		ints_thresh (float): intesnity thresh hold
 		mz_max (float): max mz, if mz_max <= 0, mz_max filter will be ignored
 
 	Returns:
-		Tuple[Union[th.Tensor,np.ndarray], Union[th.Tensor,np.ndarray]]: mzs, ints
+		Tuple[Union[torch.Tensor,np.ndarray], Union[torch.Tensor,np.ndarray]]: mzs, ints
 	"""
 	thresh_mask = ints > ints_thresh
 	
@@ -137,14 +137,14 @@ def filter_func(mzs: Union[th.Tensor,np.ndarray],
 	ints = ints[both_mask]
 	return mzs, ints
 
-def bin_func(mzs:th.Tensor,ints:th.Tensor,mz_max:float,mz_bin_res:float,return_index:bool,sum_ints:bool):
+def bin_func(mzs:torch.Tensor,ints:torch.Tensor,mz_max:float,mz_bin_res:float,return_index:bool,sum_ints:bool):
 	"""
 	return binned spectra
 	Note: if return_index is True, returns the (possibly non-unique) bin index for each mz
 	Note: intensities may not be normalized due to peak merging
 	Args:
-		mzs (th.Tensor): 1d flat tensor of m/zs; multiple m/z lists are concatenated.  
-		ints (th.Tensor): 1d flat tensor of intensities; multiple intensities lists are concatenated.  
+		mzs (torch.Tensor): 1d flat tensor of m/zs; multiple m/z lists are concatenated.  
+		ints (torch.Tensor): 1d flat tensor of intensities; multiple intensities lists are concatenated.  
 		mz_max (float): max mz value allowed
 		mz_bin_res (float): bin size
 		return_index (bool): if return_index is True, returns the (possibly non-unique) bin index for each mz
@@ -153,10 +153,10 @@ def bin_func(mzs:th.Tensor,ints:th.Tensor,mz_max:float,mz_bin_res:float,return_i
 		_type_: _description_
 	"""
 	
-	assert th.max(mzs) < mz_max, (th.max(mzs),mz_max)
+	assert torch.max(mzs) < mz_max, (torch.max(mzs),mz_max)
 	# bin
-	bins = th.arange(mz_bin_res,mz_max+mz_bin_res,step=mz_bin_res,device=mzs.device,dtype=mzs.dtype)
-	bin_idx = th.searchsorted(bins,mzs,side="right")
+	bins = torch.arange(mz_bin_res,mz_max+mz_bin_res,step=mz_bin_res,device=mzs.device,dtype=mzs.dtype)
+	bin_idx = torch.searchsorted(bins,mzs,side="right")
 	if return_index:
 		return bin_idx
 	else:
@@ -166,46 +166,46 @@ def bin_func(mzs:th.Tensor,ints:th.Tensor,mz_max:float,mz_bin_res:float,return_i
 			reduce="sum" if sum_ints else "amax",
 			dim_size=bins.shape[0]
 		)
-		if th.all(bin_spec == 0.):
+		if torch.all(bin_spec == 0.):
 			print("> warning: bin_spec is all zeros!")
 			bin_spec[-1] = 1.
 		return bin_spec
 
-def batch_func(*lists, offset_flags=False) -> Tuple[th.Tensor]:
+def batch_func(*lists, offset_flags=False) -> Tuple[torch.Tensor]:
 	""" 
 	"""
 
 	if offset_flags is False:
 		offset_flags = [False]*len(lists)
 	batch_size = len(lists[0])
-	batch_idxs = th.arange(batch_size)
-	repeat_sizes = th.tensor([th.numel(item) for item in lists[0]])
-	batch_idxs = th.repeat_interleave(batch_idxs,repeat_sizes)
+	batch_idxs = torch.arange(batch_size)
+	repeat_sizes = torch.tensor([torch.numel(item) for item in lists[0]])
+	batch_idxs = torch.repeat_interleave(batch_idxs,repeat_sizes)
 	if any(offset_flags):
-		offsets = th.cat([th.zeros([1],dtype=th.long),th.cumsum(repeat_sizes,dim=0)[:-1]],dim=0)
+		offsets = torch.cat([torch.zeros([1],dtype=torch.long),torch.cumsum(repeat_sizes,dim=0)[:-1]],dim=0)
 	b_lists = []
 	for l_idx, l in enumerate(lists):
-		b_list = th.cat(l,dim=0)
+		b_list = torch.cat(l,dim=0)
 		if offset_flags[l_idx]:
-			repeat_sizes = th.tensor([th.numel(item) for item in l])
-			repeat_offsets = th.repeat_interleave(offsets,repeat_sizes)
+			repeat_sizes = torch.tensor([torch.numel(item) for item in l])
+			repeat_offsets = torch.repeat_interleave(offsets,repeat_sizes)
 			b_list = b_list + repeat_offsets
 		b_lists.append(b_list)
 	return tuple(b_lists) + (batch_idxs,)
 
 
-def batched_filter_func(mzs:th.Tensor,ints:th.Tensor,batch_idxs:th.Tensor,ints_thresh:float,mz_max: float) -> Tuple[th.Tensor,th.Tensor,th.Tensor]:
+def batched_filter_func(mzs:torch.Tensor,ints:torch.Tensor,batch_idxs:torch.Tensor,ints_thresh:float,mz_max: float) -> Tuple[torch.Tensor,torch.Tensor,torch.Tensor]:
 	"""bacthed filter func for filter spectra
 
 	Args:
-		mzs (th.Tensor): 1d flat tensor of m/zs; multiple m/z lists are concatenated.  
-		ints (th.Tensor): 1d flat tensor of intensities; multiple intensities lists are concatenated.  
-		batch_idxs (th.Tensor): 1d flat tensor of batch indices; each cell, batch_idxs[i] indicates the batch index for mzs[i] and ints[i], should be the same size as mz tensor. 
+		mzs (torch.Tensor): 1d flat tensor of m/zs; multiple m/z lists are concatenated.  
+		ints (torch.Tensor): 1d flat tensor of intensities; multiple intensities lists are concatenated.  
+		batch_idxs (torch.Tensor): 1d flat tensor of batch indices; each cell, batch_idxs[i] indicates the batch index for mzs[i] and ints[i], should be the same size as mz tensor. 
 		ints_thresh (float): intesnity thresh hold
 		mz_max (float): max m/z, if mz_max <= 0, mz_max filter will be ignored
 
 	Returns:
-		Tuple[th.Tensor,th.Tensor,th.Tensor]: mz tensoer, intensity tensor, batch_idxs tensor
+		Tuple[torch.Tensor,torch.Tensor,torch.Tensor]: mz tensoer, intensity tensor, batch_idxs tensor
 	"""
 
 	thresh_mask = ints > ints_thresh
@@ -221,21 +221,21 @@ def batched_filter_func(mzs:th.Tensor,ints:th.Tensor,batch_idxs:th.Tensor,ints_t
 
 
 def batched_bin_func(
-		mzs:th.Tensor,
-		ints:th.Tensor,
-		batch_idxs:th.Tensor,
+		mzs:torch.Tensor,
+		ints:torch.Tensor,
+		batch_idxs:torch.Tensor,
 		mz_max:float,
 		mz_bin_res:float,
 		agg:str,
 		sparse:bool=False,
 		remove_prec_peaks:bool=False,
-		prec_mzs:th.Tensor=None) -> th.Tensor:
+		prec_mzs:torch.Tensor=None) -> torch.Tensor:
 	"""method to get binned spectra for batch
 
 	Args:
-		mzs (th.Tensor): 1d flat tensor of m/zs; multiple m/z lists are concatenated.  
-		ints (th.Tensor): 1d flat tensor of intensities; multiple intensities lists are concatenated.  
-		batch_idxs (th.Tensor): 1d flat tensor of batch indices; each cell, batch_idxs[i] indicates the batch index for mzs[i] and ints[i], should be the same size as mz tensor. 
+		mzs (torch.Tensor): 1d flat tensor of m/zs; multiple m/z lists are concatenated.  
+		ints (torch.Tensor): 1d flat tensor of intensities; multiple intensities lists are concatenated.  
+		batch_idxs (torch.Tensor): 1d flat tensor of batch indices; each cell, batch_idxs[i] indicates the batch index for mzs[i] and ints[i], should be the same size as mz tensor. 
 		mz_max (float): max mz value allowed
 		mz_bin_res (float): bin size
 		sum_ints (bool): flag for sum intensities within the bin, else take max
@@ -247,24 +247,24 @@ def batched_bin_func(
 
 	if mzs.shape[0] == 0:
 		import pdb; pdb.set_trace()
-	assert th.max(mzs) < mz_max, (th.max(mzs),mz_max)
-	batch_size = th.max(batch_idxs)+1
-	bins = th.arange(mz_bin_res,mz_max+mz_bin_res,step=mz_bin_res,device=mzs.device,dtype=mzs.dtype)
+	assert torch.max(mzs) < mz_max, (torch.max(mzs),mz_max)
+	batch_size = torch.max(batch_idxs)+1
+	bins = torch.arange(mz_bin_res,mz_max+mz_bin_res,step=mz_bin_res,device=mzs.device,dtype=mzs.dtype)
 	num_bins = bins.shape[0]
-	bin_idxs = th.searchsorted(bins,mzs,side="right")
-	bin_offsets = (th.arange(batch_size,device=mzs.device)*num_bins)[batch_idxs]
+	bin_idxs = torch.searchsorted(bins,mzs,side="right")
+	bin_offsets = (torch.arange(batch_size,device=mzs.device)*num_bins)[batch_idxs]
 	bin_idxs = bin_idxs + bin_offsets
 	if remove_prec_peaks:
 		assert prec_mzs is not None
-		assert th.max(prec_mzs) <  mz_max, (th.max(prec_mzs),mz_max)
-		prec_mz_bin_idxs = th.searchsorted(bins,prec_mzs,side="right")
-		prec_mz_bin_offsets = th.arange(batch_size,device=mzs.device)*num_bins
+		assert torch.max(prec_mzs) <  mz_max, (torch.max(prec_mzs),mz_max)
+		prec_mz_bin_idxs = torch.searchsorted(bins,prec_mzs,side="right")
+		prec_mz_bin_offsets = torch.arange(batch_size,device=mzs.device)*num_bins
 		prec_mz_bin_idxs = prec_mz_bin_idxs + prec_mz_bin_offsets
-		prec_ints_mask = th.isin(bin_idxs,prec_mz_bin_idxs)
+		prec_ints_mask = torch.isin(bin_idxs,prec_mz_bin_idxs)
 		ints = ints*(1-prec_ints_mask.float())
 	if sparse:
-		un_bin_idxs, un_bin_idxs_rev = th.unique(bin_idxs,return_inverse=True)
-		new_bin_idxs = th.arange(un_bin_idxs.shape[0],device=un_bin_idxs.device)
+		un_bin_idxs, un_bin_idxs_rev = torch.unique(bin_idxs,return_inverse=True)
+		new_bin_idxs = torch.arange(un_bin_idxs.shape[0],device=un_bin_idxs.device)
 		if agg in ["sum","amax"]:
 			un_bin_ints = scatter_reduce(
 				src=ints,
@@ -297,16 +297,16 @@ def batched_bin_func(
 				dim_size=num_bins*batch_size
 			)
 		bin_spec = bin_spec.reshape(batch_size,num_bins)
-		if agg in ["sum","amax"] and th.any(th.all(bin_spec==0.,dim=1)):
+		if agg in ["sum","amax"] and torch.any(torch.all(bin_spec==0.,dim=1)):
 			print("> warning: bin_spec is all zeros!")
-			mask = th.zeros_like(bin_spec,dtype=th.bool)
+			mask = torch.zeros_like(bin_spec,dtype=torch.bool)
 			mask[:,0] = 1.
-			mask = mask*th.all(bin_spec==0.,dim=1,keepdim=True)
+			mask = mask*torch.all(bin_spec==0.,dim=1,keepdim=True)
 			bin_spec = bin_spec + mask.float()
 		return bin_spec
 
 
-def merge_sparse_specs(*peakses,renormalize:bool=False,sum_ints:bool=True) -> th.Tensor:
+def merge_sparse_specs(*peakses,renormalize:bool=False,sum_ints:bool=True) -> torch.Tensor:
 	"""
 	this will result in peaks that are really close in mass (<5ppm)
 	they are probably the same peak, but our model can handle this type of ambiguity
@@ -337,22 +337,22 @@ def merge_sparse_specs(*peakses,renormalize:bool=False,sum_ints:bool=True) -> th
 	return merged_peaks
 
 
-def calculate_spectrum_entropy(log_ints:th.Tensor,batch_idxs:th.Tensor) -> th.Tensor:
+def calculate_spectrum_entropy(log_ints:torch.Tensor,batch_idxs:torch.Tensor) -> torch.Tensor:
 	""" method to compute entropy.
 		NOTE: this is NOT same spectra entropy in this https://www.nature.com/articles/s41592-023-02012-9 a
 		nd https://www.nature.com/articles/s41592-021-01331-z
 	Args:
-		log_ints (th.Tensor): intensity in log scale
-		batch_idxs (th.Tensor): batch idx
+		log_ints (torch.Tensor): intensity in log scale
+		batch_idxs (torch.Tensor): batch idx
 
 	Returns:
-		th.Tensor: spectrum entropy
+		torch.Tensor: spectrum entropy
 	"""
 
-	k = th.max(batch_idxs)+1
+	k = torch.max(batch_idxs)+1
 	log_norm_ints = scatter_logsoftmax(log_ints,batch_idxs,dim=0)
 	entropy = -scatter_reduce(
-		src=th.exp(log_norm_ints)*log_norm_ints,
+		src=torch.exp(log_norm_ints)*log_norm_ints,
 		index=batch_idxs,
 		reduce="sum",
 		dim_size=k
@@ -360,32 +360,32 @@ def calculate_spectrum_entropy(log_ints:th.Tensor,batch_idxs:th.Tensor) -> th.Te
 	return entropy
 
 def calculate_match_mzs(
-		true_mzs:th.Tensor,
-		pred_mzs:th.Tensor,
+		true_mzs:torch.Tensor,
+		pred_mzs:torch.Tensor,
 		tolerance:float=1e-5,
 		relative:bool=True,
 		tolerance_min_mz:float=TOLERANCE_MIN_MZ
-	) -> th.Tensor:
+	) -> torch.Tensor:
 	"""
 	Method to match two spectra based on m/z, return a N x M matrix, where N is number of mz in pred_mzs, M is number of mz in pred_mzs
 	Each cellm i,j means if pred_mzs[i] matches true_mzs[j]
 	works with numpy arrays or torch tensors inspired by the function in ms-pred
 	NOT BATCHED
 	Args:
-		true_mzs (th.Tensor): 1d flat tensor of true m/zs; multiple m/z lists are concatenated.  
-		pred_mzs (th.Tensor): 1d flat tensor of predicted m/zs; multiple m/z lists are concatenated.  
+		true_mzs (torch.Tensor): 1d flat tensor of true m/zs; multiple m/z lists are concatenated.  
+		pred_mzs (torch.Tensor): 1d flat tensor of predicted m/zs; multiple m/z lists are concatenated.  
 		tolerance (float, optional): Tolerance; Da if not relative, else ratios (NOT PPM). Defaults to 1e-5.
 		relative (bool, optional): Flag to use a relative measure. Defaults to True.
 		tolerance_min_mz (float, optional): Divisor floor used in relative measure. Defaults to 200 Da.
 
 	Returns:
-		th.Tensor: return a N x M matrix of True or False, dim 0 for predicted, dim 1 for ground truth
+		torch.Tensor: return a N x M matrix of True or False, dim 0 for predicted, dim 1 for ground truth
 	"""
 
-	if isinstance(true_mzs,th.Tensor):
-		assert isinstance(pred_mzs,th.Tensor)
-		abs_func = th.abs
-		copy_func = th.clone
+	if isinstance(true_mzs,torch.Tensor):
+		assert isinstance(pred_mzs,torch.Tensor)
+		abs_func = torch.abs
+		copy_func = torch.clone
 	else:
 		assert isinstance(true_mzs,np.ndarray)
 		assert isinstance(pred_mzs,np.ndarray)
@@ -402,33 +402,33 @@ def calculate_match_mzs(
 
 # cosine similarity code ... all of them
 def calculate_cosine_similarity(
-		true_mzs:th.Tensor,
-		true_ints:th.Tensor,
-		true_batch_idxs:th.Tensor,
-		pred_mzs:th.Tensor,
-		pred_ints:th.Tensor,
-		pred_batch_idxs:th.Tensor,
+		true_mzs:torch.Tensor,
+		true_ints:torch.Tensor,
+		true_batch_idxs:torch.Tensor,
+		pred_mzs:torch.Tensor,
+		pred_ints:torch.Tensor,
+		pred_batch_idxs:torch.Tensor,
 		mz_max:float=1500.,
 		mz_bin_res:float=0.01,
 		sum_ints:bool=True,
 		remove_prec_peaks:bool=False,
-		true_prec_mzs:th.Tensor=None,
-	) -> th.Tensor:
+		true_prec_mzs:torch.Tensor=None,
+	) -> torch.Tensor:
 	"""calculate cosine similarity using binned spectra
 
 	Args:
-		true_mzs (th.Tensor): 1d flat tensor of ground truth m/zs, each row is an m/z array 
-		true_ints (th.Tensor): 1d flat tensor of ground truth intensities, each row is an intensities array, should be the same size as mz tensor
-		true_batch_idxs (th.Tensor): 1d flat tensor of ground truth batch indices, each cell, true_batch_idxs[i] indicates batch index for true_mzs[i] and true_ints[i], should be the same size as mz tensor
-		pred_mzs (th.Tensor): 1d flat tensor of predicted m/zs, each row is an m/z array 
-		pred_ints (th.Tensor): 1d flat tensor of predicted intensities, each row is an intensities array, should be the same size as mz tensor
-		pred_batch_idxs (th.Tensor): 1d flat tensor of predicted batch indices, each cell, pred_batch_idxs[i] indicates batch index for pred_mzs[i] and pred_ints[i], should be the same size as mz tensor
+		true_mzs (torch.Tensor): 1d flat tensor of ground truth m/zs, each row is an m/z array 
+		true_ints (torch.Tensor): 1d flat tensor of ground truth intensities, each row is an intensities array, should be the same size as mz tensor
+		true_batch_idxs (torch.Tensor): 1d flat tensor of ground truth batch indices, each cell, true_batch_idxs[i] indicates batch index for true_mzs[i] and true_ints[i], should be the same size as mz tensor
+		pred_mzs (torch.Tensor): 1d flat tensor of predicted m/zs, each row is an m/z array 
+		pred_ints (torch.Tensor): 1d flat tensor of predicted intensities, each row is an intensities array, should be the same size as mz tensor
+		pred_batch_idxs (torch.Tensor): 1d flat tensor of predicted batch indices, each cell, pred_batch_idxs[i] indicates batch index for pred_mzs[i] and pred_ints[i], should be the same size as mz tensor
 		mz_max (float, optional): max mz. Defaults to 1500.
 		mz_bin_res (float, optional): bin size measured in Da. Defaults to 0.01.
 		sum_ints (bool, optional): flag to get sum intensities in the same bin else use max. Defaults to True.
 
 	Returns:
-		th.Tensor: cosine similarity using binned spectra
+		torch.Tensor: cosine similarity using binned spectra
 	"""
 	agg = "sum" if sum_ints else "amax"
 	true_spec = batched_bin_func(
@@ -457,34 +457,34 @@ def calculate_cosine_similarity(
 	return cos_sims
 
 def calculate_sparse_cosine_similarity(
-		true_mzs:th.Tensor,
-		true_ints:th.Tensor,
-		true_batch_idxs:th.Tensor,
-		pred_mzs:th.Tensor,
-		pred_ints:th.Tensor,
-		pred_batch_idxs:th.Tensor,
+		true_mzs:torch.Tensor,
+		true_ints:torch.Tensor,
+		true_batch_idxs:torch.Tensor,
+		pred_mzs:torch.Tensor,
+		pred_ints:torch.Tensor,
+		pred_batch_idxs:torch.Tensor,
 		mz_max:float=1500.,
 		mz_bin_res:float=0.01,
 		sum_ints:bool=True,
 		remove_prec_peaks:bool=False,
-		true_prec_mzs:th.Tensor=None,
-	) -> th.Tensor:
+		true_prec_mzs:torch.Tensor=None,
+	) -> torch.Tensor:
 	"""
 	Calculate the cosine similarity using binned spectra and sparse methods,
 
 	Args:
-		true_mzs (th.Tensor): _description_
-		true_ints (th.Tensor): _description_
-		true_batch_idxs (th.Tensor): _description_
-		pred_mzs (th.Tensor): _description_
-		pred_ints (th.Tensor): _description_
-		pred_batch_idxs (th.Tensor): _description_
+		true_mzs (torch.Tensor): _description_
+		true_ints (torch.Tensor): _description_
+		true_batch_idxs (torch.Tensor): _description_
+		pred_mzs (torch.Tensor): _description_
+		pred_ints (torch.Tensor): _description_
+		pred_batch_idxs (torch.Tensor): _description_
 		mz_max (float, optional): _description_. Defaults to 1500..
 		mz_bin_res (float, optional): _description_. Defaults to 0.01.
 		sum_ints (bool, optional): _description_. Defaults to True.
 
 	Returns:
-		th.Tensor: cosine similarity
+		torch.Tensor: cosine similarity
 	"""
 
 	# sparse bin
@@ -542,23 +542,23 @@ def cos_sim_helper(true_bin_idxs, true_bin_ints, true_bin_batch_idxs, pred_bin_i
 		pred_bin_batch_idxs
 	)
 	# dot product
-	pred_mask = th.isin(pred_bin_idxs, true_bin_idxs)
-	true_mask = th.isin(true_bin_idxs, pred_bin_idxs)
+	pred_mask = torch.isin(pred_bin_idxs, true_bin_idxs)
+	true_mask = torch.isin(true_bin_idxs, pred_bin_idxs)
 	both_bin_ints = pred_bin_ints[pred_mask] * true_bin_ints[true_mask]
-	assert th.all(pred_bin_batch_idxs[pred_mask] == true_bin_batch_idxs[true_mask])
+	assert torch.all(pred_bin_batch_idxs[pred_mask] == true_bin_batch_idxs[true_mask])
 	if pred_mask.sum() == 0:
 		cos_sims = scatter_reduce(
 			src=0.*pred_bin_ints,
 			index=pred_bin_batch_idxs,
 			reduce="sum",
-			dim_size=th.max(true_bin_batch_idxs)+1
+			dim_size=torch.max(true_bin_batch_idxs)+1
 		)
 	else:
 		cos_sims = scatter_reduce(
 			src=both_bin_ints,
 			index=pred_bin_batch_idxs[pred_mask],
 			reduce="sum",
-			dim_size=th.max(true_bin_batch_idxs)+1
+			dim_size=torch.max(true_bin_batch_idxs)+1
 		)
 	return cos_sims
 
@@ -576,36 +576,36 @@ def batched_mf100_normalize(ints, batch_idxs):
 		ints,
 		batch_idxs,
 		reduce="max",
-		dim_size=th.max(batch_idxs)+1
+		dim_size=torch.max(batch_idxs)+1
 	)
 	ints = (ints / max_ints[batch_idxs]) * 1000.
 	return ints
 
 def round_aggregate_peaks(
-		mzs:th.Tensor, 
-		ints:th.Tensor, 
-		batch_idxs:th.Tensor, 
+		mzs:torch.Tensor, 
+		ints:torch.Tensor, 
+		batch_idxs:torch.Tensor, 
 		decimals:int=4, 
-		agg="sum") -> Tuple[th.Tensor,th.Tensor,th.Tensor]:
+		agg="sum") -> Tuple[torch.Tensor,torch.Tensor,torch.Tensor]:
 	""" methds to round and aggreate peaks to give decimals points
 
 	Args:
-		mzs (th.Tensor): 1d flat tensor of m/zs, each row is an m/z array 
-		ints (th.Tensor): 1d flat tensor of intensities, each row is an intensities array, should be the same size as mz tensor
-		batch_idxs (th.Tensor): 1d flat tensor of batch indices, each cell, batch_idxs[i] indicates batch index for mzs[i] and ints[i], should be the same size as mz tensor
+		mzs (torch.Tensor): 1d flat tensor of m/zs, each row is an m/z array 
+		ints (torch.Tensor): 1d flat tensor of intensities, each row is an intensities array, should be the same size as mz tensor
+		batch_idxs (torch.Tensor): 1d flat tensor of batch indices, each cell, batch_idxs[i] indicates batch index for mzs[i] and ints[i], should be the same size as mz tensor
 		decimals (int, optional): Decimals. Defaults to 4.
 		sum_ints (bool, optional): Flag to sum intensities if True. Defaults to True.
 	Returns:
-		Tuple[th.Tensor,th.Tensor,th.Tensor]: round_mzs, round_ints, round_batch_idxs
+		Tuple[torch.Tensor,torch.Tensor,torch.Tensor]: round_mzs, round_ints, round_batch_idxs
 	"""
 
-	batch_size = th.max(batch_idxs)+1
+	batch_size = torch.max(batch_idxs)+1
 	round_mzs, round_ints, round_batch_idxs = [], [], []
 	for b in range(batch_size):
 		b_mask = (batch_idxs==b)
-		b_round_mzs = th.round(mzs[b_mask], decimals=decimals)
+		b_round_mzs = torch.round(mzs[b_mask], decimals=decimals)
 		b_ints = ints[b_mask]
-		b_round_mzs_un, b_round_mzs_inv = th.unique(b_round_mzs, return_inverse=True)
+		b_round_mzs_un, b_round_mzs_inv = torch.unique(b_round_mzs, return_inverse=True)
 		if agg in ["sum","amax"]:
 			b_round_ints = scatter_reduce(
 				src=b_ints,
@@ -622,10 +622,10 @@ def round_aggregate_peaks(
 			)
 		round_mzs.append(b_round_mzs_un)
 		round_ints.append(b_round_ints)
-		round_batch_idxs.append(th.full_like(b_round_mzs_un,b,dtype=batch_idxs.dtype))
-	round_mzs = th.cat(round_mzs,dim=0)
-	round_ints = th.cat(round_ints,dim=0)
-	round_batch_idxs = th.cat(round_batch_idxs,dim=0)
+		round_batch_idxs.append(torch.full_like(b_round_mzs_un,b,dtype=batch_idxs.dtype))
+	round_mzs = torch.cat(round_mzs,dim=0)
+	round_ints = torch.cat(round_ints,dim=0)
+	round_batch_idxs = torch.cat(round_batch_idxs,dim=0)
 	return round_mzs, round_ints, round_batch_idxs
 
 def scipy_linear_sum_assignment(matrix, maximize=False):
@@ -633,8 +633,8 @@ def scipy_linear_sum_assignment(matrix, maximize=False):
 	device = matrix.device
 	matrix = matrix.cpu().numpy()
 	x_idx, y_idx = scipy.optimize.linear_sum_assignment(matrix, maximize=maximize)
-	x_idx = th.as_tensor(x_idx,dtype=th.long,device=device)
-	y_idx = th.as_tensor(y_idx,dtype=th.long,device=device)
+	x_idx = torch.as_tensor(x_idx,dtype=torch.long,device=device)
+	y_idx = torch.as_tensor(y_idx,dtype=torch.long,device=device)
 	return x_idx, y_idx
 
 ### helpers
@@ -648,8 +648,8 @@ def opt_cos_sim_helper(
 	pred_bin_batch_idxs
 ):
 
-	pred_opt_mask = th.isin(pred_bin_idxs, true_bin_idxs)
-	true_opt_mask = th.isin(true_bin_idxs, pred_bin_idxs[pred_opt_mask])
+	pred_opt_mask = torch.isin(pred_bin_idxs, true_bin_idxs)
+	true_opt_mask = torch.isin(true_bin_idxs, pred_bin_idxs[pred_opt_mask])
 	pred_opt_bin_ints = pred_bin_ints.clone()
 	pred_opt_bin_ints[~pred_opt_mask] = 0.
 	pred_opt_bin_ints[pred_opt_mask] = true_bin_ints[true_opt_mask]
@@ -682,7 +682,7 @@ def cos_hun_helper(
 	b_score = b_match_mask[b_true_match_mask][:,b_pred_match_mask] * \
 		(b_true_ints[b_true_match_mask].unsqueeze(1) * b_pred_ints[b_pred_match_mask].unsqueeze(0))
 	b_true_idxs, b_pred_idxs = scipy_linear_sum_assignment(b_score, maximize=True)
-	b_cos_hun = th.dot(
+	b_cos_hun = torch.dot(
 		b_true_ints[b_true_match_mask][b_true_idxs],
 		b_pred_ints[b_pred_match_mask][b_pred_idxs],
 	)
@@ -704,43 +704,43 @@ def ndcg_helper(
 	b_pred_match_ints = b_pred_ints[b_pred_match_mask][b_pred_match_idxs]
 	b_true_match_ints = b_true_ints[b_true_match_mask][b_true_match_idxs]
 	if union:
-		b_pred_unmatch_idxs = th_setdiff1d(th.arange(b_pred_match_mask.sum(),device=th_device),b_pred_match_idxs)
-		b_pred_unmatch_ints = th.cat([b_pred_ints[~b_pred_match_mask],b_pred_ints[b_pred_match_mask][b_pred_unmatch_idxs]],dim=0)
-		b_true_unmatch_idxs = th_setdiff1d(th.arange(b_true_match_mask.sum(),device=th_device),b_true_match_idxs)
-		b_true_unmatch_ints = th.cat([b_true_ints[~b_true_match_mask],b_true_ints[b_true_match_mask][b_true_unmatch_idxs]],dim=0)
-		b_pred_all_ints = th.cat(
+		b_pred_unmatch_idxs = th_setdiff1d(torch.arange(b_pred_match_mask.sum(),device=th_device),b_pred_match_idxs)
+		b_pred_unmatch_ints = torch.cat([b_pred_ints[~b_pred_match_mask],b_pred_ints[b_pred_match_mask][b_pred_unmatch_idxs]],dim=0)
+		b_true_unmatch_idxs = th_setdiff1d(torch.arange(b_true_match_mask.sum(),device=th_device),b_true_match_idxs)
+		b_true_unmatch_ints = torch.cat([b_true_ints[~b_true_match_mask],b_true_ints[b_true_match_mask][b_true_unmatch_idxs]],dim=0)
+		b_pred_all_ints = torch.cat(
 			[
 				b_pred_match_ints,
 				b_pred_unmatch_ints,
 				# heuristic: rank the unmatched true peaks by their intensity
-				-(th.argsort(b_true_unmatch_ints,descending=optimistic)+1).type(b_true_unmatch_ints.dtype)
+				-(torch.argsort(b_true_unmatch_ints,descending=optimistic)+1).type(b_true_unmatch_ints.dtype)
 			],
 			dim=0
 		)
-		b_true_all_ints = th.cat(
+		b_true_all_ints = torch.cat(
 			[
 				b_true_match_ints,
 				# score of zero for the unmatched predicted peaks
-				th.zeros_like(b_pred_unmatch_ints),
+				torch.zeros_like(b_pred_unmatch_ints),
 				b_true_unmatch_ints
 			],
 			dim=0
 		)
-		b_pred_ranking = th.argsort(b_pred_all_ints,descending=True)
-		b_true_ranking = th.argsort(b_true_all_ints,descending=True)
-		b_denom = th.log2(2 + th.arange(b_true_all_ints.shape[0], dtype=b_true_all_ints.dtype, device=th_device))
-		b_dcg = th.sum(b_true_all_ints[b_pred_ranking] / b_denom)
-		b_idcg = th.sum(b_true_all_ints[b_true_ranking] / b_denom)
+		b_pred_ranking = torch.argsort(b_pred_all_ints,descending=True)
+		b_true_ranking = torch.argsort(b_true_all_ints,descending=True)
+		b_denom = torch.log2(2 + torch.arange(b_true_all_ints.shape[0], dtype=b_true_all_ints.dtype, device=th_device))
+		b_dcg = torch.sum(b_true_all_ints[b_pred_ranking] / b_denom)
+		b_idcg = torch.sum(b_true_all_ints[b_true_ranking] / b_denom)
 		b_ndcg = b_dcg/b_idcg
 	else: # intersection
 		if b_true_match_idxs.shape[0] == 0:
 			b_ndcg = 0.
 		else:
-			b_pred_ranking = th.argsort(b_pred_match_ints,descending=True)
-			b_true_ranking = th.argsort(b_true_match_ints,descending=True)
-			b_denom = th.log2(2 + th.arange(b_true_match_ints.shape[0], dtype=b_true_match_ints.dtype, device=th_device))
-			b_dcg = th.sum(b_true_match_ints[b_pred_ranking] / b_denom)
-			b_idcg = th.sum(b_true_match_ints[b_true_ranking] / b_denom)
+			b_pred_ranking = torch.argsort(b_pred_match_ints,descending=True)
+			b_true_ranking = torch.argsort(b_true_match_ints,descending=True)
+			b_denom = torch.log2(2 + torch.arange(b_true_match_ints.shape[0], dtype=b_true_match_ints.dtype, device=th_device))
+			b_dcg = torch.sum(b_true_match_ints[b_pred_ranking] / b_denom)
+			b_idcg = torch.sum(b_true_match_ints[b_true_ranking] / b_denom)
 			b_ndcg = b_dcg/b_idcg
 	return b_ndcg
 
@@ -759,13 +759,13 @@ def jss_hun_helper(
 		b_pred_ints = b_pred_ints*(1-b_pred_prec_mask.float())
 	b_true_ints = F.normalize(b_true_ints,p=1,dim=0)
 	b_pred_ints = F.normalize(b_pred_ints,p=1,dim=0)
-	if th.all(b_pred_ints) == 0.:
+	if torch.all(b_pred_ints) == 0.:
 		# heuristic to prevent nan
-		b_pred_ints = th.ones_like(b_pred_ints) / b_pred_ints.shape[0]
+		b_pred_ints = torch.ones_like(b_pred_ints) / b_pred_ints.shape[0]
 	b_score = b_match_mask[b_true_match_mask][:,b_pred_match_mask] * \
 		(b_true_ints[b_true_match_mask].unsqueeze(1) + b_pred_ints[b_pred_match_mask].unsqueeze(0))
 	b_true_idxs, b_pred_idxs = scipy_linear_sum_assignment(b_score, maximize=True)
-	b_union_ints = th.cat(
+	b_union_ints = torch.cat(
 		[
 			0.5*b_true_ints[~b_true_match_mask],
 			0.5*b_pred_ints[~b_pred_match_mask],
@@ -775,32 +775,32 @@ def jss_hun_helper(
 	b_union_ints = F.normalize(b_union_ints,p=1,dim=0)
 	b_true_range = (0,(~b_true_match_mask).long().sum())
 	b_pred_range = (b_true_range[1],b_true_range[1]+(~b_pred_match_mask).long().sum())
-	b_kl1_true_probs = th.cat(
+	b_kl1_true_probs = torch.cat(
 		[
 			b_true_ints[~b_true_match_mask],
 			b_true_ints[b_true_match_mask][b_true_idxs]
 		],dim=0
 	)
-	b_kl1_union_probs = th.cat(
+	b_kl1_union_probs = torch.cat(
 		[
 			b_union_ints[b_true_range[0]:b_true_range[1]],
 			b_union_ints[b_pred_range[1]:]
 		],dim=0
 	)
-	b_kl1 = th.sum(b_kl1_true_probs*(safelog(b_kl1_true_probs)-safelog(b_kl1_union_probs)), dim=0)
-	b_kl2_pred_probs = th.cat(
+	b_kl1 = torch.sum(b_kl1_true_probs*(safelog(b_kl1_true_probs)-safelog(b_kl1_union_probs)), dim=0)
+	b_kl2_pred_probs = torch.cat(
 		[
 			b_pred_ints[~b_pred_match_mask],
 			b_pred_ints[b_pred_match_mask][b_pred_idxs]
 		],dim=0
 	)
-	b_kl2_union_probs = th.cat(
+	b_kl2_union_probs = torch.cat(
 		[
 			b_union_ints[b_pred_range[0]:b_pred_range[1]],
 			b_union_ints[b_pred_range[1]:]
 		],dim=0
 	)
-	b_kl2 = th.sum(b_kl2_pred_probs*(safelog(b_kl2_pred_probs)-safelog(b_kl2_union_probs)), dim=0)
+	b_kl2 = torch.sum(b_kl2_pred_probs*(safelog(b_kl2_pred_probs)-safelog(b_kl2_union_probs)), dim=0)
 	b_jss_hun = 1.-0.5*(b_kl1+b_kl2)
 	return b_jss_hun
 
@@ -812,7 +812,7 @@ def jss_helper(
 	pred_bin_ints,
 	pred_bin_batch_idxs):
 	
-	batch_size = th.max(true_bin_batch_idxs)+1
+	batch_size = torch.max(true_bin_batch_idxs)+1
 	# l1 normalize
 	true_bin_ints = scatter_l1normalize(
 		true_bin_ints,
@@ -823,15 +823,15 @@ def jss_helper(
 		pred_bin_batch_idxs
 	)
 	# union distribution
-	union_bin_idxs, union_bin_idxs_rev = th.unique(th.cat([true_bin_idxs,pred_bin_idxs],dim=0),return_inverse=True)
+	union_bin_idxs, union_bin_idxs_rev = torch.unique(torch.cat([true_bin_idxs,pred_bin_idxs],dim=0),return_inverse=True)
 	union_bin_ints = scatter_reduce(
-		src=0.5*th.cat([true_bin_ints,pred_bin_ints],dim=0),
+		src=0.5*torch.cat([true_bin_ints,pred_bin_ints],dim=0),
 		index=union_bin_idxs_rev,
 		reduce="sum",
 		dim_size=union_bin_idxs.shape[0]
 	)
 	# union_bin_batch_idxs = scatter_reduce(
-	# 	src=th.cat([true_bin_batch_idxs,pred_bin_batch_idxs],dim=0),
+	# 	src=torch.cat([true_bin_batch_idxs,pred_bin_batch_idxs],dim=0),
 	# 	index=union_bin_idxs_rev,
 	# 	reduce="amax",
 	# 	dim_size=union_bin_idxs.shape[0]
