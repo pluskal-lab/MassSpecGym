@@ -34,4 +34,9 @@ setup(
                             "pytest-cov",
                             ],
     }
+    # Used only in notebooks
+    # "ipywidgets",
+    # "h5py",
+    # "scikit-learn",
+    # "pandarallel"
 )
