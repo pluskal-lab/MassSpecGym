@@ -15,23 +15,49 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         self, outputs: T.Any, batch: dict, batch_idx: int, metric_pref: str = ""
     ) -> None:
         """
-        Compute evaluation metrics for the retrieval model based on the batch and corresponding
-        predictions.
+        Compute evaluation metrics for the retrieval model based on the batch and corresponding predictions.
+        This method will be used in the `on_train_batch_end`, `on_validation_batch_end`, since `on_test_batch_end` is
+        overriden below.
         """
-        self.evaluate_simulation_step(
+        self.evaluate_cos_similarity_step(
             outputs["spec_pred"],
             batch["spec"],
             metric_pref=metric_pref,
         )
 
-    def evaluate_simulation_step(
+    def on_test_batch_end(
+        self, outputs: T.Any, batch: dict, batch_idx: int
+    ) -> None:
+        metric_pref = "_test"
+        self.evaluate_cos_similarity_step(
+            outputs["spec_pred"],
+            batch["spec"],
+            metric_pref=metric_pref
+        )
+        self.evaluate_hit_rate_step(
+            outputs["spec_pred"],
+            batch["spec"],
+            metric_pref=metric_pref
+        )
+
+    def evaluate_cos_similarity_step(
         self,
         specs_pred: torch.Tensor,
         specs: torch.Tensor,
         metric_pref: str = ""
     ) -> None:
         """
-        TODO: Implement Hit rate @ {1, 5, 20} (typically reported as Accuracy @ {1, 5, 20}) and cosine similarity
-              evaluation metrics.
+        Evaulate cosine similarity.
+        """
+        raise NotImplementedError
+
+    def evaluate_hit_rate_step(
+        self,
+        specs_pred: torch.Tensor,
+        specs: torch.Tensor,
+        metric_pref: str = ""
+    ) -> None:
+        """
+        Evaulate Hit rate @ {1, 5, 20} (typically reported as Accuracy @ {1, 5, 20}).
         """
         raise NotImplementedError

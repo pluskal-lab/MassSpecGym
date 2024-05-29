@@ -56,6 +56,8 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
         metric_pref: str = "",
     ) -> None:
         """
+        # TODO: refactor to compute only for max(k) and then use the result to obtain the rest.
+
         Main evaluation method for the models for de novo molecule generation from mass spectra.
 
         Args:

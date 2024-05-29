@@ -31,6 +31,11 @@ class MassSpecGymModel(pl.LightningModule, ABC):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         return self.step(batch, metric_pref="val_")
 
+    def test_step(
+        self, batch: dict, batch_idx: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        return self.step(batch, metric_pref="test_")
+
     @abstractmethod
     def on_batch_end(
         self, outputs: T.Any, batch: dict, batch_idx: int, metric_pref: str = ""
@@ -48,6 +53,9 @@ class MassSpecGymModel(pl.LightningModule, ABC):
 
     def on_validation_batch_end(self, *args, **kwargs):
         return self.on_batch_end(*args, **kwargs, metric_pref="val_")
+
+    def on_test_batch_end(self, *args, **kwargs):
+        return self.on_batch_end(*args, **kwargs, metric_pref="test_")
 
     def configure_optimizers(self):
         return torch.optim.Adam(
