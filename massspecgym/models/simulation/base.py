@@ -1,12 +1,13 @@
 import typing as T
-from abc import ABC
+from abc import ABC, abstractmethod
 
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 
 from massspecgym.models.base import MassSpecGymModel
-from massspecgym.simulation_utils.misc_utils import scatter_logl2normalize, scatter_logsumexp, batched_bin_func, safelog
+from massspecgym.simulation_utils.misc_utils import scatter_logl2normalize, scatter_logsumexp, safelog
+from massspecgym.simulation_utils.spec_utils import batched_bin_func
 
 
 def get_batch_metric_reduce_fn(sample_weight):
@@ -27,8 +28,8 @@ def sparse_cosine_distance(
         pred_mzs: torch.Tensor,
         pred_logprobs: torch.Tensor,
         pred_batch_idxs: torch.Tensor,
-        mz_max: float=1500.,
-        mz_bin_res: float=0.01,
+        mz_max: float,
+        mz_bin_res: float,
         log_distance: bool=False) -> torch.Tensor:
 
     # sparse bin

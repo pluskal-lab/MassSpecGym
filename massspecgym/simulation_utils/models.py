@@ -1,66 +1,181 @@
-from abc import ABC
+from abc import ABC, abstractmethod
+from typing import Optional
 import torch
 import torch.nn as nn
+
+from massspecgym.simulation_utils.formula_embedder import get_embedder
+from massspecgym.simulation_utils.nn_utils import SpecFFN
 
 
 class BaseModel(nn.Module, ABC):
 
-    def _ce_init(
+    def __init__(
         self,
-        int_embedder,
-        ce_insert_location: str,
-        ce_insert_size: int):
+        metadata_insert_location: str,
+        collision_energy_input_size: int,
+        collision_energy_insert_size: int,
+        adduct_input_size: int,
+        adduct_insert_size: int,
+        instrument_type_input_size: int,
+        instrument_type_insert_size: int
+    ):
 
-        # ce stuff
-        assert ce_insert_location in ["none","mol","frag","mlp"]
-        self.ce_insert_location = ce_insert_location
-        self.ce_insert_size = ce_insert_size
-        self.int_embedder = int_embedder
-        self._ce_location_check()
+        super().__init__()
+        # init metadata
+        self.metadata_insert_size = 0
+        self._check_metadata_insert_location(metadata_insert_location)
+        self._collision_energy_init(
+            collision_energy_input_size=collision_energy_input_size,
+            collision_energy_insert_size=collision_energy_insert_size
+        )
+        self._adduct_init(
+            adduct_input_size=adduct_input_size,
+            adduct_insert_size=adduct_insert_size
+        )
+        self._instrument_type_init(
+            instrument_type_input_size=instrument_type_input_size,
+            instrument_type_insert_size=instrument_type_insert_size
+        )
+
+    @abstractmethod
+    def _check_metadata_insert_location(self, metadata_insert_location: str):
+
+        pass
+
+    def _collision_energy_init(
+        self,
+        collision_energy_input_size: int,
+        collision_energy_insert_size: int):
+
         # embedder
-        embedder = get_embedder(self.int_embedder, max_count_int=int(NCE_MAX))
-        ce_embedder = nn.Sequential(
-            embedder,
-            nn.Linear(embedder.num_dim,self.ce_insert_size)
-        )	
-        ce_input_dim = self.ce_insert_size
-        # location
-        if self.ce_insert_location == "mol":
-            ce_mol_input_dim = ce_input_dim
-            ce_mlp_input_dim = 0
-        elif self.ce_insert_location == "mlp":
-            ce_mol_input_dim = 0
-            ce_mlp_input_dim = ce_input_dim
-        else:
-            assert self.ce_insert_location == "none"
-            ce_mol_input_dim = 0
-            ce_mlp_input_dim = 0
-        self.ce_transform = ce_transform
-        self.ce_embedder = ce_embedder
-        self.ce_mol_input_dim = ce_mol_input_dim
-        self.ce_mlp_input_dim = ce_mlp_input_dim
+        if collision_energy_insert_size > 0:
+            embedder = get_embedder("abs-sines", max_count_int=collision_energy_input_size)
+            collision_energy_embedder = nn.Sequential(
+                embedder,
+                nn.Linear(embedder.num_dim,collision_energy_insert_size)
+            )	
+            self.collision_energy_embedder = collision_energy_embedder
+            self.metadata_insert_size += collision_energy_insert_size
 
-    @abstractmethod
-    def _ce_location_check(self):
+    def _adduct_init(
+        self,
+        adduct_input_size: int,
+        adduct_insert_size: int):
 
-        pass
+        if adduct_insert_size > 0:
+            self.adduct_embedder = nn.Embedding(adduct_input_size+1, adduct_insert_size)	
+            self.metadata_insert_size += adduct_insert_size
 
-    def _adduct_init(self):
+    def _instrument_type_init(
+        self,
+        instrument_type_input_size: int,
+        instrument_type_insert_size: int):
 
-        pass
+        if instrument_type_insert_size > 0:
+            self.instrument_type_embedder = nn.Embedding(instrument_type_input_size+1, instrument_type_insert_size)
+            self.metadata_insert_size += instrument_type_insert_size
 
-    @abstractmethod
-    def _adduct_location_check(self):
+    def embed_metadata(
+        self, 
+        collision_energy: Optional[torch.Tensor] = None, 
+        adduct: Optional[torch.Tensor] = None, 
+        instrument_type: Optional[torch.Tensor] = None
+    ):
 
-        pass
+        metadata_embeds = []
+        if hasattr(self,"collision_energy_embedder"):
+            collision_energy_embed = self.collision_energy_embedder(collision_energy.reshape(-1,1))
+            metadata_embeds.append(collision_energy_embed)
+        if hasattr(self,"adduct_embedder"):
+            adduct_embed = self.adduct_embedder(adduct)
+            metadata_embeds.append(adduct_embed)
+        if hasattr(self,"instrument_type_embedder"):
+            instrument_type_embed = self.instrument_type_embedder(instrument_type)
+            metadata_embeds.append(instrument_type_embed)
+        metadata_embeds = torch.cat(metadata_embeds, dim=1)
+        return metadata_embeds
 
-    def _instrument_type_init(self):
 
-        pass
+class FPFFNModel(BaseModel):
 
-    @abstractmethod
-    def _instrument_type_location_check(self):
+    def __init__(
+        self,
+        # input
+        fps_input_size: int,
+        metadata_insert_location: str,
+        collision_energy_input_size: int,
+        collision_energy_insert_size: int,
+        adduct_input_size: int,
+        adduct_insert_size: int,
+        instrument_type_input_size: int,
+        instrument_type_insert_size: int,
+        # output
+        mz_max: int,
+        mz_bin_res: float,
+        # model
+        mlp_hidden_size: int,
+        mlp_dropout: float,
+        mlp_num_layers: int,
+        mlp_use_residuals: bool,
+        ff_prec_mz_offset: int,
+        ff_bidirectional: bool,
+        ff_output_map_size: int
+    ):
 
-        pass
+        super().__init__(
+            metadata_insert_location=metadata_insert_location,
+            collision_energy_input_size=collision_energy_input_size,
+            collision_energy_insert_size=collision_energy_insert_size,
+            adduct_input_size=adduct_input_size,
+            adduct_insert_size=adduct_insert_size,
+            instrument_type_input_size=instrument_type_input_size,
+            instrument_type_insert_size=instrument_type_insert_size
+        )
 
-        
+        self.mlp_input_dim = fps_input_size + self.metadata_insert_size
+
+        self.ffn = SpecFFN(
+            input_size=self.mlp_input_dim,
+            hidden_size=mlp_hidden_size,
+            mz_max=mz_max,
+            mz_bin_res=mz_bin_res,
+            num_layers=mlp_num_layers,
+            dropout=mlp_dropout,
+            prec_mz_offset=ff_prec_mz_offset,
+            bidirectional=ff_bidirectional,
+            use_residuals=mlp_use_residuals,
+            output_map_size=ff_output_map_size
+        )
+
+    def _check_metadata_insert_location(self, location):
+
+        assert location in ["mlp","none"], f"metadata_insert_location={location} not supported"
+
+    def forward(
+        self,
+        fps: torch.Tensor, 
+        precursor_mz: torch.Tensor,
+        collision_energy: torch.Tensor,
+        adduct: torch.Tensor,
+        instrument_type: torch.Tensor,
+        **kwargs
+    ):
+
+        # embed metadata
+        metadata_embeds = self.embed_metadata(
+            collision_energy=collision_energy,
+            adduct=adduct,
+            instrument_type=instrument_type
+        )
+
+        # combine with fingerprint
+        fh = torch.cat([fps, metadata_embeds], dim=1)
+
+        # apply ffn
+        pred_mzs, pred_logprobs, pred_batch_idxs = self.ffn(fh,precursor_mz)
+        out_d = {
+            "pred_mzs": pred_mzs,
+            "pred_logprobs": pred_logprobs,
+            "pred_batch_idxs": pred_batch_idxs
+        }
+        return out_d

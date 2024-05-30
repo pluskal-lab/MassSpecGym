@@ -12,7 +12,7 @@ import torch_geometric as pyg
 from copy import deepcopy
 import scipy
 
-# from frag_gnn.utils.frag_utils import (
+# from massspecgym.simulation_utils.frag_utils import (
 #     CANONICAL_ELEMENT_ORDER,
 #     NODE_FEAT_TO_IDX,
 #     EDGE_FEAT_TO_IDX,

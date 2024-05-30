@@ -99,15 +99,15 @@ class SpecToMzsInts(SpecTransform):
         Stack arrays of mz and intensities into a matrix of shape (num_peaks, 2).
         If the number of peaks is less than `n_peaks`, pad the matrix with zeros.
         """
-        mzs = torch.as_tensor(spec.peaks.mz)
-        ints = torch.as_tensor(spec.peaks.intensities)
+        mzs = torch.as_tensor(spec.peaks.mz, dtype=torch.float32)
+        ints = torch.as_tensor(spec.peaks.intensities, dtype=torch.float32)
         return {"spec_mzs": mzs, "spec_ints": ints}
     
     def collate_fn(self, collate_data_d: dict) -> None:
         # mutates dict!
 
         device = collate_data_d["spec_mzs"][0].device
-        counts = torch.tensor([spec_mzs.shape[0] for spec_mzs in collate_data_d["spec_mzs"]],device=device)
+        counts = torch.tensor([spec_mzs.shape[0] for spec_mzs in collate_data_d["spec_mzs"]],device=device,dtype=torch.int64)
         batch_idxs = torch.repeat_interleave(torch.arange(counts.shape[0],device=device),counts,dim=0)
         collate_data_d["spec_mzs"] = torch.cat(collate_data_d["spec_mzs"],dim=0)
         collate_data_d["spec_ints"] = torch.cat(collate_data_d["spec_ints"],dim=0)
@@ -208,19 +208,18 @@ class MolToFingerprints(MolTransform):
 
         self.fp_types = sorted(fp_types)
 
-    def from_smiles(self, mol: str) -> torch.Tensor:
+    def from_smiles(self, mol: str) -> dict:
         
         fps = []
         mol = Chem.MolFromSmiles(mol)
         fps = get_fingerprints(mol, self.fp_types)
-        fps = torch.as_tensor(fps)
+        fps = torch.as_tensor(fps, dtype=torch.float32)
         return {"fps": fps}
     
-    def get_fp_size(self) -> int:
+    def get_input_sizes(self) -> dict:
 
-        mol = Chem.MolFromSmiles("CCO")
-        fp = self.from_smiles(mol)
-        return fp.shape[0] 
+        fps = self.from_smiles("CCO")["fps"]
+        return {"fps_input_size": fps.shape[0]} 
     
     def collate_fn(self, collate_data_d: dict) -> None:
         # mutates dict!
@@ -261,20 +260,19 @@ class StandardMeta(MetaTransform):
         inst_idx = self.inst_to_idx.get(metadata["instrument_type"],self.num_insts)
         ce_idx = self.transform_ce(metadata["collision_energy"])
         meta_d = {
-            "precursor_mz": torch.tensor(prec_mz),
+            "precursor_mz": torch.tensor(prec_mz,dtype=torch.float32),
             "adduct": torch.tensor(adduct_idx),
             "instrument_type": torch.tensor(inst_idx),
             "collision_energy": torch.tensor(ce_idx)
         }
         return meta_d
 
-    def get_meta_sizes(self):
+    def get_input_sizes(self):
 
         size_d = {
-            "adduct": self.num_adducts+1,
-            "instrument_type": self.num_insts+1,
-            "collision_energy": int(self.max_ce),
-            "precursor_mz": None, # not applicable
+            "adduct_input_size": self.num_adducts+1,
+            "instrument_type_input_size": self.num_insts+1,
+            "collision_energy_input_size": int(self.max_ce)
         }
         return size_d
 
