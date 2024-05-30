@@ -29,14 +29,18 @@ setup(
         "seaborn",
         "standardizeUtils @ git+https://github.com/boecker-lab/standardizeUtils/#egg=standardizeUtils"
     ],
-    extras_require={"dev": ["black",
-                            "pytest",
-                            "pytest-cov",
-                            ],
+    extras_require={
+        "dev": [
+            "black",
+            "pytest",
+            "pytest-cov",
+        ],
+        "notebooks": [
+            "jupyter",
+            "ipywidgets",
+            "h5py",
+            "scikit-learn",
+            "pandarallel",
+        ],
     }
-    # Used only in notebooks
-    # "ipywidgets",
-    # "h5py",
-    # "scikit-learn",
-    # "pandarallel"
 )
