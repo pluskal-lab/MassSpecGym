@@ -16,5 +16,5 @@ Installation for development:
 conda create -n massspecgym python=3.11
 conda activate massspecgym
 git clone https://github.com/pluskal-lab/MassSpecGym.git; cd MassSpecGym
-pip install -e .
+pip install -e .[dev,notebooks]
 ```
