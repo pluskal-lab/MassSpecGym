@@ -4,7 +4,6 @@ import torch
 import matchms
 import matchms.filtering as ms_filters
 import massspecgym.utils as utils
-from tokenizers import ByteLevelBPETokenizer
 from rdkit.Chem import AllChem as Chem
 from pathlib import Path
 from typing import Optional, List, Union
