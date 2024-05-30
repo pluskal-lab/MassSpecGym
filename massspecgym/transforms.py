@@ -241,12 +241,12 @@ class MetaTransform(ABC):
 
 class StandardMeta(MetaTransform):
     
-    def __init__(self, adducts: list[str], instruments: list[str], max_ce: float):
+    def __init__(self, adducts: list[str], instrument_types: list[str], max_collision_energy: float):
         self.adduct_to_idx = {adduct: idx for idx, adduct in enumerate(sorted(adducts))}
-        self.inst_to_idx = {inst: idx for idx, inst in enumerate(sorted(instruments))}
+        self.inst_to_idx = {inst: idx for idx, inst in enumerate(sorted(instrument_types))}
         self.num_adducts = len(self.adduct_to_idx)
-        self.num_insts = len(self.inst_to_idx)
-        self.max_ce = max_ce
+        self.num_instrument_types = len(self.inst_to_idx)
+        self.num_collision_energies = int(max_collision_energy)
 
     def transform_ce(self, ce):
 
@@ -271,8 +271,8 @@ class StandardMeta(MetaTransform):
 
         size_d = {
             "adduct_input_size": self.num_adducts+1,
-            "instrument_type_input_size": self.num_insts+1,
-            "collision_energy_input_size": int(self.max_ce)
+            "instrument_type_input_size": self.num_instrument_types+1,
+            "collision_energy_input_size": int(self.num_collision_energies)
         }
         return size_d
 
