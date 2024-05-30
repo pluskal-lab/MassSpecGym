@@ -9,9 +9,8 @@ from torchmetrics import Metric, SumMetric
 class MassSpecGymModel(pl.LightningModule, ABC):
 
     def __init__(self, lr: float = 1e-4, weight_decay: float = 0.0, **kwargs):
-        super().__init__(**kwargs)
-        self.lr = lr
-        self.weight_decay = weight_decay
+        super().__init__()
+        self.save_hyperparameters()
 
     @abstractmethod
     def step(
@@ -51,7 +50,7 @@ class MassSpecGymModel(pl.LightningModule, ABC):
 
     def configure_optimizers(self):
         return torch.optim.Adam(
-            self.parameters(), lr=self.lr, weight_decay=self.weight_decay
+            self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay
         )
 
     def _update_metric(

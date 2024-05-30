@@ -88,7 +88,8 @@ class SpecToMzsInts(SpecTransform):
         self.mz_to = mz_to
 
     def matchms_transforms(self, spec: matchms.Spectrum) -> matchms.Spectrum:
-        spec = ms_filters.select_by_mz(spec, mz_from=self.mz_from, mz_to=self.mz_to)
+        # little hack to avoid selecting peaks at mz_to exactly
+        spec = ms_filters.select_by_mz(spec, mz_from=self.mz_from, mz_to=self.mz_to-1e-8)
         if self.n_peaks is not None:
             spec = ms_filters.reduce_to_number_of_peaks(spec, n_max=self.n_peaks)
         spec = ms_filters.normalize_intensities(spec)
@@ -247,17 +248,18 @@ class StandardMeta(MetaTransform):
         self.num_adducts = len(self.adduct_to_idx)
         self.num_instrument_types = len(self.inst_to_idx)
         self.num_collision_energies = int(max_collision_energy)
+        self.max_collision_energy = max_collision_energy
 
     def transform_ce(self, ce):
 
-        ce = np.clip(ce, a_min=0, a_max=int(self.max_ce)-1)
+        ce = np.clip(ce, a_min=0, a_max=int(self.max_collision_energy)-1)
         ce_idx = int(np.around(ce, decimals=0))
         return ce_idx
 
     def from_meta(self, metadata: dict):
         prec_mz = metadata["precursor_mz"]
         adduct_idx = self.adduct_to_idx.get(metadata["adduct"],self.num_adducts)
-        inst_idx = self.inst_to_idx.get(metadata["instrument_type"],self.num_insts)
+        inst_idx = self.inst_to_idx.get(metadata["instrument_type"],self.num_instrument_types)
         ce_idx = self.transform_ce(metadata["collision_energy"])
         meta_d = {
             "precursor_mz": torch.tensor(prec_mz,dtype=torch.float32),

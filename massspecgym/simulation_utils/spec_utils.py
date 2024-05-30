@@ -234,3 +234,11 @@ def sparse_cosine_distance(
         cos_dist = 1.-torch.exp(log_cos_sim)
     return cos_dist
 
+
+def batched_l1_normalize(ints, batch_idxs):
+
+	ints = scatter_l1normalize(
+		ints,
+		batch_idxs
+	)
+	return ints

@@ -1,9 +1,10 @@
+from massspecgym.transforms import MolToFingerprints, StandardMeta
 from massspecgym.models.simulation.base import SimulationMassSpecGymModel
-from massspecgym.simulation_utils.models import FPFFNModel
+from massspecgym.simulation_utils.model_utils import FPFFNModel
 from massspecgym.simulation_utils.spec_utils import sparse_cosine_distance
 
 
-class FFNSimulation(SimulationMassSpecGymModel):
+class FPFFNSimulationMassSpecGymModel(SimulationMassSpecGymModel):
 
     def _get_input_sizes(self):
 
@@ -34,7 +35,7 @@ class FFNSimulation(SimulationMassSpecGymModel):
             instrument_type_input_size=input_d["instrument_type_input_size"],
             instrument_type_insert_size=self.hparams.instrument_type_insert_size,
             # output
-            mz_max=self.hparams.mz_max,
+            mz_max=self.hparams.mz_max, ###
             mz_bin_res=self.hparams.mz_bin_res,
             # model
             mlp_hidden_size=self.hparams.mlp_hidden_size,
@@ -50,6 +51,6 @@ class FFNSimulation(SimulationMassSpecGymModel):
 
         self.loss_fn = lambda **kwargs: sparse_cosine_distance(
             **kwargs,
-            max_mz=self.hparams.mz_max,
+            mz_max=self.hparams.mz_max,
             mz_bin_res=self.hparams.mz_bin_res
         )

@@ -590,13 +590,13 @@ class SpecFFN(nn.Module):
 
 	def _compute_output_size(self):
 
-		self.mz_bins = nn.Parameter(torch.arange(self.mz_bin_res,self.mz_max+self.mz_bin_res,self.mz_bin_res))
+		self.mz_bins = nn.Parameter(torch.arange(self.mz_bin_res,self.mz_max+2*self.mz_bin_res,self.mz_bin_res))
 		self.mzs = nn.Parameter(self.mz_bins-0.5*self.mz_bin_res)
 		self.output_size = self.mzs.shape[0]
 
 	def _prec_mz_to_idx(self,prec_mz):
 
-		prec_mz_idx = torch.bucketize(prec_mz,self.mz_bins.to(prec_mz.device),right=True)
+		prec_mz_idx = torch.bucketize(torch.clamp(prec_mz,min=0.,max=self.mz_max),self.mz_bins.to(prec_mz.device),right=True)
 		assert torch.max(prec_mz_idx) < self.output_size, (prec_mz_idx,self.output_size)
 		return prec_mz_idx
 
