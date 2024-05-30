@@ -84,6 +84,18 @@ def mol_to_inchi_key(mol: Chem.Mol, twod: bool = True) -> str:
     return inchi_key
 
 
+def smiles_to_inchi_key(mol: str, twod: bool = True) -> str:
+    """
+    Convert a SMILES molecule to InChI Key representation.
+    
+    Args:
+        mol (str): SMILES string.
+        twod (bool, optional): Return 2D InChI Key (first 14 characers of InChI Key).
+    """
+    mol = Chem.MolFromSmiles(mol)
+    return mol_to_inchi_key(mol, twod)
+
+
 def hugging_face_download(file_name: str) -> str:
     """
     Download a file from the Hugging Face Hub and return its location on disk.
