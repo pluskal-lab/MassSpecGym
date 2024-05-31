@@ -63,7 +63,7 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
 
         pass
 
-    def get_cos_sim_fn(self, sample_weight: bool, untransform: bool):
+    def get_cos_sim_fn(self, untransform: bool):
 
         def _cos_sim_fn(
             pred_mzs,
@@ -84,10 +84,6 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
                     self.ints_untransform_func(torch.exp(pred_logprobs)), 
                     pred_batch_idxs
                 ))
-
-            if not sample_weight:
-                # ignore weights (uniform averaging)
-                weights = torch.ones_like(weights)
 
             cos_sim = 1.-sparse_cosine_distance(
                 pred_mzs=pred_mzs,
@@ -124,29 +120,8 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         self.train_reduce_fn = self.get_batch_metric_reduce_fn(self.hparams.train_sample_weight)
         self.eval_reduce_fn = self.get_batch_metric_reduce_fn(self.hparams.eval_sample_weight)
 
-        train_cos_sim_fn = self.get_cos_sim_fn(
-            sample_weight=self.hparams.train_sample_weight,
-            untransform=False
-        )
-        train_cos_sim_obj_fn = self.get_cos_sim_fn(
-            sample_weight=self.hparams.eval_sample_weight,
-            untransform=True
-        )
-        eval_cos_sim_fn = self.get_cos_sim_fn(
-            sample_weight=self.hparams.train_sample_weight,
-            untransform=False
-        )
-        eval_cos_sim_obj_fn = self.get_cos_sim_fn(
-            sample_weight=self.hparams.eval_sample_weight,
-            untransform=True
-        )
-        # aliases
-        self.train_spec_cos_sim = train_cos_sim_fn
-        self.train_spec_cos_sim_obj = train_cos_sim_obj_fn
-        self.val_spec_cos_sim = eval_cos_sim_fn
-        self.val_spec_cos_sim_obj = eval_cos_sim_obj_fn
-        self.test_spec_cos_sim = eval_cos_sim_fn
-        self.test_spec_cos_sim_obj = eval_cos_sim_obj_fn
+        self.cos_sim_fn = self.get_cos_sim_fn(untransform=True)
+        self.cos_sim_obj_fn = self.get_cos_sim_fn(untransform=False)
 
     def forward(self, **kwargs) -> dict:
 
@@ -242,26 +217,32 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
                 concatenated tensors
         """
         
-        # if metric_perf == "train_":
-        #     reduce_fn = self.train_reduce_fn
-        #     cos_sim_fn = self.train_spec_cos_sim
-        #     cos_sim_obj_fn = self.train_spec_cos_sim_obj
-        # else:
-        #     reduce_fn = self.eval_reduce_fn
-        #     cos_sim_fn = self.val_spec_cos_sim
-        #     cos_sim_obj_fn = self.val_spec_cos_sim_obj
+        if metric_pref == "train_":
+            reduce_fn = self.train_reduce_fn
+        else:
+            reduce_fn = self.eval_reduce_fn
 
-        # # TODO: maybe disable this?
-        # cos_sim = cos_sim_fn(
-        #     pred_mzs=pred_mzs,
-        #     pred_logprobs=pred_logprobs,
-        #     pred_batch_idxs=pred_batch_idxs,
-        #     true_mzs=true_mzs,
-        #     true_logprobs=true_logprobs,
-        #     true_batch_idxs=true_batch_idxs,
-        #     weights=weight
-        # )
+        cos_sim = self.cos_sim_fn(
+            pred_mzs=pred_mzs,
+            pred_logprobs=pred_logprobs,
+            pred_batch_idxs=pred_batch_idxs,
+            true_mzs=true_mzs,
+            true_logprobs=true_logprobs,
+            true_batch_idxs=true_batch_idxs,
+            weights=weight
+        )
+        mean_cos_sim = reduce_fn(cos_sim, weight)
+        batch_size = torch.max(true_batch_idxs)+1
 
+        self.log(
+            metric_pref + "spec_cos_sim",
+            mean_cos_sim,
+            batch_size=batch_size,
+            sync_dist=True,
+            prog_bar=True,
+        )
+
+        # TODO: maybe disable this?
         # cos_sim_obj = cos_sim_obj_fn(
         #     pred_mzs=pred_mzs,
         #     pred_logprobs=pred_logprobs,
@@ -280,11 +261,5 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         #     prog_bar=True,
         # )
 
-        # self.log(
-        #     metric_pref + "spec_cos_sim",
-        #     cos_sim,
-        #     batch_size=batch_size,
-        #     sync_dist=True,
-        #     prog_bar=True,
-        # )
+        
 
