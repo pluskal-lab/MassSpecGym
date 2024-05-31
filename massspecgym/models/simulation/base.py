@@ -11,7 +11,6 @@ from massspecgym.simulation_utils.spec_utils import batched_bin_func, sparse_cos
     get_ints_transform_func, get_ints_untransform_func, batched_l1_normalize
 
 
-
 class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
 
     def __init__(self, **kwargs):
@@ -243,18 +242,49 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
                 concatenated tensors
         """
         
-        pass
-        # print(metric_pref + "spec_cos_sim_obj")
-        # batch_size = torch.max(pred_batch_idxs)+1
-        # self._update_metric(
+        # if metric_perf == "train_":
+        #     reduce_fn = self.train_reduce_fn
+        #     cos_sim_fn = self.train_spec_cos_sim
+        #     cos_sim_obj_fn = self.train_spec_cos_sim_obj
+        # else:
+        #     reduce_fn = self.eval_reduce_fn
+        #     cos_sim_fn = self.val_spec_cos_sim
+        #     cos_sim_obj_fn = self.val_spec_cos_sim_obj
+
+        # # TODO: maybe disable this?
+        # cos_sim = cos_sim_fn(
+        #     pred_mzs=pred_mzs,
+        #     pred_logprobs=pred_logprobs,
+        #     pred_batch_idxs=pred_batch_idxs,
+        #     true_mzs=true_mzs,
+        #     true_logprobs=true_logprobs,
+        #     true_batch_idxs=true_batch_idxs,
+        #     weights=weight
+        # )
+
+        # cos_sim_obj = cos_sim_obj_fn(
+        #     pred_mzs=pred_mzs,
+        #     pred_logprobs=pred_logprobs,
+        #     pred_batch_idxs=pred_batch_idxs,
+        #     true_mzs=true_mzs,
+        #     true_logprobs=true_logprobs,
+        #     true_batch_idxs=true_batch_idxs,
+        #     weights=weight
+        # )
+
+        # self.log(
         #     metric_pref + "spec_cos_sim_obj",
-        #     None, # must be initialized
-        #     (pred_mzs, pred_logprobs, pred_batch_idxs, true_mzs, true_logprobs, true_batch_idxs, weight),
-        #     batch_size=batch_size
+        #     cos_sim_obj,
+        #     batch_size=batch_size,
+        #     sync_dist=True,
+        #     prog_bar=True,
         # )
-        # self._update_metric(
+
+        # self.log(
         #     metric_pref + "spec_cos_sim",
-        #     None, # must be initialized
-        #     (pred_mzs, pred_logprobs, pred_batch_idxs, true_mzs, true_logprobs, true_batch_idxs, weight),
-        #     batch_size=batch_size
+        #     cos_sim,
+        #     batch_size=batch_size,
+        #     sync_dist=True,
+        #     prog_bar=True,
         # )
+

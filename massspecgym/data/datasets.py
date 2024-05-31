@@ -252,13 +252,21 @@ class SimulationDataset(MassSpecDataset):
             meta_feats = self.meta_transform({k: entry[k] for k in self.meta_keys})
             if self.cache_feats:
                 self.meta_feats[spec_id] = meta_feats
-        weight = 1./float(self.spec_per_mol[spec_id])
-        meta_feats["weight"] = torch.tensor(weight) 
         return meta_feats
 
     def _get_frag_feats(self, i):
 
         raise NotImplementedError
+
+    def _get_other_feats(self, i):
+
+        entry = self.entry_df.iloc[i]
+        spec_id = entry["spec_id"]
+        other_feats = {}
+        other_feats["spec_id"] = torch.tensor(spec_id)
+        weight = 1./float(self.spec_per_mol[spec_id])
+        other_feats["weight"] = torch.tensor(weight)
+        return other_feats
 
     def compute_counts(self):
 
@@ -271,6 +279,7 @@ class SimulationDataset(MassSpecDataset):
         item.update(self._get_spec_feats(i))
         item.update(self._get_mol_feats(i))
         item.update(self._get_meta_feats(i))
+        item.update(self._get_other_feats(i))
         return item
     
     def collate_fn(self, data_list):
@@ -286,8 +295,9 @@ class SimulationDataset(MassSpecDataset):
         self.mol_transform.collate_fn(collate_data)
         # handle metadata
         self.meta_transform.collate_fn(collate_data)
-        # handle weights
-        collate_data["weight"] = torch.stack(collate_data["weight"])
+        # handle other stuff
+        for key in ["spec_id","weight"]:
+            collate_data[key] = torch.stack(collate_data[key],dim=0)
         return collate_data
         
 
