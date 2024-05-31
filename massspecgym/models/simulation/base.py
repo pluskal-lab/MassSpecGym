@@ -11,21 +11,6 @@ from massspecgym.simulation_utils.spec_utils import batched_bin_func, sparse_cos
     get_ints_transform_func, get_ints_untransform_func, batched_l1_normalize
 
 
-def get_batch_metric_reduce_fn(sample_weight):
-
-    def _batch_metric_reduce(scores, weights, return_weight=False):
-        if sample_weight:
-            # ignore weights (uniform averaging)
-            weights = torch.ones_like(weights)
-        w_total = torch.sum(weights, dim=0)
-        w_mean_score = torch.sum(scores * weights, dim=0) / w_total
-        if return_weight:
-            return w_mean_score, w_total
-        else:
-            return w_mean_score
-
-    return _batch_metric_reduce
-
 
 class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
 
@@ -79,59 +64,90 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
 
         pass
 
+    def get_cos_sim_fn(self, sample_weight: bool, untransform: bool):
+
+        def _cos_sim_fn(
+            pred_mzs,
+            pred_logprobs,
+            pred_batch_idxs,
+            true_mzs,
+            true_logprobs,
+            true_batch_idxs,
+            weights):
+
+            if untransform:
+                # untransform
+                true_logprobs = safelog(self.ints_normalize_func(
+                    self.ints_untransform_func(torch.exp(true_logprobs)), 
+                    true_batch_idxs
+                ))
+                pred_logprobs = safelog(self.ints_normalize_func(
+                    self.ints_untransform_func(torch.exp(pred_logprobs)), 
+                    pred_batch_idxs
+                ))
+
+            if not sample_weight:
+                # ignore weights (uniform averaging)
+                weights = torch.ones_like(weights)
+
+            cos_sim = 1.-sparse_cosine_distance(
+                pred_mzs=pred_mzs,
+                pred_logprobs=pred_logprobs,
+                pred_batch_idxs=pred_batch_idxs,
+                true_mzs=true_mzs,
+                true_logprobs=true_logprobs,
+                true_batch_idxs=true_batch_idxs,
+                mz_max=self.hparams.mz_max,
+                mz_bin_res=self.hparams.mz_bin_res
+            )
+
+            return cos_sim
+        
+        return _cos_sim_fn
+
+    def get_batch_metric_reduce_fn(self, sample_weight: bool):
+
+        def _batch_metric_reduce(scores, weights, return_weight=False):
+            if not sample_weight:
+                # ignore weights (uniform averaging)
+                weights = torch.ones_like(weights)
+            w_total = torch.sum(weights, dim=0)
+            w_mean_score = torch.sum(scores * weights, dim=0) / w_total
+            if return_weight:
+                return w_mean_score, w_total
+            else:
+                return w_mean_score
+
+        return _batch_metric_reduce
+
     def _setup_metric_fns(self):
 
-        train_reduce_fn = get_batch_metric_reduce_fn(self.hparams.train_sample_weight)
-        eval_reduce_fn = get_batch_metric_reduce_fn(self.hparams.eval_sample_weight)
+        self.train_reduce_fn = self.get_batch_metric_reduce_fn(self.hparams.train_sample_weight)
+        self.eval_reduce_fn = self.get_batch_metric_reduce_fn(self.hparams.eval_sample_weight)
 
-        def _train_metric_fn(
-            pred_mzs,
-            pred_ints,
-            pred_batch_idxs,
-            true_mzs,
-            true_ints,
-            true_batch_idxs,
-            weights):
-
-            cos_sim = 1.-sparse_cosine_distance(
-                pred_mzs,
-                pred_ints,
-                pred_batch_idxs,
-                true_mzs,
-                true_ints,
-                true_batch_idxs,
-                mz_max=self.hparams.mz_max,
-                mz_bin_res=self.hparams.mz_bin_res
-            )
-            return train_reduce_fn(cos_sim, weights)
-
-        def _eval_metric_fn(
-            pred_mzs,
-            pred_ints,
-            pred_batch_idxs,
-            true_mzs,
-            true_ints,
-            true_batch_idxs,
-            weights):
-
-            cos_sim = 1.-sparse_cosine_distance(
-                pred_mzs,
-                pred_ints,
-                pred_batch_idxs,
-                true_mzs,
-                true_ints,
-                true_batch_idxs,
-                mz_max=self.hparams.mz_max,
-                mz_bin_res=self.hparams.mz_bin_res
-            )
-            return eval_reduce_fn(cos_sim, weights)
-
-        # need to name them like this for the lightning module to recognize them
-        self.train_spec_cos_sim = _train_metric_fn
-        self.val_spec_cos_sim = _eval_metric_fn
-        self.test_spec_cos_sim = _eval_metric_fn
-        self.train_reduce_fn = train_reduce_fn
-        self.eval_reduce_fn = eval_reduce_fn
+        train_cos_sim_fn = self.get_cos_sim_fn(
+            sample_weight=self.hparams.train_sample_weight,
+            untransform=False
+        )
+        train_cos_sim_obj_fn = self.get_cos_sim_fn(
+            sample_weight=self.hparams.eval_sample_weight,
+            untransform=True
+        )
+        eval_cos_sim_fn = self.get_cos_sim_fn(
+            sample_weight=self.hparams.train_sample_weight,
+            untransform=False
+        )
+        eval_cos_sim_obj_fn = self.get_cos_sim_fn(
+            sample_weight=self.hparams.eval_sample_weight,
+            untransform=True
+        )
+        # aliases
+        self.train_spec_cos_sim = train_cos_sim_fn
+        self.train_spec_cos_sim_obj = train_cos_sim_obj_fn
+        self.val_spec_cos_sim = eval_cos_sim_fn
+        self.val_spec_cos_sim_obj = eval_cos_sim_obj_fn
+        self.test_spec_cos_sim = eval_cos_sim_fn
+        self.test_spec_cos_sim_obj = eval_cos_sim_obj_fn
 
     def forward(self, **kwargs) -> dict:
 
@@ -144,41 +160,44 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
             batch["spec_ints"],
             batch["spec_batch_idxs"]
         )
-        pred_mzs, pred_logprobs, pred_batch_idxs = self.model.forward(
+        out_d = self.model.forward(
             **batch
         )
+        pred_mzs = out_d["pred_mzs"]
+        pred_logprobs = out_d["pred_logprobs"]
+        pred_batch_idxs = out_d["pred_batch_idxs"]
         loss = self.loss_fn(
-            pred_mzs,
-            pred_logprobs,
-            pred_batch_idxs,
-            true_mzs,
-            true_logprobs,
-            true_batch_idxs
+            true_mzs=true_mzs,
+            true_logprobs=true_logprobs,
+            true_batch_idxs=true_batch_idxs,
+            pred_mzs=pred_mzs,
+            pred_logprobs=pred_logprobs,
+            pred_batch_idxs=pred_batch_idxs
         )
         reduce_fn = self.train_reduce_fn if metric_pref == "train_" else self.eval_reduce_fn
         mean_loss, total_weight = reduce_fn(loss, batch["weight"], return_weight=True)
         batch_size = torch.max(pred_batch_idxs)+1
 
-        # little trick to work with automatic batch averaging
-        scaled_loss = loss * (batch_size / total_weight)
+        # # little trick to work with automatic batch averaging
+        # scaled_loss = loss * (batch_size / total_weight)
 
         # Log loss
         # TODO: not sure if this batch_size param messes up running total
         self.log(
             metric_pref + "loss_step",
-            scaled_loss,
+            mean_loss,
             batch_size=batch_size,
             sync_dist=True,
             prog_bar=True,
         )
 
         out_d = {
-            "loss": scaled_loss, 
+            "loss": mean_loss, 
             "pred_mzs": pred_mzs, 
-            "pred_ints": pred_logprobs, 
+            "pred_logprobs": pred_logprobs, 
             "pred_batch_idxs": pred_batch_idxs,
             "true_mzs": true_mzs,
-            "true_ints": true_logprobs,
+            "true_logprobs": true_logprobs,
             "true_batch_idxs": true_batch_idxs}
 
         return out_d
@@ -188,8 +207,6 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
     ) -> None:
         """
         """
-
-
 
         self.evaluate_simulation_step(
             pred_mzs=outputs["pred_mzs"],
@@ -210,6 +227,7 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         true_mzs: torch.Tensor,
         true_logprobs: torch.Tensor,
         true_batch_idxs: torch.Tensor,
+        weight: torch.Tensor,
         metric_pref: str,
     ) -> None:
         """
@@ -225,22 +243,18 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
                 concatenated tensors
         """
         
-        # Cosine similarity between predicted and true fingerprints
-        batch_size = torch.max(pred_batch_idxs)+1
-        self._update_metric(
-            metric_pref + "spec_cos_sim_obj",
-            None, # must be initialized
-            (pred_mzs, pred_logprobs, pred_batch_idxs, true_mzs, true_logprobs, true_batch_idxs),
-            batch_size=batch_size
-        )
-
-        # untransform
-        true_logprobs_ut = safelog(self.ints_normalize_func(self.ints_untransform_func(th.exp(true_logprobs)), true_batch_idxs))
-        pred_logprobs_ut = safelog(self.ints_normalize_func(self.ints_untransform_func(th.exp(pred_logprobs)), pred_batch_idxs))
-
-        self._update_metric(
-            metric_pref + "spec_cos_sim",
-            None, # must be initialized
-            (pred_mzs, pred_logprobs_ut, pred_batch_idxs, true_mzs, true_logprobs_ut, true_batch_idxs),
-            batch_size=batch_size
-        )
+        pass
+        # print(metric_pref + "spec_cos_sim_obj")
+        # batch_size = torch.max(pred_batch_idxs)+1
+        # self._update_metric(
+        #     metric_pref + "spec_cos_sim_obj",
+        #     None, # must be initialized
+        #     (pred_mzs, pred_logprobs, pred_batch_idxs, true_mzs, true_logprobs, true_batch_idxs, weight),
+        #     batch_size=batch_size
+        # )
+        # self._update_metric(
+        #     metric_pref + "spec_cos_sim",
+        #     None, # must be initialized
+        #     (pred_mzs, pred_logprobs, pred_batch_idxs, true_mzs, true_logprobs, true_batch_idxs, weight),
+        #     batch_size=batch_size
+        # )

@@ -208,7 +208,8 @@ class SimulationDataset(MassSpecDataset):
         entry_df["spec_id"] = np.arange(entry_df.shape[0])
         inchikey_map = {ik:idx for idx, ik in enumerate(sorted(entry_df["inchikey"].unique()))}
         entry_df["mol_id"] = entry_df["inchikey"].map(inchikey_map)
-
+        entry_df = entry_df.reset_index(drop=True)
+    
         self.entry_df = entry_df
         if self.frag_pth is not None:
             raise NotImplementedError("Frag DAGs not yet supported.")        

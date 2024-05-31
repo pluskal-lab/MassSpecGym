@@ -5,8 +5,18 @@ import scipy
 import scipy.optimize
 from typing import Tuple, Union
 
-from massspecgym.simulation_utils.misc_utils import scatter_logsoftmax, scatter_l1normalize, scatter_l2normalize, scatter_reduce, EPS, th_setdiff1d, safelog, scatter_logsumexp, TOLERANCE_MIN_MZ
-
+from massspecgym.simulation_utils.misc_utils import (
+	scatter_logsoftmax, 
+	scatter_l1normalize, 
+	scatter_l2normalize, 
+	scatter_reduce, 
+	EPS, 
+	th_setdiff1d, 
+	safelog, 
+	scatter_logsumexp, 
+	TOLERANCE_MIN_MZ,
+	scatter_logl2normalize
+)
 # rough approximations from NIST20
 NCE_MEAN = 60.
 NCE_STD = 40.

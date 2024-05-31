@@ -81,15 +81,17 @@ class SpecToMzsInts(SpecTransform):
         self,
         n_peaks: Optional[int] = None,
         mz_from: Optional[float] = 10.,
-        mz_to: Optional[float] = 1000.
+        mz_to: Optional[float] = 1000.,
+        mz_bin_res: Optional[float] = 0.01
     ) -> None:
         self.n_peaks = n_peaks
         self.mz_from = mz_from
         self.mz_to = mz_to
+        self.mz_bin_res = mz_bin_res
 
     def matchms_transforms(self, spec: matchms.Spectrum) -> matchms.Spectrum:
         # little hack to avoid selecting peaks at mz_to exactly
-        spec = ms_filters.select_by_mz(spec, mz_from=self.mz_from, mz_to=self.mz_to-1e-8)
+        spec = ms_filters.select_by_mz(spec, mz_from=self.mz_from, mz_to=self.mz_to-self.mz_bin_res)
         if self.n_peaks is not None:
             spec = ms_filters.reduce_to_number_of_peaks(spec, n_max=self.n_peaks)
         spec = ms_filters.normalize_intensities(spec)
