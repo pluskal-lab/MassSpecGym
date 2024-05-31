@@ -20,6 +20,7 @@ setup(
         "torch",
         "pytorch-lightning",
         "torchmetrics",
+        "torch_geometric",
         "numpy",
         "rdkit",
         "myopic-mces",
