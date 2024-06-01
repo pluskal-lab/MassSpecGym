@@ -4,7 +4,8 @@ from abc import ABC
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
-from torchmetrics import RetrievalHitRate, CosineSimilarity
+from torchmetrics import CosineSimilarity
+from torchmetrics.retrieval import RetrievalHitRate
 
 from massspecgym.models.base import MassSpecGymModel
 
