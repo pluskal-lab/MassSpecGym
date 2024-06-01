@@ -21,8 +21,10 @@ class DummyDeNovo(DeNovoMassSpecGymModel):
             "CN1C=NC2=C1C(=O)N(C(=O)N2C)C", # Caffeine (C₈H₁₀N₄O₂)
             "c1ccccc1",                   # Benzene (C₆H₆)
             "CC(=O)O",                    # Acetic Acid (C₂H₄O₂)
-            "CC(C)CC1=CC=C(C=C1)C(C)C(=O)O" # Ibuprofen (C₁₃H₁₈O₂)
+            "CC(C)CC1=CC=C(C=C1)C(C)C(=O)O", # Ibuprofen (C₁₃H₁₈O₂)
+            None
         ]
+        self.mol_pred_kind = "smiles"
 
     def step(
         self, batch: dict, metric_pref: str = ""
