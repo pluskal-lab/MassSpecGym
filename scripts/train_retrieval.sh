@@ -4,7 +4,7 @@ echo "job_key \"${job_key}\""
 
 # Prepare project environment
 . "${WORK}/miniconda3/etc/profile.d/conda.sh"
-conda activate ppiformer_ef
+conda activate massspecgym
 
 # Move to running dir
 cd "${SLURM_SUBMIT_DIR}" || exit 1
