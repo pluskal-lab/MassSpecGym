@@ -1,10 +1,13 @@
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
+import pandas as pd
 import typing as T
 from rdkit.Chem import AllChem as Chem
 from rdkit.Chem import DataStructs
 from huggingface_hub import hf_hub_download
+from tokenizers import ByteLevelBPETokenizer
+from tokenizers.processors import TemplateProcessing
 from standardizeUtils.standardizeUtils import (
     standardize_structure_with_pubchem,
     standardize_structure_list_with_pubchem,
@@ -118,3 +121,31 @@ def init_plotting(figsize=(6, 2), font_scale=0.95, style="whitegrid"):
     sns.set_style(style)
     sns.set_context("paper", font_scale=font_scale)
     sns.set_palette(["#009473", "#D94F70", "#5A5B9F", "#F0C05A", "#7BC4C4", "#FF6F61"])
+
+
+def get_smiles_bpe_tokenizer() -> ByteLevelBPETokenizer:
+    """
+    Return a Byte-level BPE tokenizer trained on the SMILES strings from the
+    `MassSpecGym_test_fold_MCES2_disjoint_molecules_4M.tsv` dataset.
+    """
+    # Initialize the tokenizer
+    special_tokens = ["<pad>", "<s>", "</s>", "<unk>"]
+    smiles_tokenizer = ByteLevelBPETokenizer()
+    smiles = pd.read_csv(hugging_face_download(
+        "molecules/MassSpecGym_test_fold_MCES2_disjoint_molecules_4M.tsv"
+    ), sep="\t")["smiles"]
+    smiles_tokenizer.train_from_iterator(smiles, special_tokens=special_tokens)
+
+    # Enable padding
+    smiles_tokenizer.enable_padding(direction='right', pad_token="<pad>")
+
+    # Add template processing to include start and end of sequence tokens
+    smiles_tokenizer.post_processor = TemplateProcessing(
+        single="<s> $A </s>",
+        pair="<s> $A </s> <s> $B </s>",
+        special_tokens=[
+            ("<s>", smiles_tokenizer.token_to_id("<s>")),
+            ("</s>", smiles_tokenizer.token_to_id("</s>")),
+        ],
+    )
+    return smiles_tokenizer
