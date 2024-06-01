@@ -30,7 +30,7 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
             num_encoder_layers,
             num_decoder_layers,
             dim_feedforward,
-            norm_first=True,
+            norm_first=True,  # TODO: maybe post-norm will be stable with more parameters.
         )
         self.decoder = nn.Linear(d_model, self.vocab_size)
         self.d_model = d_model
