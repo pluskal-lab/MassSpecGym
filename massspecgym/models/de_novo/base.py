@@ -8,7 +8,6 @@ from myopic_mces.myopic_mces import MCES
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
-from torchmetrics.classification import BinaryJaccardIndex
 from torchmetrics.aggregation import MeanMetric
 
 from massspecgym.models.base import MassSpecGymModel
@@ -36,6 +35,8 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
         )
         self.myopic_mces_kwargs |= myopic_mces_kwargs or {}
 
+        self.mol_pred_kind: T.Literal["smiles", "rdkit"] = "smiles",
+
     def on_batch_end(
         self,
         outputs: T.Any,
@@ -51,26 +52,35 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
 
     def evaluate_de_novo_step(
         self,
-        mols_pred: list[list[Chem.Mol | str]],
+        mols_pred: list[list[T.Optional[Chem.Mol | str]]],
         mol_true: list[str],
         metric_pref: str = "",
     ) -> None:
         """
-        # TODO: refactor to compute only for max(k) and then use the result to obtain the rest.
+        # TODO: refactor to compute only for max(k) and then use the result to obtain the rest by
+        subsetting.
 
         Main evaluation method for the models for de novo molecule generation from mass spectra.
 
         Args:
             mols_pred (list[list[Mol | str]]): (bs, k) list of generated rdkit molecules or SMILES
-                strings
+                strings with possible Nones if no molecule was generated
             mol_true (list[str]): (bs) list of ground-truth SMILES strings
         """
         # Get SMILES and RDKit molecule objects for all predictions
-        if isinstance(mols_pred[0][0], str):  # SMILES passed
+        if self.mol_pred_kind == "smiles":
             smiles_pred = mols_pred
-            mols_pred = [[Chem.MolFromSmiles(sm) for sm in sms] for sms in mols_pred]
-        else:  # RDKit molecules passed
-            smiles_pred = [[Chem.MolToSmiles(m) for m in ms] for ms in mols_pred]
+            mols_pred = [
+                [Chem.MolFromSmiles(sm) if sm is not None else None for sm in sms]
+                for sms in mols_pred
+            ]
+        elif self.mol_pred_kind == "rdkit":
+            smiles_pred = [
+                [Chem.MolToSmiles(m) if m is not None else None for m in ms]
+                for ms in mols_pred
+            ]
+        else:
+            raise ValueError(f"Invalid mol_pred_kind: {self.mol_pred_kind}")
 
         # Get RDKit molecule objects for ground truth
         smile_true = mol_true
@@ -90,7 +100,11 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
             # Iterate over batch
             for preds, true in zip(smiles_pred_top_k, smile_true):
                 # Iterate over top-k predicted molecule samples
-                dists = [MCES(s1=true, s2=pred, **self.myopic_mces_kwargs)[1] for pred in preds]
+                dists = [
+                    MCES(s1=true, s2=pred, **self.myopic_mces_kwargs)[1]
+                    if pred is not None else 20  # TODO Replace with a more sensible value
+                    for pred in preds
+                ]
                 min_mces_dists.append(min(dists))
             self._update_metric(
                 metric_pref + f"top_{top_k}_min_mces_dist",
@@ -103,13 +117,20 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
             # Calculate Tanimoto similarity between top-k predicted molecules and ground truth and
             # report the maximum similarity. The maximum similarities for each sample in the batch
             # are averaged across the epoch.
-            fps_pred_top_k = [[morgan_fp(m, to_np=False) for m in ms] for ms in mols_pred_top_k]
+            fps_pred_top_k = [
+                [morgan_fp(m, to_np=False) if m is not None else None for m in ms]
+                for ms in mols_pred_top_k
+            ]
             fp_true = [morgan_fp(m, to_np=False) for m in mol_true]            
             max_tanimoto_sims = []
             # Iterate over batch
             for preds, true in zip(fps_pred_top_k, fp_true):
                 # Iterate over top-k predicted molecule samples
-                sims = [TanimotoSimilarity(true, pred) for pred in preds]
+                sims = [
+                    TanimotoSimilarity(true, pred)
+                    if pred is not None else 0
+                    for pred in preds
+                ]
                 max_tanimoto_sims.append(max(sims))
             self._update_metric(
                 metric_pref + f"top_{top_k}_max_tanimoto_sim",
@@ -122,7 +143,11 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
             # Calculate if the ground truth molecule is in the top-k predicted molecules and report
             # the average across the epoch.
             in_top_k = [
-                mol_to_inchi_key(true) in [mol_to_inchi_key(pred) for pred in preds]
+                mol_to_inchi_key(true) in [
+                    mol_to_inchi_key(pred)
+                    if pred is not None else None
+                    for pred in preds
+                ]
                 for true, preds in zip(mol_true, mols_pred_top_k)
             ]
             self._update_metric(
