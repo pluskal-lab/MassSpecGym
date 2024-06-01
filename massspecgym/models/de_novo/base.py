@@ -34,8 +34,7 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
             solver_options=dict(msg=0)  # make ILP solver silent
         )
         self.myopic_mces_kwargs |= myopic_mces_kwargs or {}
-
-        self.mol_pred_kind: T.Literal["smiles", "rdkit"] = "smiles",
+        self.mol_pred_kind: T.Literal["smiles", "rdkit"] = "smiles"
 
     def on_batch_end(
         self,
@@ -44,6 +43,22 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
         batch_idx: int,
         metric_pref: str = ''
     ) -> None:
+        self.log(
+            f"{metric_pref}loss",
+            outputs['loss'],
+            batch_size=batch['spec'].size(0),
+            sync_dist=True,
+            prog_bar=True,
+        )
+
+    def on_validation_batch_end(
+        self,
+        outputs: T.Any,
+        batch: dict,
+        batch_idx: int,
+        metric_pref: str = ''
+    ) -> None:
+        self.on_batch_end(outputs, batch, batch_idx, metric_pref)
         self.evaluate_de_novo_step(
             outputs["mols_pred"],  # (bs, k) list of generated rdkit molecules or SMILES strings
             batch["mol"],  # (bs) list of ground truth SMILES strings
@@ -69,11 +84,16 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
         """
         # Get SMILES and RDKit molecule objects for all predictions
         if self.mol_pred_kind == "smiles":
-            smiles_pred = mols_pred
-            mols_pred = [
-                [Chem.MolFromSmiles(sm) if sm is not None else None for sm in sms]
-                for sms in mols_pred
-            ]
+            smiles_pred_valid, mols_pred_valid = [], []
+            for mols_pred_sample in mols_pred:
+                smiles_pred_valid_sample, mols_pred_valid_sample = [], []
+                for s in mols_pred_sample:
+                    m = Chem.MolFromSmiles(s) if s is not None else None
+                    smiles_pred_valid_sample.append(s if m is not None else None)
+                    mols_pred_valid_sample.append(m)
+                smiles_pred_valid.append(smiles_pred_valid_sample)
+                mols_pred_valid.append(mols_pred_valid_sample)
+            smiles_pred, mols_pred = smiles_pred_valid, mols_pred_valid
         elif self.mol_pred_kind == "rdkit":
             smiles_pred = [
                 [Chem.MolToSmiles(m) if m is not None else None for m in ms]
