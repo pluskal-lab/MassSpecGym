@@ -58,10 +58,30 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         spec_ints = safelog(spec_ints)
         return spec_mzs, spec_ints, spec_batch_idxs
 
-    @abstractmethod
     def _setup_loss_fn(self):
 
-        pass
+        def _loss_fn(
+            true_mzs: torch.Tensor, 
+            true_logprobs: torch.Tensor,
+            true_batch_idxs: torch.Tensor,
+            pred_mzs: torch.Tensor,
+            pred_logprobs: torch.Tensor,
+            pred_batch_idxs: torch.Tensor
+        ):
+
+            cos_dist = sparse_cosine_distance(
+                true_mzs=true_mzs,
+                true_logprobs=true_logprobs,
+                true_batch_idxs=true_batch_idxs,
+                pred_mzs=pred_mzs,
+                pred_logprobs=pred_logprobs,
+                pred_batch_idxs=pred_batch_idxs,
+                mz_max=self.hparams.mz_max,
+                mz_bin_res=self.hparams.mz_bin_res
+            )
+            return cos_dist
+
+        self.loss_fn = _loss_fn
 
     def get_cos_sim_fn(self, untransform: bool):
 
@@ -107,7 +127,7 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
                 weights = torch.ones_like(weights)
             w_total = torch.sum(weights, dim=0)
             w_mean_score = torch.sum(scores * weights, dim=0) / w_total
-            if return_weight:
+            if return_total_weight:
                 return w_mean_score, w_total
             else:
                 return w_mean_score
@@ -148,7 +168,7 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
             pred_batch_idxs=pred_batch_idxs
         )
         reduce_fn = self.train_reduce_fn if metric_pref == "train_" else self.eval_reduce_fn
-        mean_loss, total_weight = reduce_fn(loss, batch["weight"], return_weight=True)
+        mean_loss = reduce_fn(loss, batch["weight"])
         batch_size = torch.max(pred_batch_idxs)+1
 
         # Log loss
@@ -231,12 +251,13 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         mean_cos_sim, total_weight = reduce_fn(cos_sim, weight, return_total_weight=True)
         batch_size = torch.max(true_batch_idxs)+1
 
-        # # little trick to work with automatic batch averaging
-        # scaled_loss = loss * (batch_size / total_weight)
+        # # little trick to work with automatic batch accumulation
+        # scaled_cos_sim = mean_cos_sim * (batch_size / total_weight)
+        scaled_cos_sim = mean_cos_sim
 
         self.log(
             metric_pref + "spec_cos_sim_epoch",
-            mean_cos_sim,
+            scaled_cos_sim,
             batch_size=batch_size,
             sync_dist=True,
             prog_bar=True,

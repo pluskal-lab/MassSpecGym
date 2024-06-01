@@ -5,6 +5,7 @@ from tqdm.notebook import tqdm
 from pprint import pprint
 from torch.utils.data import Subset
 import pytorch_lightning as pl
+import numpy as np
 
 from massspecgym.data.datasets import SimulationDataset
 from massspecgym.transforms import SpecToMzsInts, MolToPyG, StandardMeta, MolToFingerprints
@@ -17,7 +18,8 @@ def get_config_d():
     # wandb
     config_d["wandb_entity"] = "adamoyoung"
     config_d["wandb_project"] = "MSG"
-    config_d["wandb_name"] = "fpfnn_simulation_debug"
+    config_d["wandb_name"] = "fp_fnn_simulation_debug"
+    config_d["wandb_mode"] = "offline" #"online"
     # data
     config_d["tsv_pth"] = "data/MassSpecGym_3.tsv" #"data/MassSpecGym_3.tsv"
     config_d["meta_keys"] = ["adduct","precursor_mz","instrument_type","collision_energy"]
@@ -26,7 +28,7 @@ def get_config_d():
     config_d["instrument_types"] = ["QTOF","QFT","Orbitrap","ITFT"]
     config_d["max_collision_energy"] = 200. # arbitrary
     config_d["mz_from"] = 10.
-    config_d["mz_to"] = 1500.
+    config_d["mz_to"] = 1000.
     # input
     config_d["metadata_insert_location"] = "mlp"
     config_d["collision_energy_insert_size"] = 16
@@ -34,9 +36,10 @@ def get_config_d():
     config_d["instrument_type_insert_size"] = 16
     config_d["ints_transform"] = "log10t3"
     # output
-    config_d["mz_max"] = 1500. # same as mz_to
+    config_d["mz_max"] = 1000. # same as mz_to
     config_d["mz_bin_res"] = 0.1
     # model
+    config_d["model_type"] = "fp_ffn"
     config_d["mlp_hidden_size"] = 1024
     config_d["mlp_dropout"] = 0.1
     config_d["mlp_num_layers"] = 4
@@ -60,9 +63,10 @@ def get_config_d():
     config_d["enable_checkpointing"] = False
     return config_d
 
-def get_split_ss(split_type):
+def get_split_ss(ds, split_type):
 
-    
+    entry_df = ds.entry_df
+    assert np.all(entry_df.index == np.arange(entry_df.shape[0]))
     if split_type == "benchmark":
         train_idxs = entry_df[entry_df["fold"]=="train"].index
         val_idxs = entry_df[entry_df["fold"]=="val"].index
@@ -86,11 +90,15 @@ def get_split_ss(split_type):
     else:
         raise ValueError(f"split_type {split_type} not supported")
     print(len(train_idxs), len(val_idxs), len(test_idxs))
+    # get subsets
     train_ds = Subset(ds, train_idxs)
     val_ds = Subset(ds, val_idxs)
     test_ds = Subset(ds, test_idxs)
+    # compute counts (for weights)
+    all_idxs = np.concatenate([train_idxs,val_idxs,test_idxs],axis=0)
+    all_idxs = np.sort(all_idxs)
+    ds.compute_counts(all_idxs)
     return train_ds, val_ds, test_ds
-
 
 config_d = get_config_d()
 
@@ -107,7 +115,12 @@ meta_transform = StandardMeta(
     max_collision_energy=config_d["max_collision_energy"]
 )
 
-pl_model = FPFFNSimulationMassSpecGymModel(**config_d)
+if config_d["model_type"] == "fp_ffn":
+    pl_model = FPFFNSimulationMassSpecGymModel(**config_d)
+elif config_d["model_type"] == "prec_only":
+    pl_model = PrecOnlySimulationMassSpecGymModel(**config_d)
+else:
+    raise ValueError(f"model_type {config_d['model_type']} not supported")
 
 ds = SimulationDataset(
     tsv_pth=config_d["tsv_pth"],
@@ -124,8 +137,7 @@ ds = SimulationDataset(
 #     batch_size=8
 # )
 
-entry_df = ds.entry_df
-train_ds, val_ds, test_ds = get_split_ss("orbitrap_inchikey")
+train_ds, val_ds, test_ds = get_split_ss(ds,"orbitrap_inchikey")
 
 dl_config = {
     "num_workers": config_d["num_workers"],
@@ -141,6 +153,7 @@ logger = pl.loggers.WandbLogger(
     entity=config_d["wandb_entity"],
     project=config_d["wandb_project"],
     name=config_d["wandb_name"],
+    mode=config_d["wandb_mode"],
     tags=[],
     log_model=False,
 )

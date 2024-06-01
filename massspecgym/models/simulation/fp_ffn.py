@@ -3,7 +3,6 @@ import torch
 from massspecgym.transforms import MolToFingerprints, StandardMeta
 from massspecgym.models.simulation.base import SimulationMassSpecGymModel
 from massspecgym.simulation_utils.model_utils import FPFFNModel
-from massspecgym.simulation_utils.spec_utils import sparse_cosine_distance
 
 
 class FPFFNSimulationMassSpecGymModel(SimulationMassSpecGymModel):
@@ -48,28 +47,3 @@ class FPFFNSimulationMassSpecGymModel(SimulationMassSpecGymModel):
             ff_bidirectional=self.hparams.ff_bidirectional,
             ff_output_map_size=self.hparams.ff_output_map_size
         )
-
-    def _setup_loss_fn(self):
-
-        def _loss_fn(
-            true_mzs: torch.Tensor, 
-            true_logprobs: torch.Tensor,
-            true_batch_idxs: torch.Tensor,
-            pred_mzs: torch.Tensor,
-            pred_logprobs: torch.Tensor,
-            pred_batch_idxs: torch.Tensor
-        ):
-
-            cos_dist = sparse_cosine_distance(
-                true_mzs=true_mzs,
-                true_logprobs=true_logprobs,
-                true_batch_idxs=true_batch_idxs,
-                pred_mzs=pred_mzs,
-                pred_logprobs=pred_logprobs,
-                pred_batch_idxs=pred_batch_idxs,
-                mz_max=self.hparams.mz_max,
-                mz_bin_res=self.hparams.mz_bin_res
-            )
-            return cos_dist
-
-        self.loss_fn = _loss_fn

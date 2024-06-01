@@ -180,3 +180,26 @@ class FPFFNModel(BaseModel):
             "pred_batch_idxs": pred_batch_idxs
         }
         return out_d
+
+class PrecOnlyModel(nn.Module):
+
+	def __init__(self):
+
+		super().__init__()
+		self.dummy_params = nn.Parameter(torch.zeros((1,), dtype=torch.float32))
+
+	def forward(
+		self, 
+		spec_prec_mz: torch.Tensor,
+		**kwargs):
+
+		pred_mzs = 0.*self.dummy_params + spec_prec_mz
+		pred_logprobs = torch.zeros_like(pred_mzs)
+		pred_batch_idxs = torch.arange(pred_mzs.shape[0],device=pred_mzs.device)
+
+		out_d = {
+			"pred_mzs": pred_mzs,
+			"pred_logprobs": pred_logprobs,
+			"pred_batch_idxs": pred_batch_idxs
+		}
+		return out_d

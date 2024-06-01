@@ -188,7 +188,6 @@ class SimulationDataset(MassSpecDataset):
         self.mol_feats = {}
         self.meta_feats = {}
         self.process()
-        self.compute_counts()
 
     def process(self):
 
@@ -201,6 +200,9 @@ class SimulationDataset(MassSpecDataset):
         entry_df["spectrum"] = entry_df.apply(lambda row: utils.peaks_to_matchms(row["mzs"], row["intensities"], row["precursor_mz"]), axis=1)
         entry_df["collision_energy"] = entry_df["collision_energy"].apply(utils.ce_str_to_float)
         entry_df = entry_df.drop(columns=["mzs","intensities"])
+        # remove examples that only contain peaks about the mz_max
+        entry_df = entry_df[entry_df["spectrum"].apply(lambda s: np.any(s.peaks.mz < self.spec_transform.mz_to))]
+        # assign id
         entry_df["spec_id"] = np.arange(entry_df.shape[0])
         inchikey_map = {ik:idx for idx, ik in enumerate(sorted(entry_df["inchikey"].unique()))}
         entry_df["mol_id"] = entry_df["inchikey"].map(inchikey_map)
@@ -258,13 +260,14 @@ class SimulationDataset(MassSpecDataset):
         spec_id = entry["spec_id"]
         other_feats = {}
         other_feats["spec_id"] = torch.tensor(spec_id)
-        weight = 1./float(self.spec_per_mol[spec_id])
+        weight = 1./float(self.spec_per_mol.get(spec_id,1.))
         other_feats["weight"] = torch.tensor(weight)
         return other_feats
 
-    def compute_counts(self):
+    def compute_counts(self, index: Optional[np.ndarray]):
 
-        spec_per_mol = self.entry_df[["mol_id","spec_id"]].drop_duplicates().groupby("mol_id").size().reset_index(name="count")
+        entry_df = self.entry_df.iloc[index]
+        spec_per_mol = entry_df[["mol_id","spec_id"]].drop_duplicates().groupby("mol_id").size().reset_index(name="count")
         spec_per_mol = spec_per_mol.merge(self.entry_df[["spec_id","mol_id"]], on="mol_id", how="inner")[["spec_id","count"]]
         self.spec_per_mol = spec_per_mol.set_index("spec_id")["count"].to_dict()
 
