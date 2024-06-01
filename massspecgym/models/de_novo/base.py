@@ -43,6 +43,23 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
         batch_idx: int,
         metric_pref: str = ''
     ) -> None:
+        self.log(
+            f"{metric_pref}loss",
+            outputs['loss'],
+            batch_size=batch['spec'].size(0),
+            sync_dist=True,
+            prog_bar=True,
+        )
+
+    def on_validation_batch_end(
+        self,
+        outputs: T.Any,
+        batch: dict,
+        batch_idx: int,
+        metric_pref: str = ''
+    ) -> None:
+        print('on_val_batch_end')
+        self.on_batch_end(outputs, batch, batch_idx, metric_pref)
         self.evaluate_de_novo_step(
             outputs["mols_pred"],  # (bs, k) list of generated rdkit molecules or SMILES strings
             batch["mol"],  # (bs) list of ground truth SMILES strings
