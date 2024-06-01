@@ -11,7 +11,7 @@ from rdkit import Chem
 from torch.utils.data.dataset import Dataset
 from torch.utils.data.dataloader import default_collate
 from matchms.importing import load_from_mgf
-from massspecgym.transforms import SpecTransform, MolTransform, MolToInChIKey, MetaTransform, FragTransform
+from massspecgym.transforms import SpecTransform, MolTransform, MolToInChIKey, MetaTransform
 
 
 class MassSpecDataset(Dataset):
@@ -172,21 +172,17 @@ class SimulationDataset(MassSpecDataset):
     def __init__(
         self,
         tsv_pth: Path,
-        frag_pth: Path, # TODO: support frag stuff
         meta_keys: T.List[str],
         spec_transform: SpecTransform,
         mol_transform: MolTransform,
         meta_transform: MetaTransform,
-        frag_transform: FragTransform,
         cache_feats: bool): 
         
         self.tsv_pth = tsv_pth
-        self.frag_pth = frag_pth
         self.meta_keys = meta_keys
         self.spec_transform = spec_transform
         self.mol_transform = mol_transform
         self.meta_transform = meta_transform
-        self.frag_transform = frag_transform
         self.cache_feats = cache_feats
         self.spec_feats = {}
         self.mol_feats = {}
@@ -210,9 +206,7 @@ class SimulationDataset(MassSpecDataset):
         entry_df["mol_id"] = entry_df["inchikey"].map(inchikey_map)
         entry_df = entry_df.reset_index(drop=True)
     
-        self.entry_df = entry_df
-        if self.frag_pth is not None:
-            raise NotImplementedError("Frag DAGs not yet supported.")        
+        self.entry_df = entry_df   
 
     def __len__(self) -> int:
 

@@ -71,8 +71,7 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
             pred_batch_idxs,
             true_mzs,
             true_logprobs,
-            true_batch_idxs,
-            weights):
+            true_batch_idxs):
 
             if untransform:
                 # untransform
@@ -102,7 +101,7 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
 
     def get_batch_metric_reduce_fn(self, sample_weight: bool):
 
-        def _batch_metric_reduce(scores, weights, return_weight=False):
+        def _batch_metric_reduce(scores, weights, return_total_weight=False):
             if not sample_weight:
                 # ignore weights (uniform averaging)
                 weights = torch.ones_like(weights)
@@ -152,9 +151,6 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         mean_loss, total_weight = reduce_fn(loss, batch["weight"], return_weight=True)
         batch_size = torch.max(pred_batch_idxs)+1
 
-        # # little trick to work with automatic batch averaging
-        # scaled_loss = loss * (batch_size / total_weight)
-
         # Log loss
         # TODO: not sure if this batch_size param messes up running total
         self.log(
@@ -163,6 +159,8 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
             batch_size=batch_size,
             sync_dist=True,
             prog_bar=True,
+            on_step=True,
+            on_epoch=False
         )
 
         out_d = {
@@ -228,18 +226,22 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
             pred_batch_idxs=pred_batch_idxs,
             true_mzs=true_mzs,
             true_logprobs=true_logprobs,
-            true_batch_idxs=true_batch_idxs,
-            weights=weight
+            true_batch_idxs=true_batch_idxs
         )
-        mean_cos_sim = reduce_fn(cos_sim, weight)
+        mean_cos_sim, total_weight = reduce_fn(cos_sim, weight, return_total_weight=True)
         batch_size = torch.max(true_batch_idxs)+1
 
+        # # little trick to work with automatic batch averaging
+        # scaled_loss = loss * (batch_size / total_weight)
+
         self.log(
-            metric_pref + "spec_cos_sim",
+            metric_pref + "spec_cos_sim_epoch",
             mean_cos_sim,
             batch_size=batch_size,
             sync_dist=True,
             prog_bar=True,
+            on_step=False,
+            on_epoch=True,
         )
 
         # TODO: maybe disable this?

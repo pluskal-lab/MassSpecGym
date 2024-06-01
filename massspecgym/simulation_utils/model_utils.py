@@ -23,6 +23,7 @@ class BaseModel(nn.Module, ABC):
         super().__init__()
         # init metadata
         self.metadata_insert_size = 0
+        self.metadata_insert_location = metadata_insert_location
         self._check_metadata_insert_location(metadata_insert_location)
         self._collision_energy_init(
             collision_energy_input_size=collision_energy_input_size,

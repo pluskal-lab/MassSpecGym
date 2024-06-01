@@ -286,7 +286,3 @@ class StandardMeta(MetaTransform):
         for key in ["adduct","instrument_type","collision_energy","precursor_mz"]:
             collate_data_d[key] = torch.stack(collate_data_d[key],dim=0)
 
-
-class FragTransform:
-
-    pass
