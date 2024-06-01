@@ -52,7 +52,8 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
             batch_ptr (torch.Tensor): Pointer to the start of each sample's candidates in the 
                 concatenated tensors
         """
-        indexes = torch.repeat_interleave(torch.arange(batch_ptr.size(0)), batch_ptr)
+        indexes = torch.arange(batch_ptr.size(0), device=batch_ptr.device)
+        indexes = torch.repeat_interleave(indexes, batch_ptr)
         for at_k in self.at_ks:
             self._update_metric(
                 metric_pref + f"hit_rate@{at_k}",
