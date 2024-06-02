@@ -27,7 +27,10 @@ setup(
         "wandb",
         "huggingface-hub",
         "seaborn",
-        "standardizeUtils @ git+https://github.com/boecker-lab/standardizeUtils/#egg=standardizeUtils"
+        "standardizeUtils @ git+https://github.com/boecker-lab/standardizeUtils/#egg=standardizeUtils",
+        "chemparse",
+        "chemformula",
+        "networkx"
     ],
     extras_require={
         "dev": [
