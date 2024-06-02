@@ -12,7 +12,8 @@ import yaml
 from massspecgym.data.datasets import SimulationDataset
 from massspecgym.transforms import SpecToMzsInts, MolToPyG, StandardMeta, MolToFingerprints
 from massspecgym.simulation_utils.misc_utils import print_shapes
-from massspecgym.models.simulation.fp_ffn import FPFFNSimulationMassSpecGymModel
+from massspecgym.models.simulation.fp import FPSimulationMassSpecGymModel
+from massspecgym.models.simulation.gnn import GNNSimulationMassSpecGymModel
 from massspecgym.models.simulation.prec_only import PrecOnlySimulationMassSpecGymModel
 from massspecgym.simulation_utils.misc_utils import deep_update
 
@@ -84,21 +85,29 @@ def init_run(template_fp, custom_fp, wandb_mode):
         mz_from=config_d["mz_from"],
         mz_to=config_d["mz_to"],
     )
-    mol_transform = MolToFingerprints(
-        fp_types=config_d["fp_types"]
-    )
+    if config_d["model_type"] in ["fp", "prec_only"]:
+        mol_transform = MolToFingerprints(
+            fp_types=config_d["fp_types"]
+        )
+    elif config_d["model_type"] == "gnn":
+        mol_transform = MolToPyG()
+    else:
+        raise ValueError(f"model_type {config_d['model_type']} not supported")
     meta_transform = StandardMeta(
         adducts=config_d["adducts"],
         instrument_types=config_d["instrument_types"],
         max_collision_energy=config_d["max_collision_energy"]
     )
 
-    if config_d["model_type"] == "fp_ffn":
-        pl_model = FPFFNSimulationMassSpecGymModel(**config_d)
+    if config_d["model_type"] == "fp":
+        pl_model = FPSimulationMassSpecGymModel(**config_d)
     elif config_d["model_type"] == "prec_only":
         pl_model = PrecOnlySimulationMassSpecGymModel(**config_d)
+    elif config_d["model_type"] == "gnn":
+        pl_model = GNNSimulationMassSpecGymModel(**config_d)
     else:
         raise ValueError(f"model_type {config_d['model_type']} not supported")
+    # print(pl_model)
 
     ds = SimulationDataset(
         tsv_pth=config_d["tsv_pth"],

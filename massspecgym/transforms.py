@@ -189,16 +189,21 @@ class MolToPyG(MolTransform):
             self.pyg_pe_embed_k
         )
         mol_pyg = mg_featurizer.get_pyg_graph(mol,bigraph=self.pyg_bigraph)
-        return {"mol": mol_pyg}
+        return {"mol_pyg": mol_pyg}
     
-    def get_pyg_sizes(self):
+    def get_input_sizes(self):
 
-        pass
+        g = self.from_smiles("CCO")["mol_pyg"]
+        size_d = {
+            "mol_node_feats_size": g.x.shape[1],
+            "mol_edge_feats_size": g.edge_attr.shape[1],
+        }
+        return size_d
 
     def collate_fn(self, collate_data_d: dict) -> None:
         # mutates dict!
 
-        collate_data_d["mol"] = Batch.from_data_list(collate_data_d["mol"])
+        collate_data_d["mol_pyg"] = Batch.from_data_list(collate_data_d["mol_pyg"])
 
 
 class MolToFingerprints(MolTransform):

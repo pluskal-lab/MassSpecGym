@@ -1,6 +1,6 @@
-wandb_name: "debug_fp_ffn_bb"
+wandb_name: "debug_fp_bb"
 tsv_pth: "data/MassSpecGym_4.tsv"
-model_type: "fp_ffn"
+model_type: "fp"
 ints_transform: "sqrt"
 accelerator: "gpu"
 max_epochs: 10
