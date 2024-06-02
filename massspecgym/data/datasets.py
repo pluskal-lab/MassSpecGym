@@ -188,6 +188,7 @@ class SimulationDataset(MassSpecDataset):
         self.mol_feats = {}
         self.meta_feats = {}
         self.process()
+        self.spec_per_mol = {}
 
     def process(self):
 
@@ -202,6 +203,8 @@ class SimulationDataset(MassSpecDataset):
         entry_df = entry_df.drop(columns=["mzs","intensities"])
         # remove examples that only contain peaks about the mz_max
         entry_df = entry_df[entry_df["spectrum"].apply(lambda s: np.any(s.peaks.mz < self.spec_transform.mz_to))]
+        # remove examples with precursor_mz > mz_max
+        entry_df = entry_df[entry_df["precursor_mz"] < self.spec_transform.mz_to]
         # assign id
         entry_df["spec_id"] = np.arange(entry_df.shape[0])
         inchikey_map = {ik:idx for idx, ik in enumerate(sorted(entry_df["inchikey"].unique()))}

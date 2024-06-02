@@ -6,7 +6,8 @@ import torch.nn as nn
 import pytorch_lightning as pl
 
 from massspecgym.models.base import MassSpecGymModel
-from massspecgym.simulation_utils.misc_utils import scatter_logl2normalize, scatter_logsumexp, safelog
+from massspecgym.simulation_utils.misc_utils import scatter_logl2normalize, scatter_logsumexp, safelog, \
+    scatter_reduce
 from massspecgym.simulation_utils.spec_utils import batched_bin_func, sparse_cosine_distance, \
     get_ints_transform_func, get_ints_untransform_func, batched_l1_normalize
 
@@ -20,6 +21,7 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         self._setup_loss_fn()
         self._setup_spec_fns()
         self._setup_metric_fns()
+        self.metric_d = {}
 
     @abstractmethod
     def _setup_model(self):
@@ -48,12 +50,34 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
     def _preproc_spec(self,spec_mzs,spec_ints,spec_batch_idxs):
 
         # transform
+        spec_ints = spec_ints * 1000.
+        # max_ints = scatter_reduce(
+		# 	spec_ints,
+		# 	spec_batch_idxs,
+		# 	"amax",
+		# 	default=0.,
+		# 	include_self=False ###
+		# )
+        # sum_ints = scatter_reduce(
+		# 	spec_ints,
+		# 	spec_batch_idxs,
+		# 	"sum",
+		# 	default=0.,
+		# 	include_self=False ###
+		# )
+        # print(max_ints)
+        # print(sum_ints)
+        # ints2 = self.ints_normalize_func(spec_ints,spec_batch_idxs)
         spec_ints = self.ints_transform_func(spec_ints)
         # renormalize
         spec_ints = self.ints_normalize_func(
             spec_ints,
             spec_batch_idxs
         )
+        # ints1 = self.ints_normalize_func(self.ints_untransform_func(spec_ints,spec_batch_idxs),spec_batch_idxs)
+        # print(ints1)
+        # print(ints2)
+        # import pdb; pdb.set_trace()
         # log
         spec_ints = safelog(spec_ints)
         return spec_mzs, spec_ints, spec_batch_idxs
@@ -96,11 +120,11 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
             if untransform:
                 # untransform
                 true_logprobs = safelog(self.ints_normalize_func(
-                    self.ints_untransform_func(torch.exp(true_logprobs)), 
+                    self.ints_untransform_func(torch.exp(true_logprobs), true_batch_idxs), 
                     true_batch_idxs
                 ))
                 pred_logprobs = safelog(self.ints_normalize_func(
-                    self.ints_untransform_func(torch.exp(pred_logprobs)), 
+                    self.ints_untransform_func(torch.exp(pred_logprobs), pred_batch_idxs), 
                     pred_batch_idxs
                 ))
 
@@ -121,16 +145,14 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
 
     def get_batch_metric_reduce_fn(self, sample_weight: bool):
 
-        def _batch_metric_reduce(scores, weights, return_total_weight=False):
+        def _batch_metric_reduce(scores, weights):
             if not sample_weight:
                 # ignore weights (uniform averaging)
                 weights = torch.ones_like(weights)
             w_total = torch.sum(weights, dim=0)
-            w_mean_score = torch.sum(scores * weights, dim=0) / w_total
-            if return_total_weight:
-                return w_mean_score, w_total
-            else:
-                return w_mean_score
+            w_score_total = torch.sum(scores * weights, dim=0)
+            w_mean = w_score_total / w_total
+            return w_mean, w_score_total, w_total
 
         return _batch_metric_reduce
 
@@ -153,6 +175,7 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
             batch["spec_ints"],
             batch["spec_batch_idxs"]
         )
+
         out_d = self.model.forward(
             **batch
         )
@@ -168,7 +191,7 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
             pred_batch_idxs=pred_batch_idxs
         )
         reduce_fn = self.train_reduce_fn if metric_pref == "train_" else self.eval_reduce_fn
-        mean_loss = reduce_fn(loss, batch["weight"])
+        mean_loss = reduce_fn(loss, batch["weight"])[0]
         batch_size = torch.max(pred_batch_idxs)+1
 
         # Log loss
@@ -248,41 +271,52 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
             true_logprobs=true_logprobs,
             true_batch_idxs=true_batch_idxs
         )
-        mean_cos_sim, total_weight = reduce_fn(cos_sim, weight, return_total_weight=True)
+        wmean_cos_sim, wsum_cos_sim, total_weight = reduce_fn(cos_sim, weight)
         batch_size = torch.max(true_batch_idxs)+1
 
         # # little trick to work with automatic batch accumulation
         # scaled_cos_sim = mean_cos_sim * (batch_size / total_weight)
-        scaled_cos_sim = mean_cos_sim
+        # scaled_cos_sim = mean_cos_sim
 
         self.log(
             metric_pref + "spec_cos_sim_epoch",
-            scaled_cos_sim,
+            wmean_cos_sim,
             batch_size=batch_size,
             sync_dist=True,
-            prog_bar=True,
+            prog_bar=False,
             on_step=False,
             on_epoch=True,
         )
 
-        # TODO: maybe disable this?
-        # cos_sim_obj = cos_sim_obj_fn(
-        #     pred_mzs=pred_mzs,
-        #     pred_logprobs=pred_logprobs,
-        #     pred_batch_idxs=pred_batch_idxs,
-        #     true_mzs=true_mzs,
-        #     true_logprobs=true_logprobs,
-        #     true_batch_idxs=true_batch_idxs,
-        #     weights=weight
-        # )
+        key = metric_pref + "spec_cos_sim_epoch2"
+        if key in self.metric_d:
+            self.metric_d[key][0].append(wsum_cos_sim)
+            self.metric_d[key][1].append(total_weight)
+        else:
+            self.metric_d[key] = [[wsum_cos_sim],[total_weight]]
 
-        # self.log(
-        #     metric_pref + "spec_cos_sim_obj",
-        #     cos_sim_obj,
-        #     batch_size=batch_size,
-        #     sync_dist=True,
-        #     prog_bar=True,
-        # )
+    def on_train_epoch_end(self):
 
-        
+        train_metrics = {k: v for k, v in self.metric_d.items() if "train_" in k}
+        for k, v in train_metrics.items():
+            wmean_v = torch.sum(torch.stack(v[0])) / torch.sum(torch.stack(v[1]))
+            self.log(
+                k, 
+                wmean_v, 
+                sync_dist=True, 
+                prog_bar=False,
+            )
+            del self.metric_d[k]
 
+    def on_validation_epoch_end(self):
+
+        val_metrics = {k: v for k, v in self.metric_d.items() if "val_" in k}
+        for k, v in val_metrics.items():
+            wmean_v = torch.sum(torch.stack(v[0])) / torch.sum(torch.stack(v[1]))
+            self.log(
+                k, 
+                wmean_v,
+                sync_dist=True, 
+                prog_bar=False,
+            )
+            del self.metric_d[k]

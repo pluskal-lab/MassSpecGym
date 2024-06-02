@@ -26,17 +26,6 @@ MZ_BIN_RES = 0.01
 INTS_THRESH = 0.0
 
 def get_ints_transform_func(ints_transform):
-	""" method to get int transferom func
-
-	Args:
-		ints_transform (_type_): _description_
-
-	Raises:
-		ValueError: _description_
-
-	Returns:
-		_type_: _description_
-	"""
 
 	_func = None
 	if ints_transform == "log10":
@@ -55,23 +44,13 @@ def get_ints_transform_func(ints_transform):
 
 
 def get_ints_untransform_func(ints_transform):
-	"""
-
-	Args:
-		ints_transform (_type_): _description_
-
-	Raises:
-		ValueError: _description_
-
-	Returns:
-		_type_: _description_
-	"""
+	
 	if ints_transform == "log10":
 		max_ints = float(np.log10(1000. + 1.))
 		def _untransform_fn(x): return 10**x - 1.
 	elif ints_transform == "log10t3":
-		max_ints = float(np.log10(1000. + 1.) / 3.)
-		def _untransform_fn(x): return 10**(3 * x) - 1.
+		max_ints = float(np.log10(1000. / 3. + 1.))
+		def _untransform_fn(x): return 3. * (10**x - 1.)
 	elif ints_transform == "loge":
 		max_ints = float(np.log(1000. + 1.))
 		def _untransform_fn(x): return torch.exp(x) - 1.
@@ -83,8 +62,15 @@ def get_ints_untransform_func(ints_transform):
 		def _untransform_fn(x): return x
 	else:
 		raise ValueError("invalid transform")
-	def _func(ints):
-		ints = ints / (torch.max(ints) + EPS) * max_ints
+	def _func(ints, batch_idxs):
+		old_max_ints = scatter_reduce(
+			ints,
+			batch_idxs,
+			"amax",
+			default=0.,
+			include_self=False ###
+		)
+		ints = ints / (old_max_ints[batch_idxs] + EPS) * max_ints
 		ints = _untransform_fn(ints)
 		ints = torch.clamp(ints, min=0.)
 		assert not torch.isnan(ints).any()

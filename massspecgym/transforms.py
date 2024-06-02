@@ -91,10 +91,11 @@ class SpecToMzsInts(SpecTransform):
 
     def matchms_transforms(self, spec: matchms.Spectrum) -> matchms.Spectrum:
         # little hack to avoid selecting peaks at mz_to exactly
-        spec = ms_filters.select_by_mz(spec, mz_from=self.mz_from, mz_to=self.mz_to-self.mz_bin_res)
+        spec = ms_filters.select_by_mz(spec, mz_from=self.mz_from, mz_to=self.mz_to)
         if self.n_peaks is not None:
             spec = ms_filters.reduce_to_number_of_peaks(spec, n_max=self.n_peaks)
         spec = ms_filters.normalize_intensities(spec)
+        # spec.peaks.intensities = spec.peaks.intensities * 1000.
         return spec
 
     def matchms_to_torch(self, spec: matchms.Spectrum) -> dict:

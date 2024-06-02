@@ -190,11 +190,11 @@ class PrecOnlyModel(nn.Module):
 
 	def forward(
 		self, 
-		spec_prec_mz: torch.Tensor,
+		precursor_mz: torch.Tensor,
 		**kwargs):
 
-		pred_mzs = 0.*self.dummy_params + spec_prec_mz
-		pred_logprobs = torch.zeros_like(pred_mzs)
+		pred_mzs = precursor_mz
+		pred_logprobs = 0.*self.dummy_params + torch.zeros_like(pred_mzs)
 		pred_batch_idxs = torch.arange(pred_mzs.shape[0],device=pred_mzs.device)
 
 		out_d = {

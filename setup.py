@@ -17,7 +17,7 @@ setup(
     long_description_content_type="text/markdown",
     # url="",  # TODO: Add URL to documentation
     install_requires=[  # TODO: specify versions, requirements.txt
-        "torch",
+        # "torch",
         "pytorch-lightning",
         "torchmetrics",
         "numpy",
@@ -27,7 +27,8 @@ setup(
         "wandb",
         "huggingface-hub",
         "seaborn",
-        "standardizeUtils @ git+https://github.com/boecker-lab/standardizeUtils/#egg=standardizeUtils"
+        "standardizeUtils @ git+https://github.com/boecker-lab/standardizeUtils/#egg=standardizeUtils",
+        # "torch_geometric"
     ],
     extras_require={"dev": ["black",
                             "pytest",
