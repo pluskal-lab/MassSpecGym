@@ -57,7 +57,13 @@ def get_split_ss(ds, split_type):
         test_idxs = entry_df[entry_df["mol_id"].isin(test_ids)].index
     else:
         raise ValueError(f"split_type {split_type} not supported")
+    train_mol_ids = entry_df.loc[train_idxs]["mol_id"].unique()
+    val_mol_ids = entry_df.loc[val_idxs]["mol_id"].unique()
+    test_mol_ids = entry_df.loc[test_idxs]["mol_id"].unique()
+    print(">>> Number of Spectra")
     print(len(train_idxs), len(val_idxs), len(test_idxs))
+    print(">>> Number of Unique Molecules")
+    print(len(train_mol_ids), len(val_mol_ids), len(test_mol_ids))
     # get subsets
     train_ds = Subset(ds, train_idxs)
     val_ds = Subset(ds, val_idxs)
@@ -100,7 +106,7 @@ def init_run(template_fp, custom_fp, wandb_mode):
         spec_transform=spec_transform,
         mol_transform=mol_transform,
         meta_transform=meta_transform,
-        cache_feats=False)
+        cache_feats=config_d["cache_feats"])
 
     # # Init data module
     # data_module = MassSpecDataModule(

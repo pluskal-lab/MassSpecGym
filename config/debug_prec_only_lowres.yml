@@ -1,5 +1,6 @@
-wandb_name: "debug_prec_only"
+wandb_name: "debug_prec_only_lowres"
 tsv_pth: "data/MassSpecGym_4.tsv"
 model_type: "prec_only"
 ints_transform: "none"
+mz_bin_res: 1.0
 max_epochs: 1

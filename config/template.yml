@@ -43,3 +43,4 @@ log_every_n_steps: 1
 max_epochs: 100
 seed: 420
 enable_checkpointing: False
+cache_feats: False
