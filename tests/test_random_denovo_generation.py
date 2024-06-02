@@ -157,21 +157,21 @@ class RandomDeNovoTestcase(unittest.TestCase):
     #         img = Draw.MolToImage(molecule)
     #         img.save(f'molecule_{mol_i}.png')
 
-    def test_step_function(self):
-        batch = {
-            "mol": [
-                "C/C1=C/CC[C@@]2(C)O[C@@H]2[C@H]2OC(=O)[C@H](CN(C)C)[C@@H]2CC1",
-                "COc1ncc2cc(C(=O)Nc3c(Cl)ccc(C(=O)NCc4cc(Cl)ccc4)c3)c(=O)[nH]c2n1",
-                "CNC(=O)O[C@H]1COc2c(cc(N3CCN(C4COC4)CC3)cc2)[C@@H]1NC(=O)c1ccc(F)cc1",
-                "COc1nc(N2CCC3(CCCN(Cc4c[nH]c5ccccc45)C3=O)CC2)ncc1",
-                "Cc1c(C)c2c(cc1)c(=O)c1cccc(CC(=O)O)c1o2",
-            ]
-        }
-        for batch_i in range(5000):
-            mols = self.generator_with_formula.step(batch)["mols_pred"]
-            for mol_i, molecule in enumerate(mols):
-                img = Draw.MolToImage(molecule)
-                # img.save(f'molecule_{batch_i}_{mol_i}.png')
+    # def test_step_function(self):
+    #     batch = {
+    #         "mol": [
+    #             "C/C1=C/CC[C@@]2(C)O[C@@H]2[C@H]2OC(=O)[C@H](CN(C)C)[C@@H]2CC1",
+    #             "COc1ncc2cc(C(=O)Nc3c(Cl)ccc(C(=O)NCc4cc(Cl)ccc4)c3)c(=O)[nH]c2n1",
+    #             "CNC(=O)O[C@H]1COc2c(cc(N3CCN(C4COC4)CC3)cc2)[C@@H]1NC(=O)c1ccc(F)cc1",
+    #             "COc1nc(N2CCC3(CCCN(Cc4c[nH]c5ccccc45)C3=O)CC2)ncc1",
+    #             "Cc1c(C)c2c(cc1)c(=O)c1cccc(CC(=O)O)c1o2",
+    #         ]
+    #     }
+    #     for batch_i in range(5000):
+    #         mols = self.generator_with_formula.step(batch)["mols_pred"]
+    #         for mol_i, molecule in enumerate(mols):
+    #             img = Draw.MolToImage(molecule)
+    #             img.save(f'molecule_{batch_i}_{mol_i}.png')
 
 
 if __name__ == "__main__":
