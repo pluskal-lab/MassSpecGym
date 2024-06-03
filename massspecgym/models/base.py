@@ -62,6 +62,10 @@ class MassSpecGymModel(pl.LightningModule, ABC):
             self.parameters(), lr=self.lr, weight_decay=self.weight_decay
         )
 
+    def get_checkpoint_monitors(self) -> list[dict]:
+        monitors = [{"monitor": "val_loss", "mode": "min", "early_stopping": True}]
+        return monitors
+
     def _update_metric(
         self,
         name: str,
