@@ -89,6 +89,7 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
                 smiles_pred_valid_sample, mols_pred_valid_sample = [], []
                 for s in mols_pred_sample:
                     m = Chem.MolFromSmiles(s) if s is not None else None
+                    # If SMILES cannot be converted to RDKit molecule, the molecule is set to None
                     smiles_pred_valid_sample.append(s if m is not None else None)
                     mols_pred_valid_sample.append(m)
                 smiles_pred_valid.append(smiles_pred_valid_sample)
@@ -101,6 +102,14 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
             ]
         else:
             raise ValueError(f"Invalid mol_pred_kind: {self.mol_pred_kind}")
+
+        # Auxiliary metric: number of valid molecules
+        self._update_metric(
+            metric_pref + f"num_valid_mols",
+            MeanMetric,
+            ([sum([m is not None for m in ms]) for ms in mols_pred],),
+            batch_size=len(mols_pred),
+        )
 
         # Get RDKit molecule objects for ground truth
         smile_true = mol_true
