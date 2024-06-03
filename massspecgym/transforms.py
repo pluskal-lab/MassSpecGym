@@ -75,7 +75,7 @@ class SpecTokenizer(SpecTransform):
 class SpecBinner(SpecTransform):
     def __init__(
         self,
-        max_mz: float = 1000,
+        max_mz: float = 1005,
         bin_width: float = 1,
         to_rel_intensities: bool = True,
     ) -> None:
