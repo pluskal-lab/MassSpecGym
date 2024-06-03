@@ -59,7 +59,7 @@ class FingerprintFFNRetrieval(RetrievalMassSpecGymModel):
 
         # Log loss
         self.log(
-            metric_pref + "loss_step",
+            metric_pref + "loss",
             loss,
             batch_size=x.size(0),
             sync_dist=True,
