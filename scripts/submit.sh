@@ -3,8 +3,8 @@
 # Submit a job to a SLURM cluster to train on 8 GPUs on 1 node.
 
 # Usage example:
-# Traing retrieval model for 4 hours:
-# ./submit.sh train_retrieval.sh 4:00
+# Train for 4 hours:
+# ./submit.sh train.sh 4:00
 
 # Get the name of the file and time limit as positional arguments
 # Expected format for time: HH:MM

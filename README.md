@@ -18,3 +18,8 @@ conda activate massspecgym
 git clone https://github.com/pluskal-lab/MassSpecGym.git; cd MassSpecGym
 pip install -e .[dev,notebooks]
 ```
+
+## TODO
+
+- [ ] Refactor `transforms.py` -> `data/transforms.py`
+- [ ] Optimize de novo evaluation metrics to run in parallel by workers initialized in the corresponding pl.Module constructor
