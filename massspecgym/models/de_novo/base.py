@@ -126,15 +126,16 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
             # report the minimum distance. The minimum distances for each sample in the batch are
             # averaged across the epoch.
             min_mces_dists = []
+            mces_thld = 100
             # Iterate over batch
             for preds, true in zip(smiles_pred_top_k, smile_true):
                 # Iterate over top-k predicted molecule samples
                 dists = [
                     MCES(s1=true, s2=pred, **self.myopic_mces_kwargs)[1]
-                    if pred is not None else 20  # TODO Replace with a more sensible value
+                    if pred is not None else mces_thld
                     for pred in preds
                 ]
-                min_mces_dists.append(min(dists))
+                min_mces_dists.append(min(min(dists), mces_thld))
             self._update_metric(
                 metric_pref + f"top_{top_k}_min_mces_dist",
                 MeanMetric,
