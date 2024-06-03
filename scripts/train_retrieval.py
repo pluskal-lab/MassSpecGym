@@ -34,9 +34,18 @@ parser.add_argument('--val_check_interval', type=float, default=1.0)
 
 # General hyperparameters
 parser.add_argument('--batch_size', type=int, default=64)
+parser.add_argument('--lr', type=float, default=1e-4)
+parser.add_argument('--weight_decay', type=float, default=0.0)
+
+# Model hyperparameters
+parser.add_argument('--hidden_channels', type=int, default=512)
+parser.add_argument('--num_layers', type=int, default=2)
+parser.add_argument('--dropout', type=float, default=0.0)
 
 # Retrieval setup
 parser.add_argument('--fp_size', type=int, default=4096)
+parser.add_argument('--max_mz', type=int, default=1005)
+parser.add_argument('--bin_width', type=float, default=1)
 
 
 def main(args):
@@ -56,7 +65,7 @@ def main(args):
     # Load dataset
     dataset = RetrievalDataset(
         pth=mgf_pth,
-        spec_transform=SpecBinner(),
+        spec_transform=SpecBinner(max_mz=args.max_mz, bin_width=args.bin_width),
         mol_transform=MolFingerprinter(fp_size=args.fp_size),
         candidates_pth=candidates_pth,
     )
@@ -70,8 +79,13 @@ def main(args):
 
     # Init model
     model = FingerprintFFNRetrieval(
-        in_channels=1000,
-        out_channels=args.fp_size
+        lr=args.lr,
+        weight_decay=args.weight_decay,
+        in_channels=int(args.max_mz * (1 / args.bin_width)),
+        hidden_channels=args.hidden_channels,
+        out_channels=args.fp_size,
+        num_layers=args.num_layers,
+        dropout=args.dropout,
     )
 
     # Init logger
