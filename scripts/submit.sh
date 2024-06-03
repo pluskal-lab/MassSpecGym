@@ -1,12 +1,20 @@
 #!/bin/bash
 
-# Get submission running time as first positional argument 
-# Expected format: HH:MM
+# Get the name of the file and time limit as positional arguments
+# Expected format for time: HH:MM
 if [ -z "$1" ]
+then
+  echo "Error: No submission script name provided."
+  exit 1
+else
+  script_name="$1"
+fi
+
+if [ -z "$2" ]
 then
   time="48:00:00"
 else
-  time="${1}:00"
+  time="${2}:00"
 fi
 
 # Init logging dir and common file
@@ -30,7 +38,7 @@ job_id=$(sbatch \
   --error="${outdir}/${job_key}"_errout.txt \
   --job-name="${job_key}" \
   --export=job_key="${job_key}" \
-  "${train_dir}/train_retrieval.sh"
+  "${train_dir}/${script_name}"
 )
 
 # Extract job ID from the output
