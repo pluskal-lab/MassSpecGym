@@ -75,14 +75,14 @@ class SpecTokenizer(SpecTransform):
 class SpecBinner(SpecTransform):
     def __init__(
         self,
-        max_mz: float = 1000,
+        max_mz: float = 1005,
         bin_width: float = 1,
         to_rel_intensities: bool = True,
     ) -> None:
         self.max_mz = max_mz
         self.bin_width = bin_width
         self.to_rel_intensities = to_rel_intensities
-        if max_mz % bin_width != 0:
+        if not (max_mz / bin_width).is_integer():
             raise ValueError("`max_mz` must be divisible by `bin_width`.")
 
     def matchms_transforms(self, spec: matchms.Spectrum) -> matchms.Spectrum:
