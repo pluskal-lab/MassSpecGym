@@ -15,7 +15,6 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
         nhead: int,
         num_encoder_layers: int,
         num_decoder_layers: int,
-        dim_feedforward: int,
         smiles_tokenizer: Tokenizer,
         start_token: str = "<s>",
         end_token: str = "</s>",
@@ -39,6 +38,8 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
         self.max_smiles_len = max_smiles_len
         self.k_predictions = k_predictions
         self.temperature = temperature
+        if self.k_predictions == 1:
+            self.temperature = None
 
         self.src_encoder = nn.Linear(input_dim, d_model)
         self.tgt_embedding = nn.Embedding(self.vocab_size, d_model)
@@ -47,7 +48,7 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
             nhead=nhead,
             num_encoder_layers=num_encoder_layers,
             num_decoder_layers=num_decoder_layers,
-            dim_feedforward=dim_feedforward,
+            dim_feedforward=4 * d_model,
             dropout=dropout,
             norm_first=pre_norm
         )
@@ -72,13 +73,13 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
         output = self.tgt_decoder(output)  # (seq_len, batch_size, vocab_size)
         return output
 
-    def step(self, batch: dict, metric_pref: str = "") -> tuple[torch.Tensor, torch.Tensor]:
+    def step(self, batch: dict, metric_pref: str = "") -> dict:
         spec = batch["spec"].float()  # (batch_size, seq_len, in_dim)
         smiles = batch["mol"]  # List of SMILES of length batch_size
 
         smiles = self.smiles_tokenizer.encode_batch(smiles)
         smiles = [s.ids for s in smiles]
-        smiles = torch.tensor(smiles)  # (batch_size, seq_len)
+        smiles = torch.tensor(smiles, device=spec.device)  # (batch_size, seq_len)
 
         # Generating padding masks for variable-length sequences
         src_key_padding_mask = self.generate_src_padding_mask(spec)
