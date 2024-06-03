@@ -195,16 +195,16 @@ class SimulationDataset(MassSpecDataset):
         entry_df = pd.read_csv(self.tsv_pth, sep="\t")
         # remove any spectra not included in the simulation challenge
         entry_df = entry_df[entry_df["simulation_challenge"]]
-        # remove examples in train split that might be missing metadata
+        # remove examples in train split the are missing CE information or are not [M+H]+
         entry_df = entry_df[(entry_df["adduct"]=="[M+H]+") & (~entry_df["collision_energy"].isna())] 
+        # mz checks
+        mz_max = entry_df["mzs"].apply(lambda l: max(float(x) for x in l.split(",")))
+        assert (mz_max <= self.spec_transform.mz_to).all()
+        assert (entry_df["precursor_mz"] <= self.spec_transform.mz_to).all()
         # convert spectrum and CE to usable formats
         entry_df["spectrum"] = entry_df.apply(lambda row: utils.peaks_to_matchms(row["mzs"], row["intensities"], row["precursor_mz"]), axis=1)
         entry_df["collision_energy"] = entry_df["collision_energy"].apply(utils.ce_str_to_float)
         entry_df = entry_df.drop(columns=["mzs","intensities"])
-        # remove examples that only contain peaks about the mz_max
-        entry_df = entry_df[entry_df["spectrum"].apply(lambda s: np.any(s.peaks.mz < self.spec_transform.mz_to))]
-        # remove examples with precursor_mz > mz_max
-        entry_df = entry_df[entry_df["precursor_mz"] <= self.spec_transform.mz_to]
         # assign id
         entry_df["spec_id"] = np.arange(entry_df.shape[0])
         inchikey_map = {ik:idx for idx, ik in enumerate(sorted(entry_df["inchikey"].unique()))}
