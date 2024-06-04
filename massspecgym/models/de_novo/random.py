@@ -95,7 +95,7 @@ def create_rdkit_molecule_from_edge_list(
 
 class RandomDeNovo(DeNovoMassSpecGymModel):
     def __init__(
-        self, formula_known: bool = False, count_of_valid_valence_assignments: int = 3
+        self, formula_known: bool = True, count_of_valid_valence_assignments: int = 3, estimate_chem_element_stats: bool = True
     ):
         """
 
@@ -108,10 +108,19 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                                                     the formula are generated, then one assignment is is picked at random.
                                                     The default is set to 3 for the computational speed purposes.
                                                     When setting to 1, the first feasible valence assignment will be used.
+        @param estimate_chem_element_stats: a boolean flag controlling if prior information about elements' valences
+                                            and bond type distributions is estimated from training data
         """
         super(RandomDeNovo, self).__init__()
         self.formula_known = formula_known
         self.count_of_valid_valence_assignments = count_of_valid_valence_assignments
+        self.estimate_chem_element_stats = estimate_chem_element_stats
+        # prior chemical knownledge about element valences
+        self.element_2_valences = ELEMENT_VALENCES
+        # a dictionary structure for statistics about bond type distributions, if fit is called
+        self.element_2_valence_2_bondtype_proportions: dict[chem_element, dict[int, float]] = None
+        # a helping structures for (optional) derivation of statistics about valences and bond type distributions
+        self._element_2_observed_valence_and_bondtypes: dict[chem_element, list[int, list[int]]] = defaultdict(list)
 
     def generator_for_splits_of_chem_element_atoms_by_possible_valences(
         self,
@@ -199,7 +208,7 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
             )
             del remaining_unassigned_atoms_with_counts[chem_element_type]
             # generating splits of the element count into groups with possible valences
-            valences_common, valences_others = ELEMENT_VALENCES[
+            valences_common, valences_others = self.element_2_valences[
                 chem_element_type.capitalize()
             ]
             possible_element_valences = (
@@ -288,7 +297,7 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         }
         # checking that all input elements are valid
         for element in element_2_count.keys():
-            if element.capitalize() not in ELEMENT_VALENCES:
+            if element.capitalize() not in self.element_2_valences:
                 raise ValueError(
                     f"Found an unknown element {element.capitalize()} in the formula {chemical_formula}"
                 )
@@ -347,7 +356,8 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         shuffle(generated_candidate_valence_assignments)
         return generated_candidate_valence_assignments
 
-    def generate_random_molecule_graph_via_traversal(self, chemical_formula: str):
+    def generate_random_molecule_graph_via_traversal(self, chemical_formula: str,
+                                                     max_number_of_retries_per_valence_assignment: int = 100):
         """
         A function generating a random molecule graph.
         The generation process ensures that the graph is connected.
@@ -355,6 +365,8 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         the function returns a graphs without self-loops.
 
         @param chemical_formula: a string containing the chemical formula of the molecule
+        @param max_number_of_retries_per_valence_assignment: a max count of attempts to generate a random spanning tree 
+                                                             for a given potentially feasible valence assignment
 
         @note In the future the method can be made into a function in a separate utils module,
         for the simplicity of codebase organization and testing purposes it's kept as the method for now
@@ -372,7 +384,9 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
             # The feasibility check `self.is_valence_assignment_feasible` inside the
             # `self.get_feasible_atom_valence_assignments` function should ensure the possibility to create the tree.
             spanning_tree_was_generated = False
-            while not spanning_tree_was_generated:
+            spanning_tree_generation_attempts = 0
+            while not spanning_tree_was_generated and spanning_tree_generation_attempts < max_number_of_retries_per_valence_assignment:
+                spanning_tree_generation_attempts += 1
                 # we optimistically set the value of `spanning_tree_was_generated` to True,
                 # If the current traversal do not lead to a spanning tree,
                 # then `spanning_tree_was_generated` is set to False in the code below
@@ -419,7 +433,7 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                     edge_end_node_i = choice(list(possible_candidates_for_end_node))
                     # note that the graph is undirected, start-end node refers to the random traversal only
                     edge_list.append((edge_start_node_i, edge_end_node_i))
-                    # recording the new node added to the random spanning tree
+                    # recording the node added to the random spanning tree
                     spanning_tree_visited_nodes_set.add(edge_end_node_i)
                     spanning_tree_traversal_list.append(edge_end_node_i)
                     # decrease the node degrees correspondingly
@@ -472,6 +486,20 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                 return create_rdkit_molecule_from_edge_list(edge_list, all_graph_nodes)
         return create_rdkit_molecule_from_edge_list(edge_list, all_graph_nodes)
 
+    def training_step(
+        self, batch: dict, batch_idx: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        # recording statistics about chemical element statistics
+        if self.estimate_chem_element_stats:
+            molecule = Chem.MolFromSmiles('CC1(C2CC(=O)C3(C(C24COC(=O)CC4O1)CCC5(C36C(O6)C(=O)OC5C7=COC=C7)C)C)C')
+            for atom in molecule.GetAtoms():
+                # print(atom.GetSymbol(), atom.GetTotalValence())
+                atom_bonds = atom.GetBonds()
+                # for bond in atom_bonds:
+                #     print(bond.GetBondTypeAsDouble())
+            pass
+        super().training_step()
+
     def step(
         self, batch: dict, metric_pref: str = ""
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -484,6 +512,7 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         if self.formula_known:
             formulas = []
             for smiles in mols:
+                # print('smiles: ', smiles)
                 molecule = Chem.MolFromSmiles(smiles)
                 formulas.append(CalcMolFormula(molecule))
         else:
@@ -494,9 +523,13 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
             for formula in formulas
         ]
 
+        # list of predicted smiles
+        smiles_pred = [Chem.MolToSmiles(mol) for mol in mols_pred]
+        # print('smiles_pred: ', smiles_pred)
+
         # Random baseline, so we return a dummy loss
         loss = torch.tensor(0.0, requires_grad=True)
-        return dict(loss=loss, mols_pred=mols_pred)
+        return dict(loss=loss, mols_pred=smiles_pred)
 
     def configure_optimizers(self):
         # No optimizer needed for a random baseline
