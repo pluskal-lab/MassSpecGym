@@ -1,3 +1,4 @@
+import time
 import unittest
 from collections.abc import Generator
 
@@ -151,11 +152,27 @@ class RandomDeNovoTestcase(unittest.TestCase):
             3,
         )
 
-    # def test_random_molecule_generation(self):
-    #     for mol_i in range(5000):
-    #         molecule = self.generator_with_formula.generate_random_molecule_graph_via_traversal(chemical_formula='C23H17Cl2N5O4')
-    #         img = Draw.MolToImage(molecule)
-    #         img.save(f'molecule_{mol_i}.png')
+    def test_random_molecule_generation_hard(self):
+        start_time = time.time()
+        molecule = self.generator_with_formula.generate_random_molecule_graph_via_traversal(chemical_formula='C13H24Cl6O8P2')
+        total_secs = time.time() - start_time
+        self.assertLess(total_secs, 1)
+
+    def test_random_molecule_generation_for_ion_1(self):
+        molecule = self.generator_with_formula.generate_random_molecule_graph_via_traversal(chemical_formula='C8H18OP+')
+        # img = Draw.MolToImage(molecule)
+        # img.save(f'molecule_charged.png')
+
+    def test_random_molecule_generation_for_ion_2(self):
+        molecule = self.generator_with_formula.generate_random_molecule_graph_via_traversal(chemical_formula='C3H6NO4S-')
+        img = Draw.MolToImage(molecule)
+        img.save(f'molecule_charged.png')
+
+    def test_random_molecule_generation(self):
+        for mol_i in range(100):
+            molecule = self.generator_with_formula.generate_random_molecule_graph_via_traversal(chemical_formula='C23H17Cl2N5O4')
+            img = Draw.MolToImage(molecule)
+            img.save(f'molecule_{mol_i}.png')
 
     # def test_step_function(self):
     #     batch = {

@@ -84,11 +84,31 @@ def create_rdkit_molecule_from_edge_list(
     # creating an empty editable molecule
     mol = Chem.RWMol()
     # adding the atoms to the molecule object
-    for atom in all_graph_nodes:
-        mol.AddAtom(Chem.Atom(atom.atom_type))
+
+    # as some all_graph nodes can represent charges, we have to remember mapping of molecular atom index to
+    # the corresponding atom index in all_graph_nodes
+    all_graph_atom_idx_2_mol_atom_idx = {}
+    for all_graph_atom_idx, atom in enumerate(all_graph_nodes):
+        # ignoring charge-related graph nodes
+        if atom.atom_type not in {'+', '-'}:
+            all_graph_atom_idx_2_mol_atom_idx[all_graph_atom_idx] = mol.GetNumAtoms()
+            mol.AddAtom(Chem.Atom(atom.atom_type))
     # adding bonds
     for (edge_node_i, edge_node_j, bond_type) in edge_list_rdkit:
-        mol.AddBond(edge_node_i, edge_node_j, bond_type)
+        # checking if the edge represents a charge of connected atom
+        the_edge_represents_charge = len({all_graph_nodes[node_i].atom_type for node_i in [edge_node_i, edge_node_j]}.intersection({'+', '-'}))
+        if the_edge_represents_charge:
+            # setting a charge to the corresponding atom
+            for node_i in [edge_node_i, edge_node_j]:
+                if all_graph_nodes[node_i].atom_type in {'+', '-'}:
+                    charge_value = 1 if all_graph_nodes[node_i].atom_type == '+' else -1
+                else:
+                    atom_node_i = node_i
+            mol.GetAtomWithIdx(all_graph_atom_idx_2_mol_atom_idx[atom_node_i]).SetFormalCharge(charge_value)
+        else:
+            mol.AddBond(all_graph_atom_idx_2_mol_atom_idx[edge_node_i],
+                        all_graph_atom_idx_2_mol_atom_idx[edge_node_j],
+                        bond_type)
     # returning the rdkit.Chem.rdchem.Mol object
     return mol.GetMol()
 
@@ -657,4 +677,6 @@ ELEMENT_VALENCES = {
     "Lv": ([4], []),
     "Ts": ([7], []),
     "Og": ([0], []),
+    "+": ([1], []),
+    "-": ([1], [])
 }
