@@ -19,6 +19,12 @@ git clone https://github.com/pluskal-lab/MassSpecGym.git; cd MassSpecGym
 pip install -e .[dev,notebooks]
 ```
 
+For AMD GPUs, you may need to install PyTorch for ROCm:
+
+```bash
+pip install -U torch --index-url https://download.pytorch.org/whl/rocm6.0
+```
+
 ## TODO
 
 - [ ] Refactor `transforms.py` -> `data/transforms.py`
