@@ -2,6 +2,7 @@ import time
 import unittest
 from collections.abc import Generator
 
+from rdkit import Chem
 from rdkit.Chem import Draw
 
 from massspecgym.models.de_novo import RandomDeNovo
@@ -9,9 +10,10 @@ from massspecgym.models.de_novo.random import AtomWithValence
 
 
 class RandomDeNovoTestcase(unittest.TestCase):
-    def setUp(self) -> None:
+    def setUp(self, draw_molecules: bool = True) -> None:
         self.generator_with_formula = RandomDeNovo(formula_known=True)
         self.generator_without_formula = RandomDeNovo(formula_known=True)
+        self.draw_molecules = draw_molecules
 
     def test_generator_of_element_atoms_split_into_valence_groups_1(self):
         self.assertTrue(
@@ -143,6 +145,9 @@ class RandomDeNovoTestcase(unittest.TestCase):
         self.assertFalse(is_assignment_feasible)
 
     def test_sampling_of_atoms_by_valence_partition(self):
+        print(self.generator_with_formula.get_feasible_atom_valence_assignments(
+                    "C23H27N5O2"
+                ))
         self.assertEqual(
             len(
                 self.generator_with_formula.get_feasible_atom_valence_assignments(
@@ -154,41 +159,52 @@ class RandomDeNovoTestcase(unittest.TestCase):
 
     def test_random_molecule_generation_hard(self):
         start_time = time.time()
-        molecule = self.generator_with_formula.generate_random_molecule_graph_via_traversal(chemical_formula='C13H24Cl6O8P2')
+        molecule = self.generator_with_formula.generate_random_molecule_graphs_via_traversal(chemical_formula='C13H24Cl6O8P2')
         total_secs = time.time() - start_time
         self.assertLess(total_secs, 1)
 
     def test_random_molecule_generation_for_ion_1(self):
-        molecule = self.generator_with_formula.generate_random_molecule_graph_via_traversal(chemical_formula='C8H18OP+')
-        # img = Draw.MolToImage(molecule)
-        # img.save(f'molecule_charged.png')
+        molecules = self.generator_with_formula.generate_random_molecule_graphs_via_traversal(chemical_formula='C8H18OP+')
+        if self.draw_molecules:
+            for mol_i, molecule in enumerate(molecules):
+                img = Draw.MolToImage(molecule)
+                img.save(f'molecule_charged_{mol_i}.png')
 
     def test_random_molecule_generation_for_ion_2(self):
-        molecule = self.generator_with_formula.generate_random_molecule_graph_via_traversal(chemical_formula='C3H6NO4S-')
-        img = Draw.MolToImage(molecule)
-        img.save(f'molecule_charged.png')
+        molecules = self.generator_with_formula.generate_random_molecule_graphs_via_traversal(chemical_formula='C3H6NO4S-')
+        if self.draw_molecules:
+            for mol_i, molecule in enumerate(molecules):
+                img = Draw.MolToImage(molecule)
+                img.save(f'molecule_charged_{mol_i}.png')
 
     def test_random_molecule_generation(self):
-        for mol_i in range(100):
-            molecule = self.generator_with_formula.generate_random_molecule_graph_via_traversal(chemical_formula='C23H17Cl2N5O4')
-            img = Draw.MolToImage(molecule)
-            img.save(f'molecule_{mol_i}.png')
+        for gen_i in range(100):
+            molecules = self.generator_with_formula.generate_random_molecule_graphs_via_traversal(chemical_formula='C23H17Cl2N5O4')
+            if self.draw_molecules:
+                for mol_i, molecule in enumerate(molecules):
+                    img = Draw.MolToImage(molecule)
+                    img.save(f'molecule_{gen_i}_{mol_i}.png')
 
-    # def test_step_function(self):
-    #     batch = {
-    #         "mol": [
-    #             "C/C1=C/CC[C@@]2(C)O[C@@H]2[C@H]2OC(=O)[C@H](CN(C)C)[C@@H]2CC1",
-    #             "COc1ncc2cc(C(=O)Nc3c(Cl)ccc(C(=O)NCc4cc(Cl)ccc4)c3)c(=O)[nH]c2n1",
-    #             "CNC(=O)O[C@H]1COc2c(cc(N3CCN(C4COC4)CC3)cc2)[C@@H]1NC(=O)c1ccc(F)cc1",
-    #             "COc1nc(N2CCC3(CCCN(Cc4c[nH]c5ccccc45)C3=O)CC2)ncc1",
-    #             "Cc1c(C)c2c(cc1)c(=O)c1cccc(CC(=O)O)c1o2",
-    #         ]
-    #     }
-    #     for batch_i in range(5000):
-    #         mols = self.generator_with_formula.step(batch)["mols_pred"]
-    #         for mol_i, molecule in enumerate(mols):
-    #             img = Draw.MolToImage(molecule)
-    #             img.save(f'molecule_{batch_i}_{mol_i}.png')
+    def test_step_function(self):
+        batch = {
+            "mol": [
+                "C/C1=C/CC[C@@]2(C)O[C@@H]2[C@H]2OC(=O)[C@H](CN(C)C)[C@@H]2CC1",
+                "COc1ncc2cc(C(=O)Nc3c(Cl)ccc(C(=O)NCc4cc(Cl)ccc4)c3)c(=O)[nH]c2n1",
+                "CNC(=O)O[C@H]1COc2c(cc(N3CCN(C4COC4)CC3)cc2)[C@@H]1NC(=O)c1ccc(F)cc1",
+                "COc1nc(N2CCC3(CCCN(Cc4c[nH]c5ccccc45)C3=O)CC2)ncc1",
+                "Cc1c(C)c2c(cc1)c(=O)c1cccc(CC(=O)O)c1o2",
+            ]
+        }
+        for batch_i in range(200):
+            mol_preds = self.generator_with_formula.step(batch)["mols_pred"]
+            print('mol_preds: ', mol_preds)
+            if self.draw_molecules:
+                for input_mol_i, molecule_smiles in enumerate(mol_preds):
+                    for mol_i, _smiles in enumerate(molecule_smiles):
+                        print('_smiles: ', _smiles)
+                        molecule = Chem.MolFromSmiles(_smiles)
+                        img = Draw.MolToImage(molecule)
+                        img.save(f'step_molecule_{input_mol_i}_{mol_i}.png')
 
 
 if __name__ == "__main__":
