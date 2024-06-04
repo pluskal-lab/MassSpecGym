@@ -6,16 +6,25 @@ from random import choice, shuffle
 import chemparse
 import numpy as np
 import torch
+from massspecgym.models.de_novo.base import DeNovoMassSpecGymModel
 from rdkit import Chem
+from rdkit.Chem.MolStandardize import rdMolStandardize
 from rdkit.Chem.rdMolDescriptors import CalcMolFormula
 from rdkit.Chem.rdchem import Mol, BondType
-from rdkit.Chem.MolStandardize import rdMolStandardize
-
-from massspecgym.models.de_novo.base import DeNovoMassSpecGymModel
 
 # type aliases for code readability
 chem_element = str
 number_of_atoms = int
+
+
+@dataclass(frozen=True)
+class ValenceAndCharge:
+    """
+    A data class to store valence value with the corresponding charge
+    """
+
+    valence: int
+    charge: int
 
 
 @dataclass(frozen=True)
@@ -25,7 +34,7 @@ class AtomWithValence:
     """
 
     atom_type: chem_element
-    atom_valence: int
+    atom_valence_and_charge: ValenceAndCharge
 
 
 @dataclass
@@ -35,7 +44,15 @@ class AtomNodeForRandomTraversal:
     """
 
     atom_type: chem_element
-    _remaining_node_degree: int
+    valence: int
+    charge: int
+    _remaining_node_degree: int = None
+    _remaining_node_charge: int = None
+
+    def __post_init__(self):
+        """Setting up remaining node degree and charge for random traversal"""
+        self._remaining_node_degree = self.valence
+        self._remaining_node_charge = self.charge
 
     @property
     def remaining_node_degree(self):
@@ -46,6 +63,16 @@ class AtomNodeForRandomTraversal:
     def remaining_node_degree(self, value: int):
         """remaining_node_degree variable setter"""
         self._remaining_node_degree = value
+
+    @property
+    def remaining_node_charge(self):
+        """remaining_node_charge variable getter"""
+        return self._remaining_node_charge
+
+    @remaining_node_charge.setter
+    def remaining_node_charge(self, value: int):
+        """remaining_node_charge variable setter"""
+        self._remaining_node_charge = value
 
 
 def create_rdkit_molecule_from_edge_list(
@@ -91,34 +118,47 @@ def create_rdkit_molecule_from_edge_list(
     all_graph_atom_idx_2_mol_atom_idx = {}
     for all_graph_atom_idx, atom in enumerate(all_graph_nodes):
         # ignoring charge-related graph nodes
-        if atom.atom_type not in {'+', '-'}:
+        if atom.atom_type not in {"+", "-"}:
             all_graph_atom_idx_2_mol_atom_idx[all_graph_atom_idx] = mol.GetNumAtoms()
-            mol.AddAtom(Chem.Atom(atom.atom_type))
+            next_atom = Chem.Atom(atom.atom_type)
+            next_atom.SetFormalCharge(atom.charge)
+            mol.AddAtom(next_atom)
+
     # adding bonds
     for (edge_node_i, edge_node_j, bond_type) in edge_list_rdkit:
         # checking if the edge represents a charge of connected atom
-        the_edge_represents_charge = len({all_graph_nodes[node_i].atom_type for node_i in [edge_node_i, edge_node_j]}.intersection({'+', '-'}))
+        the_edge_represents_charge = len(
+            {
+                all_graph_nodes[node_i].atom_type
+                for node_i in [edge_node_i, edge_node_j]
+            }.intersection({"+", "-"})
+        )
         if the_edge_represents_charge:
             # setting a charge to the corresponding atom
             for node_i in [edge_node_i, edge_node_j]:
-                if all_graph_nodes[node_i].atom_type in {'+', '-'}:
-                    charge_value = 1 if all_graph_nodes[node_i].atom_type == '+' else -1
+                if all_graph_nodes[node_i].atom_type in {"+", "-"}:
+                    charge_value = 1 if all_graph_nodes[node_i].atom_type == "+" else -1
                 else:
                     atom_node_i = node_i
-            mol.GetAtomWithIdx(all_graph_atom_idx_2_mol_atom_idx[atom_node_i]).SetFormalCharge(charge_value)
+            mol.GetAtomWithIdx(
+                all_graph_atom_idx_2_mol_atom_idx[atom_node_i]
+            ).SetFormalCharge(charge_value)
         else:
-            mol.AddBond(all_graph_atom_idx_2_mol_atom_idx[edge_node_i],
-                        all_graph_atom_idx_2_mol_atom_idx[edge_node_j],
-                        bond_type)
+            mol.AddBond(
+                all_graph_atom_idx_2_mol_atom_idx[edge_node_i],
+                all_graph_atom_idx_2_mol_atom_idx[edge_node_j],
+                bond_type,
+            )
     # returning the rdkit.Chem.rdchem.Mol object
     return mol.GetMol()
 
 
 class RandomDeNovo(DeNovoMassSpecGymModel):
     def __init__(
-        self, formula_known: bool = True,
-            count_of_valid_valence_assignments: int = 10,
-            estimate_chem_element_stats: bool = True
+        self,
+        formula_known: bool = True,
+        count_of_valid_valence_assignments: int = 10,
+        estimate_chem_element_stats: bool = True,
     ):
         """
 
@@ -144,14 +184,22 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         # prior chemical knownledge about element valences
         self.element_2_valences = ELEMENT_VALENCES
         # a dictionary structure for statistics about bond type distributions, if fit is called
-        self.element_2_valence_2_bondtype_proportions: dict[chem_element, dict[int, float]] = None
+        self.element_2_valence_2_bondtype_proportions: dict[
+            chem_element, dict[int, float]
+        ] = None
         # a helping structures for (optional) derivation of statistics about valences and bond type distributions
-        self._element_2_observed_valence_and_bondtypes: dict[chem_element, list[int, list[int]]] = defaultdict(list)
+        # the dictionary has the following mapping:
+        # chem_element -> [(valence_val, charge) ->
+        #                                           [(bond_type, other_bond_atom_type) ->
+        #                                                                                  bond_count]]
+        self._element_2_observed_valence_2_bondtypes: defaultdict[
+            chem_element, dict[tuple[int, int], defaultdict(int)]
+        ] = defaultdict(dict)
 
     def generator_for_splits_of_chem_element_atoms_by_possible_valences(
         self,
         atom_type: chem_element,
-        possible_valences: list[int],
+        possible_valences: list[ValenceAndCharge],
         atom_count: int,
         already_assigned_groups_of_atoms: dict[AtomWithValence, number_of_atoms],
     ) -> Generator[dict[AtomWithValence, number_of_atoms]]:
@@ -185,7 +233,7 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                     already_assigned_groups_of_atoms.copy()
                 )
                 atom_with_valence = AtomWithValence(
-                    atom_type=atom_type, atom_valence=next_valence
+                    atom_type=atom_type, atom_valence_and_charge=next_valence
                 )
                 already_assigned_groups_of_atoms_next[atom_with_valence] = size_of_group
                 yield from self.generator_for_splits_of_chem_element_atoms_by_possible_valences(
@@ -244,11 +292,12 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
             )
             # we ignore "the direction" of ionic bonds, therefore we work with absolute values of valences
             possible_element_valences = map(
-                lambda x: np.abs(x), possible_element_valences
+                lambda x: ValenceAndCharge(valence=np.abs(x.valence), charge=x.charge),
+                possible_element_valences,
             )
             # we require a connected molecule graph, so we ignore possible 0 values of valences
             possible_element_valences = list(
-                set(filter(lambda x: x > 0, possible_element_valences))
+                set(filter(lambda x: x.valence > 0, possible_element_valences))
             )
             # creating a generator for lazy enumeration over all possible splits of element atoms
             # into subgroups of possible valid valences
@@ -289,7 +338,7 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         # computing sum of all node degrees
         sum_of_all_node_degrees = sum(
             [
-                atom.atom_valence * count_of_atoms
+                atom.atom_valence_and_charge.valence * count_of_atoms
                 for atom, count_of_atoms in valence_assignment.items()
             ]
         )
@@ -302,6 +351,14 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         total_number_of_atoms_in_molecule = sum(valence_assignment.values())
         if total_number_of_bonds < total_number_of_atoms_in_molecule - 1:
             # the valence assignment is infeasible as the molecule graph cannot be connected
+            return False
+        # check that charges add up to zero
+        total_charge = 0
+        for atom, count_of_atoms in valence_assignment.items():
+            # we do not take virtual nodes for the charged molecules, we force the remaining submolecule to be neutral
+            if atom.atom_type not in {"+", "-"}:
+                total_charge += atom.atom_valence_and_charge.charge * count_of_atoms
+        if total_charge != 0:
             return False
         return True
 
@@ -382,8 +439,11 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         shuffle(generated_candidate_valence_assignments)
         return generated_candidate_valence_assignments
 
-    def generate_random_molecule_graphs_via_traversal(self, chemical_formula: str,
-                                                     max_number_of_retries_per_valence_assignment: int = 100) -> list[Mol]:
+    def generate_random_molecule_graphs_via_traversal(
+        self,
+        chemical_formula: str,
+        max_number_of_retries_per_valence_assignment: int = 100,
+    ) -> list[Mol]:
         """
         A function generating random molecule graph(s).
         The generation process ensures that each graph is connected.
@@ -391,7 +451,7 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         the function returns graph(s) without self-loops.
 
         @param chemical_formula: a string containing the chemical formula of the molecule
-        @param max_number_of_retries_per_valence_assignment: a max count of attempts to generate a random spanning tree 
+        @param max_number_of_retries_per_valence_assignment: a max count of attempts to generate a random spanning tree
                                                              for a given potentially feasible valence assignment
 
         @note In the future the method can be made into a function in a separate utils module,
@@ -406,8 +466,77 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
             len(candidate_valence_assignments) > 0
         ), f"No potentially feasible atom valence assignment for {chemical_formula}"
         # number of iteration over feasible valence assignments
-        num_of_iterations_over_splits_into_valences = int(np.ceil(self.max_top_k / len(candidate_valence_assignments)))
+        num_of_iterations_over_splits_into_valences = int(
+            np.ceil(self.max_top_k / len(candidate_valence_assignments))
+        )
         generated_molecules = []
+
+        def _sample_edge_at_random(
+            all_graph_nodes: list[AtomNodeForRandomTraversal],
+            edge_start_node_i: int,
+            possible_candidates_for_end_node: set[int],
+            nodes_open_to_traversal: set[int],
+        ) -> tuple[tuple[int, int], list[AtomNodeForRandomTraversal], set[int]]:
+            """
+            Helper routine function to filter atoms suitable for generation of a random bond with `edge_start_node_i`
+            and sampling a random edge
+            @param all_graph_nodes: a list of all nodes in the molecule graph
+            @param edge_start_node_i: index of the first edge node
+            @param possible_candidates_for_end_node: a broader set of node indices which can be considered for closing the edge
+            @param nodes_open_to_traversal: an open set of nodes to sample from
+            @return: a sampled edge and updated structures `all_graph_nodes`, `nodes_open_to_traversal`
+            """
+            # check if the start edge atom has the charge and therefore can form coordinate bond
+            can_form_coordinate_bond = (
+                all_graph_nodes[edge_start_node_i].remaining_node_charge != 0
+            )
+            # if possible, create coordinate bond at random
+            is_bond_coordinate = can_form_coordinate_bond and np.random.rand() < 0.5
+            if is_bond_coordinate:
+                start_node_charge_sign = np.sign(
+                    all_graph_nodes[edge_start_node_i].remaining_node_charge
+                )
+                possible_candidates_for_end_node = [
+                    node_i
+                    for node_i in possible_candidates_for_end_node
+                    if start_node_charge_sign
+                    == -np.sign(all_graph_nodes[node_i].remaining_node_charge)
+                ]
+            else:
+                possible_candidates_for_end_node = [
+                    node_i
+                    for node_i in possible_candidates_for_end_node
+                    if all_graph_nodes[node_i].remaining_node_charge == 0
+                    or all_graph_nodes[node_i].remaining_node_degree
+                    > np.abs(all_graph_nodes[node_i].remaining_node_charge)
+                ]
+            edge_end_node_i = choice(possible_candidates_for_end_node)
+            # decrease the node degrees correspondingly
+            for node_of_a_new_edge_i in [edge_start_node_i, edge_end_node_i]:
+                all_graph_nodes[node_of_a_new_edge_i].remaining_node_degree -= 1
+                # if all bonds are created for the particular atom, it is no more open for traversal
+                if all_graph_nodes[node_of_a_new_edge_i].remaining_node_degree == 0:
+                    nodes_open_to_traversal.remove(node_of_a_new_edge_i)
+                # if the added bond was coordinate, modify the remaining charges correspondingly
+                elif is_bond_coordinate:
+                    new_charge_abs_value = (
+                        np.abs(
+                            all_graph_nodes[node_of_a_new_edge_i].remaining_node_charge
+                        )
+                        - 1
+                    )
+                    charge_sign = np.sign(
+                        all_graph_nodes[node_of_a_new_edge_i].remaining_node_charge
+                    )
+                    all_graph_nodes[node_of_a_new_edge_i].remaining_node_charge = (
+                        charge_sign * new_charge_abs_value
+                    )
+            return (
+                (edge_start_node_i, edge_end_node_i),
+                all_graph_nodes,
+                nodes_open_to_traversal,
+            )
+
         for _ in range(num_of_iterations_over_splits_into_valences):
             for valence_assignment in candidate_valence_assignments:
                 # first randomly create a spanning tree of the molecule graph, to ensure the connectivity of molecule.
@@ -415,7 +544,11 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                 # `self.get_feasible_atom_valence_assignments` function should ensure the possibility to create the tree.
                 spanning_tree_was_generated = False
                 spanning_tree_generation_attempts = 0
-                while not spanning_tree_was_generated and spanning_tree_generation_attempts < max_number_of_retries_per_valence_assignment:
+                while (
+                    not spanning_tree_was_generated
+                    and spanning_tree_generation_attempts
+                    < max_number_of_retries_per_valence_assignment
+                ):
                     spanning_tree_generation_attempts += 1
                     # we optimistically set the value of `spanning_tree_was_generated` to True,
                     # If the current traversal do not lead to a spanning tree,
@@ -432,7 +565,8 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                             all_graph_nodes.append(
                                 AtomNodeForRandomTraversal(
                                     atom_with_valence.atom_type,
-                                    atom_with_valence.atom_valence,
+                                    atom_with_valence.atom_valence_and_charge.valence,
+                                    atom_with_valence.atom_valence_and_charge.charge,
                                 )
                             )
 
@@ -454,27 +588,33 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                     spanning_tree_visited_nodes_set.add(edge_start_node_i)
                     spanning_tree_traversal_list.append(edge_start_node_i)
                     while len(spanning_tree_visited_nodes_set) < len(all_graph_nodes):
+                        # computing potential end nodes for the sampled bond
                         possible_candidates_for_end_node = (
                             nodes_open_to_traversal.difference(
                                 spanning_tree_visited_nodes_set
                             )
                         )
-                        # sample the next node for the spanning tree
-                        edge_end_node_i = choice(list(possible_candidates_for_end_node))
+                        # check if the start edge atom has the charge and therefore can form coordinate bond
+                        try:
+                            (
+                                (edge_start_node_i, edge_end_node_i),
+                                all_graph_nodes,
+                                nodes_open_to_traversal,
+                            ) = _sample_edge_at_random(
+                                all_graph_nodes,
+                                edge_start_node_i,
+                                possible_candidates_for_end_node,
+                                nodes_open_to_traversal,
+                            )
+                        except IndexError:
+                            spanning_tree_was_generated = False
+                            break
                         # note that the graph is undirected, start-end node refers to the random traversal only
                         edge_list.append((edge_start_node_i, edge_end_node_i))
                         # recording the node added to the random spanning tree
                         spanning_tree_visited_nodes_set.add(edge_end_node_i)
                         spanning_tree_traversal_list.append(edge_end_node_i)
-                        # decrease the node degrees correspondingly
-                        for node_of_a_new_edge_i in [edge_start_node_i, edge_end_node_i]:
-                            all_graph_nodes[node_of_a_new_edge_i].remaining_node_degree -= 1
-                            # if all bonds are created for the particular atom, it is no more open for traversal
-                            if (
-                                all_graph_nodes[node_of_a_new_edge_i].remaining_node_degree
-                                == 0
-                            ):
-                                nodes_open_to_traversal.remove(node_of_a_new_edge_i)
+
                         # finding a start node for the next sampled edge.
                         # We have to ensure that such a node still has some degree not covered by sampling nodes.
                         # For that, we might need to backtrack.
@@ -487,9 +627,9 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                                 == 0
                             ):
                                 spanning_tree_traversal_list.pop()
-                                candidate_for_start_node_i = spanning_tree_traversal_list[
-                                    -1
-                                ]
+                                candidate_for_start_node_i = (
+                                    spanning_tree_traversal_list[-1]
+                                )
                         except IndexError:
                             spanning_tree_was_generated = False
                             break
@@ -500,20 +640,31 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                 while len(nodes_open_to_traversal) >= 2:
                     # sample edge nodes
                     edge_start_node_i = choice(list(nodes_open_to_traversal))
-                    possible_candidates_for_end_node = nodes_open_to_traversal.difference(
-                        {edge_start_node_i}
+                    # computing potential end nodes for the sampled bond
+                    possible_candidates_for_end_node = (
+                        nodes_open_to_traversal.difference({edge_start_node_i})
                     )
-                    edge_end_node_i = choice(list(possible_candidates_for_end_node))
+
+                    try:
+                        (
+                            (edge_start_node_i, edge_end_node_i),
+                            all_graph_nodes,
+                            nodes_open_to_traversal,
+                        ) = _sample_edge_at_random(
+                            all_graph_nodes,
+                            edge_start_node_i,
+                            possible_candidates_for_end_node,
+                            nodes_open_to_traversal,
+                        )
+                    except IndexError:
+                        break
                     edge_list.append((edge_start_node_i, edge_end_node_i))
-                    # decrease the node degrees correspondingly
-                    for node_of_a_new_edge_i in [edge_start_node_i, edge_end_node_i]:
-                        all_graph_nodes[node_of_a_new_edge_i].remaining_node_degree -= 1
-                        # if all bonds are created for the particular atom, it is no more open for traversal
-                        if all_graph_nodes[node_of_a_new_edge_i].remaining_node_degree == 0:
-                            nodes_open_to_traversal.remove(node_of_a_new_edge_i)
+
                 # if all nodes were covered by edges without self-loops, then we remember the generated molecule
                 if len(nodes_open_to_traversal) == 0:
-                    generated_molecules.append(create_rdkit_molecule_from_edge_list(edge_list, all_graph_nodes))
+                    generated_molecules.append(
+                        create_rdkit_molecule_from_edge_list(edge_list, all_graph_nodes)
+                    )
                     if len(generated_molecules) == self.max_top_k:
                         return generated_molecules
         return generated_molecules
@@ -523,12 +674,6 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         # recording statistics about chemical element statistics
         if self.estimate_chem_element_stats:
-            molecule = Chem.MolFromSmiles('CC1(C2CC(=O)C3(C(C24COC(=O)CC4O1)CCC5(C36C(O6)C(=O)OC5C7=COC=C7)C)C)C')
-            for atom in molecule.GetAtoms():
-                # print(atom.GetSymbol(), atom.GetTotalValence())
-                atom_bonds = atom.GetBonds()
-                # for bond in atom_bonds:
-                #     print(bond.GetBondTypeAsDouble())
             pass
         super().training_step()
 
@@ -544,7 +689,6 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         if self.formula_known:
             formulas = []
             for smiles in mols:
-                # print('smiles: ', smiles)
                 molecule = Chem.MolFromSmiles(smiles)
                 formulas.append(CalcMolFormula(molecule))
         else:
@@ -555,19 +699,14 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
             for formula in formulas
         ]
 
-        print('mols_pred: ', mols_pred)
-
-        for candidates_per_input_mol in mols_pred:
-            for mol_candidate in candidates_per_input_mol:
-                print(mol_candidate)
-                print(Chem.MolToSmiles(mol_candidate))
-
-
         # list of predicted smiles
-        smiles_pred = [[rdMolStandardize.StandardizeSmiles(Chem.MolToSmiles(mol_candidate))
-                        for mol_candidate in candidates_per_input_mol]
-                       for candidates_per_input_mol in mols_pred]
-        print('smiles_pred: ', smiles_pred)
+        smiles_pred = [
+            [
+                rdMolStandardize.StandardizeSmiles(Chem.MolToSmiles(mol_candidate))
+                for mol_candidate in candidates_per_input_mol
+            ]
+            for candidates_per_input_mol in mols_pred
+        ]
 
         # Random baseline, so we return a dummy loss
         loss = torch.tensor(0.0, requires_grad=True)
@@ -578,127 +717,515 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         return None
 
 
-# element valences taken from https://sciencenotes.org/element-valency-pdf
-# the first list contains the typical valences
+# element valences taken from sources like https://sciencenotes.org/element-valency-pdf
+# the first list contains the typical valences, each tuple is a valence value with the corresponding charge
 ELEMENT_VALENCES = {
-    "H": ([1], [0, -1]),
-    "He": ([0], []),
-    "Li": ([1], [-1]),
-    "Be": ([2], []),
-    "B": ([3], [2, 1]),
-    "C": ([4], [2, -2, 1, -1, 3]),
-    "N": ([-3, 4], [5, 3, 2, 1, 0, -1, -2]),
-    "O": ([-2], [-1, 1, 2, 0]),
-    "F": ([-1], [0]),
-    "Ne": ([0], []),
-    "Na": ([1], [-1]),
-    "Mg": ([2], []),
-    "Al": ([3], [1]),
-    "Si": ([4], [-4, 2, -2, 3, 1, -1]),
-    "P": ([3, 5, -3], [4, 2, 1, 0, -1, -2]),
-    "S": ([-2, 6], [2, 4, 3, 5, 1, 0, -1]),
-    "Cl": ([-1], [-2, 0, 1, 2, 3, 4, 5, 6]),
-    "Ar": ([0], []),
-    "K": ([1], [-1]),
-    "Ca": ([2], []),
-    "Sc": ([3], [2, 1]),
-    "Ti": ([4], [3, 2, 0, -1, -2]),
-    "V": ([5, 4, 3], [2, 1, 0, -1, -2]),
-    "Cr": ([6, 3, 2], [5, 4, 1, 0, -1, -2, -3, -4]),
-    "Mn": ([7, 4, 2], [6, 5, 3, 1, 0, -1, -2, -3]),
-    "Fe": ([2, 3], [6, 5, 4, 1, 0, -1, -2]),
-    "Co": ([2, 3], [5, 4, 1, 0, -1]),
-    "Ni": ([2], [6, 4, 3, 1, 0, -1]),
-    "Cu": ([2, 1], [4, 3, 0]),
-    "Zn": ([2], [1, 0]),
-    "Ga": ([3], [2, 1]),
-    "Ge": ([4], [3, 2, 1]),
-    "As": ([3, 5], [-3, 2]),
-    "Se": ([-2, 4], [6, 2, 1]),
-    "Br": ([-1], [7, 5, 4, 3, 1, 0]),
-    "Kr": ([0], [2]),
-    "Rb": ([1], [-1]),
-    "Sr": ([2], []),
-    "Y": ([3], [2]),
-    "Zr": ([4], [3, 2, 1, 0, -2]),
-    "Nb": ([5], [4, 3, 2, 1, 0, -1, -3]),
-    "Mo": ([6, 4], [5, 3, 2, 1, 0, -1, -2]),
-    "Tc": ([7, 4], [6, 5, 3, 2, 1, 0, -1, -3]),
-    "Ru": ([4, 3], [8, 7, 6, 5, 2, 1, 0, -2]),
-    "Rh": ([3], [6, 5, 4, 2, 1, 0, -1]),
-    "Pd": ([4, 2], [0]),
-    "Ag": ([1], [3, 2, 0]),
-    "Cd": ([2], [1]),
-    "In": ([3], [2, 1]),
-    "Sn": ([2, -4], [4]),
-    "Sb": ([3], [5, -3]),
-    "Te": ([4], [-2, 6]),
-    "I": ([-1, 5], [1, 3, 7, 0]),
-    "Xe": ([0], [2, 4, 6, 8]),
-    "Cs": ([1], [-1]),
-    "Ba": ([2], []),
-    "La": ([3], []),
-    "Ce": ([3], [4]),
-    "Pr": ([3], [4]),
-    "Nd": ([3], []),
-    "Pm": ([3], []),
-    "Sm": ([3], []),
-    "Eu": ([3], [2]),
-    "Gd": ([3], []),
-    "Tb": ([3], [4]),
-    "Dy": ([3], []),
-    "Ho": ([3], []),
-    "Er": ([3], []),
-    "Tm": ([3], []),
-    "Yb": ([3], [2]),
-    "Lu": ([3], []),
-    "Hf": ([4], []),
-    "Ta": ([5], []),
-    "W": ([6, 4], [5, 3, 2]),
-    "Re": ([5, 4, 3], [7, 6, 2, 1, 0, -1]),
-    "Os": ([4], [8, 6, 2]),
-    "Ir": ([4, 3], [6, 4]),
-    "Pt": ([2], [4]),
-    "Au": ([3], [1]),
-    "Hg": ([2], [1]),
-    "Tl": ([3], [1]),
-    "Pb": ([4], [2]),
-    "Bi": ([3, 1], [5, -3]),
-    "Po": ([4], [2]),
-    "At": ([-1], [5, 3, 1, 7]),
-    "Rn": ([0], [2]),
-    "Fr": ([1], []),
-    "Ra": ([2], []),
-    "Ac": ([3], []),
-    "Th": ([4], []),
-    "Pa": ([5], [4]),
-    "U": ([6], [5, 4, 3]),
-    "Np": ([7], [6, 5, 4, 3]),
-    "Pu": ([7, 4], [6, 5, 3]),
-    "Am": ([3], [5, 4]),
-    "Cm": ([6, 5, 3], []),
-    "Bk": ([3], [4]),
-    "Cf": ([3], []),
-    "Es": ([3], []),
-    "Fm": ([3], []),
-    "Md": ([3], []),
-    "No": ([3], [2]),
-    "Lr": ([3], []),
-    "Rf": ([4], []),
-    "Db": ([5], []),
-    "Sg": ([6], []),
-    "Bh": ([7], []),
-    "Hs": ([8], []),
-    "Mt": ([8], []),
-    "Ds": ([8], []),
-    "Rg": ([8], []),
-    "Cn": ([2], []),
-    "Nh": ([3], []),
-    "Fl": ([4], []),
-    "Mc": ([3], []),
-    "Lv": ([4], []),
-    "Ts": ([7], []),
-    "Og": ([0], []),
-    "+": ([1], []),
-    "-": ([1], [])
+    "H": (
+        [ValenceAndCharge(valence=1, charge=0)],
+        [ValenceAndCharge(valence=0, charge=0), ValenceAndCharge(valence=1, charge=-1)],
+    ),
+    "He": ([ValenceAndCharge(valence=0, charge=0)], []),
+    "Li": (
+        [ValenceAndCharge(valence=1, charge=0)],
+        [ValenceAndCharge(valence=1, charge=-1)],
+    ),
+    "Be": ([ValenceAndCharge(valence=2, charge=0)], []),
+    "B": (
+        [ValenceAndCharge(valence=3, charge=0), ValenceAndCharge(valence=4, charge=-1)],
+        [ValenceAndCharge(valence=2, charge=0), ValenceAndCharge(valence=1, charge=0)],
+    ),
+    "C": (
+        [ValenceAndCharge(valence=4, charge=0)],
+        [
+            ValenceAndCharge(valence=3, charge=-1),
+            ValenceAndCharge(valence=2, charge=0),
+            ValenceAndCharge(valence=2, charge=-1),
+            ValenceAndCharge(valence=1, charge=0),
+            ValenceAndCharge(valence=1, charge=-1),
+        ],
+    ),
+    "N": (
+        [ValenceAndCharge(valence=3, charge=0), ValenceAndCharge(valence=4, charge=1)],
+        [
+            ValenceAndCharge(valence=2, charge=-1),
+            ValenceAndCharge(valence=5, charge=0),
+            ValenceAndCharge(valence=1, charge=0),
+            ValenceAndCharge(valence=0, charge=0),
+            ValenceAndCharge(valence=1, charge=-1),
+        ],
+    ),
+    "O": (
+        [ValenceAndCharge(valence=2, charge=0), ValenceAndCharge(valence=1, charge=-1)],
+        [ValenceAndCharge(valence=3, charge=1)],
+    ),
+    "F": ([ValenceAndCharge(valence=1, charge=0)], []),
+    "Ne": ([ValenceAndCharge(valence=0, charge=0)], []),
+    "Na": (
+        [ValenceAndCharge(valence=1, charge=0)],
+        [],
+    ),
+    "Mg": ([ValenceAndCharge(valence=2, charge=0)], []),
+    "Al": (
+        [ValenceAndCharge(valence=3, charge=0)],
+        [ValenceAndCharge(valence=1, charge=0)],
+    ),
+    "Si": (
+        [ValenceAndCharge(valence=4, charge=0)],
+        [],
+    ),
+    "P": (
+        [ValenceAndCharge(valence=5, charge=0)],
+        [
+            ValenceAndCharge(valence=4, charge=1),
+            ValenceAndCharge(valence=3, charge=0),
+            ValenceAndCharge(valence=2, charge=0),
+            ValenceAndCharge(valence=1, charge=0),
+        ],
+    ),
+    "S": (
+        [ValenceAndCharge(valence=2, charge=0), ValenceAndCharge(valence=6, charge=0)],
+        [
+            ValenceAndCharge(valence=4, charge=0),
+            ValenceAndCharge(valence=1, charge=-1),
+            ValenceAndCharge(valence=3, charge=1),
+        ],
+    ),
+    "Cl": (
+        [ValenceAndCharge(valence=1, charge=0)],
+        [],
+    ),
+    "Ar": ([ValenceAndCharge(valence=0, charge=0)], []),
+    "K": (
+        [ValenceAndCharge(valence=1, charge=0)],
+        [],
+    ),
+    "Ca": ([ValenceAndCharge(valence=2, charge=0)], []),
+    "Sc": (
+        [ValenceAndCharge(valence=3, charge=0)],
+        [ValenceAndCharge(valence=2, charge=0), ValenceAndCharge(valence=1, charge=0)],
+    ),
+    "Ti": (
+        [ValenceAndCharge(valence=4, charge=0)],
+        [
+            ValenceAndCharge(valence=3, charge=0),
+            ValenceAndCharge(valence=2, charge=0),
+            ValenceAndCharge(valence=0, charge=0),
+        ],
+    ),
+    "V": (
+        [
+            ValenceAndCharge(valence=5, charge=0),
+            ValenceAndCharge(valence=4, charge=0),
+            ValenceAndCharge(valence=3, charge=0),
+        ],
+        [
+            ValenceAndCharge(valence=2, charge=0),
+            ValenceAndCharge(valence=1, charge=0),
+            ValenceAndCharge(valence=0, charge=0),
+        ],
+    ),
+    "Cr": (
+        [
+            ValenceAndCharge(valence=6, charge=0),
+            ValenceAndCharge(valence=3, charge=0),
+            ValenceAndCharge(valence=2, charge=0),
+        ],
+        [
+            ValenceAndCharge(valence=5, charge=0),
+            ValenceAndCharge(valence=4, charge=0),
+            ValenceAndCharge(valence=1, charge=0),
+            ValenceAndCharge(valence=0, charge=0),
+        ],
+    ),
+    "Mn": (
+        [
+            ValenceAndCharge(valence=7, charge=0),
+            ValenceAndCharge(valence=4, charge=0),
+            ValenceAndCharge(valence=2, charge=0),
+        ],
+        [
+            ValenceAndCharge(valence=6, charge=0),
+            ValenceAndCharge(valence=5, charge=0),
+            ValenceAndCharge(valence=3, charge=0),
+            ValenceAndCharge(valence=1, charge=0),
+            ValenceAndCharge(valence=0, charge=0),
+        ],
+    ),
+    "Fe": (
+        [ValenceAndCharge(valence=2, charge=0), ValenceAndCharge(valence=3, charge=0)],
+        [
+            ValenceAndCharge(valence=6, charge=0),
+            ValenceAndCharge(valence=5, charge=0),
+            ValenceAndCharge(valence=4, charge=0),
+            ValenceAndCharge(valence=1, charge=0),
+            ValenceAndCharge(valence=0, charge=0),
+        ],
+    ),
+    "Co": (
+        [ValenceAndCharge(valence=2, charge=0), ValenceAndCharge(valence=3, charge=0)],
+        [
+            ValenceAndCharge(valence=5, charge=0),
+            ValenceAndCharge(valence=4, charge=0),
+            ValenceAndCharge(valence=1, charge=0),
+            ValenceAndCharge(valence=0, charge=0),
+        ],
+    ),
+    "Ni": (
+        [ValenceAndCharge(valence=2, charge=0)],
+        [
+            ValenceAndCharge(valence=6, charge=0),
+            ValenceAndCharge(valence=4, charge=0),
+            ValenceAndCharge(valence=3, charge=0),
+            ValenceAndCharge(valence=1, charge=0),
+            ValenceAndCharge(valence=0, charge=0),
+        ],
+    ),
+    "Cu": (
+        [ValenceAndCharge(valence=2, charge=0), ValenceAndCharge(valence=1, charge=0)],
+        [
+            ValenceAndCharge(valence=4, charge=0),
+            ValenceAndCharge(valence=3, charge=0),
+            ValenceAndCharge(valence=0, charge=0),
+        ],
+    ),
+    "Zn": (
+        [ValenceAndCharge(valence=2, charge=0)],
+        [ValenceAndCharge(valence=1, charge=0), ValenceAndCharge(valence=0, charge=0)],
+    ),
+    "Ga": (
+        [ValenceAndCharge(valence=3, charge=0)],
+        [ValenceAndCharge(valence=2, charge=0), ValenceAndCharge(valence=1, charge=0)],
+    ),
+    "Ge": (
+        [ValenceAndCharge(valence=4, charge=0)],
+        [
+            ValenceAndCharge(valence=3, charge=0),
+            ValenceAndCharge(valence=2, charge=0),
+            ValenceAndCharge(valence=1, charge=0),
+        ],
+    ),
+    "As": (
+        [ValenceAndCharge(valence=5, charge=0), ValenceAndCharge(valence=4, charge=1)],
+        [],
+    ),
+    "Se": (
+        [ValenceAndCharge(valence=2, charge=0)],
+        [],
+    ),
+    "Br": (
+        [ValenceAndCharge(valence=1, charge=0)],
+        [],
+    ),
+    "Kr": (
+        [ValenceAndCharge(valence=0, charge=0)],
+        [ValenceAndCharge(valence=2, charge=0)],
+    ),
+    "Rb": (
+        [ValenceAndCharge(valence=1, charge=0)],
+        [],
+    ),
+    "Sr": ([ValenceAndCharge(valence=2, charge=0)], []),
+    "Y": (
+        [ValenceAndCharge(valence=3, charge=0)],
+        [ValenceAndCharge(valence=2, charge=0)],
+    ),
+    "Zr": (
+        [ValenceAndCharge(valence=4, charge=0)],
+        [
+            ValenceAndCharge(valence=3, charge=0),
+            ValenceAndCharge(valence=2, charge=0),
+            ValenceAndCharge(valence=1, charge=0),
+            ValenceAndCharge(valence=0, charge=0),
+        ],
+    ),
+    "Nb": (
+        [ValenceAndCharge(valence=5, charge=0)],
+        [
+            ValenceAndCharge(valence=4, charge=0),
+            ValenceAndCharge(valence=3, charge=0),
+            ValenceAndCharge(valence=2, charge=0),
+            ValenceAndCharge(valence=1, charge=0),
+            ValenceAndCharge(valence=0, charge=0),
+        ],
+    ),
+    "Mo": (
+        [ValenceAndCharge(valence=6, charge=0), ValenceAndCharge(valence=4, charge=0)],
+        [
+            ValenceAndCharge(valence=5, charge=0),
+            ValenceAndCharge(valence=3, charge=0),
+            ValenceAndCharge(valence=2, charge=0),
+            ValenceAndCharge(valence=1, charge=0),
+            ValenceAndCharge(valence=0, charge=0),
+        ],
+    ),
+    "Tc": (
+        [ValenceAndCharge(valence=7, charge=0), ValenceAndCharge(valence=4, charge=0)],
+        [
+            ValenceAndCharge(valence=6, charge=0),
+            ValenceAndCharge(valence=5, charge=0),
+            ValenceAndCharge(valence=3, charge=0),
+            ValenceAndCharge(valence=2, charge=0),
+            ValenceAndCharge(valence=1, charge=0),
+            ValenceAndCharge(valence=0, charge=0),
+        ],
+    ),
+    "Ru": (
+        [ValenceAndCharge(valence=4, charge=0), ValenceAndCharge(valence=3, charge=0)],
+        [
+            ValenceAndCharge(valence=8, charge=0),
+            ValenceAndCharge(valence=7, charge=0),
+            ValenceAndCharge(valence=6, charge=0),
+            ValenceAndCharge(valence=5, charge=0),
+            ValenceAndCharge(valence=2, charge=0),
+            ValenceAndCharge(valence=1, charge=0),
+            ValenceAndCharge(valence=0, charge=0),
+        ],
+    ),
+    "Rh": (
+        [ValenceAndCharge(valence=3, charge=0)],
+        [
+            ValenceAndCharge(valence=6, charge=0),
+            ValenceAndCharge(valence=5, charge=0),
+            ValenceAndCharge(valence=4, charge=0),
+            ValenceAndCharge(valence=2, charge=0),
+            ValenceAndCharge(valence=1, charge=0),
+            ValenceAndCharge(valence=0, charge=0),
+        ],
+    ),
+    "Pd": (
+        [ValenceAndCharge(valence=4, charge=0), ValenceAndCharge(valence=2, charge=0)],
+        [ValenceAndCharge(valence=0, charge=0)],
+    ),
+    "Ag": (
+        [ValenceAndCharge(valence=1, charge=0)],
+        [
+            ValenceAndCharge(valence=3, charge=0),
+            ValenceAndCharge(valence=2, charge=0),
+            ValenceAndCharge(valence=0, charge=0),
+        ],
+    ),
+    "Cd": (
+        [ValenceAndCharge(valence=2, charge=0)],
+        [ValenceAndCharge(valence=1, charge=0)],
+    ),
+    "In": (
+        [ValenceAndCharge(valence=3, charge=0)],
+        [ValenceAndCharge(valence=2, charge=0), ValenceAndCharge(valence=1, charge=0)],
+    ),
+    "Sn": (
+        [ValenceAndCharge(valence=2, charge=0)],
+        [ValenceAndCharge(valence=4, charge=0)],
+    ),
+    "Sb": (
+        [ValenceAndCharge(valence=3, charge=0)],
+        [ValenceAndCharge(valence=5, charge=0), ValenceAndCharge(valence=3, charge=-1)],
+    ),
+    "Te": (
+        [ValenceAndCharge(valence=4, charge=0)],
+        [ValenceAndCharge(valence=2, charge=0), ValenceAndCharge(valence=6, charge=0)],
+    ),
+    "I": (
+        [ValenceAndCharge(valence=1, charge=0)],
+        [
+            ValenceAndCharge(valence=1, charge=0),
+            ValenceAndCharge(valence=3, charge=0),
+            ValenceAndCharge(valence=7, charge=0),
+            ValenceAndCharge(valence=0, charge=0),
+        ],
+    ),
+    "Xe": (
+        [ValenceAndCharge(valence=0, charge=0)],
+        [
+            ValenceAndCharge(valence=2, charge=0),
+            ValenceAndCharge(valence=4, charge=0),
+            ValenceAndCharge(valence=6, charge=0),
+            ValenceAndCharge(valence=8, charge=0),
+        ],
+    ),
+    "Cs": (
+        [ValenceAndCharge(valence=1, charge=0)],
+        [],
+    ),
+    "Ba": ([ValenceAndCharge(valence=2, charge=0)], []),
+    "La": ([ValenceAndCharge(valence=3, charge=0)], []),
+    "Ce": (
+        [ValenceAndCharge(valence=3, charge=0)],
+        [ValenceAndCharge(valence=4, charge=0)],
+    ),
+    "Pr": (
+        [ValenceAndCharge(valence=3, charge=0)],
+        [ValenceAndCharge(valence=4, charge=0)],
+    ),
+    "Nd": ([ValenceAndCharge(valence=3, charge=0)], []),
+    "Pm": ([ValenceAndCharge(valence=3, charge=0)], []),
+    "Sm": ([ValenceAndCharge(valence=3, charge=0)], []),
+    "Eu": (
+        [ValenceAndCharge(valence=3, charge=0)],
+        [ValenceAndCharge(valence=2, charge=0)],
+    ),
+    "Gd": ([ValenceAndCharge(valence=3, charge=0)], []),
+    "Tb": (
+        [ValenceAndCharge(valence=3, charge=0)],
+        [ValenceAndCharge(valence=4, charge=0)],
+    ),
+    "Dy": ([ValenceAndCharge(valence=3, charge=0)], []),
+    "Ho": ([ValenceAndCharge(valence=3, charge=0)], []),
+    "Er": ([ValenceAndCharge(valence=3, charge=0)], []),
+    "Tm": ([ValenceAndCharge(valence=3, charge=0)], []),
+    "Yb": (
+        [ValenceAndCharge(valence=3, charge=0)],
+        [ValenceAndCharge(valence=2, charge=0)],
+    ),
+    "Lu": ([ValenceAndCharge(valence=3, charge=0)], []),
+    "Hf": ([ValenceAndCharge(valence=4, charge=0)], []),
+    "Ta": ([ValenceAndCharge(valence=5, charge=0)], []),
+    "W": (
+        [ValenceAndCharge(valence=6, charge=0), ValenceAndCharge(valence=4, charge=0)],
+        [
+            ValenceAndCharge(valence=5, charge=0),
+            ValenceAndCharge(valence=3, charge=0),
+            ValenceAndCharge(valence=2, charge=0),
+        ],
+    ),
+    "Re": (
+        [
+            ValenceAndCharge(valence=5, charge=0),
+            ValenceAndCharge(valence=4, charge=0),
+            ValenceAndCharge(valence=3, charge=0),
+        ],
+        [
+            ValenceAndCharge(valence=7, charge=0),
+            ValenceAndCharge(valence=6, charge=0),
+            ValenceAndCharge(valence=2, charge=0),
+            ValenceAndCharge(valence=1, charge=0),
+            ValenceAndCharge(valence=0, charge=0),
+        ],
+    ),
+    "Os": (
+        [ValenceAndCharge(valence=4, charge=0)],
+        [
+            ValenceAndCharge(valence=8, charge=0),
+            ValenceAndCharge(valence=6, charge=0),
+            ValenceAndCharge(valence=2, charge=0),
+        ],
+    ),
+    "Ir": (
+        [ValenceAndCharge(valence=4, charge=0), ValenceAndCharge(valence=3, charge=0)],
+        [ValenceAndCharge(valence=6, charge=0), ValenceAndCharge(valence=4, charge=0)],
+    ),
+    "Pt": (
+        [ValenceAndCharge(valence=2, charge=0)],
+        [ValenceAndCharge(valence=4, charge=0)],
+    ),
+    "Au": (
+        [ValenceAndCharge(valence=3, charge=0)],
+        [ValenceAndCharge(valence=1, charge=0)],
+    ),
+    "Hg": (
+        [ValenceAndCharge(valence=2, charge=0)],
+        [ValenceAndCharge(valence=1, charge=0)],
+    ),
+    "Tl": (
+        [ValenceAndCharge(valence=3, charge=0)],
+        [ValenceAndCharge(valence=1, charge=0)],
+    ),
+    "Pb": (
+        [ValenceAndCharge(valence=4, charge=0)],
+        [ValenceAndCharge(valence=2, charge=0)],
+    ),
+    "Bi": (
+        [ValenceAndCharge(valence=3, charge=0), ValenceAndCharge(valence=1, charge=0)],
+        [ValenceAndCharge(valence=5, charge=0)],
+    ),
+    "Po": (
+        [ValenceAndCharge(valence=4, charge=0)],
+        [ValenceAndCharge(valence=2, charge=0)],
+    ),
+    "At": (
+        [ValenceAndCharge(valence=1, charge=0)],
+        [
+            ValenceAndCharge(valence=5, charge=0),
+            ValenceAndCharge(valence=3, charge=0),
+            ValenceAndCharge(valence=7, charge=0),
+        ],
+    ),
+    "Rn": (
+        [ValenceAndCharge(valence=0, charge=0)],
+        [ValenceAndCharge(valence=2, charge=0)],
+    ),
+    "Fr": ([ValenceAndCharge(valence=1, charge=0)], []),
+    "Ra": ([ValenceAndCharge(valence=2, charge=0)], []),
+    "Ac": ([ValenceAndCharge(valence=3, charge=0)], []),
+    "Th": ([ValenceAndCharge(valence=4, charge=0)], []),
+    "Pa": (
+        [ValenceAndCharge(valence=5, charge=0)],
+        [ValenceAndCharge(valence=4, charge=0)],
+    ),
+    "U": (
+        [ValenceAndCharge(valence=6, charge=0)],
+        [
+            ValenceAndCharge(valence=5, charge=0),
+            ValenceAndCharge(valence=4, charge=0),
+            ValenceAndCharge(valence=3, charge=0),
+        ],
+    ),
+    "Np": (
+        [ValenceAndCharge(valence=7, charge=0)],
+        [
+            ValenceAndCharge(valence=6, charge=0),
+            ValenceAndCharge(valence=5, charge=0),
+            ValenceAndCharge(valence=4, charge=0),
+            ValenceAndCharge(valence=3, charge=0),
+        ],
+    ),
+    "Pu": (
+        [ValenceAndCharge(valence=7, charge=0), ValenceAndCharge(valence=4, charge=0)],
+        [
+            ValenceAndCharge(valence=6, charge=0),
+            ValenceAndCharge(valence=5, charge=0),
+            ValenceAndCharge(valence=3, charge=0),
+        ],
+    ),
+    "Am": (
+        [ValenceAndCharge(valence=3, charge=0)],
+        [ValenceAndCharge(valence=5, charge=0), ValenceAndCharge(valence=4, charge=0)],
+    ),
+    "Cm": (
+        [
+            ValenceAndCharge(valence=6, charge=0),
+            ValenceAndCharge(valence=5, charge=0),
+            ValenceAndCharge(valence=3, charge=0),
+        ],
+        [],
+    ),
+    "Bk": (
+        [ValenceAndCharge(valence=3, charge=0)],
+        [ValenceAndCharge(valence=4, charge=0)],
+    ),
+    "Cf": ([ValenceAndCharge(valence=3, charge=0)], []),
+    "Es": ([ValenceAndCharge(valence=3, charge=0)], []),
+    "Fm": ([ValenceAndCharge(valence=3, charge=0)], []),
+    "Md": ([ValenceAndCharge(valence=3, charge=0)], []),
+    "No": (
+        [ValenceAndCharge(valence=3, charge=0)],
+        [ValenceAndCharge(valence=2, charge=0)],
+    ),
+    "Lr": ([ValenceAndCharge(valence=3, charge=0)], []),
+    "Rf": ([ValenceAndCharge(valence=4, charge=0)], []),
+    "Db": ([ValenceAndCharge(valence=5, charge=0)], []),
+    "Sg": ([ValenceAndCharge(valence=6, charge=0)], []),
+    "Bh": ([ValenceAndCharge(valence=7, charge=0)], []),
+    "Hs": ([ValenceAndCharge(valence=8, charge=0)], []),
+    "Mt": ([ValenceAndCharge(valence=8, charge=0)], []),
+    "Ds": ([ValenceAndCharge(valence=8, charge=0)], []),
+    "Rg": ([ValenceAndCharge(valence=8, charge=0)], []),
+    "Cn": ([ValenceAndCharge(valence=2, charge=0)], []),
+    "Nh": ([ValenceAndCharge(valence=3, charge=0)], []),
+    "Fl": ([ValenceAndCharge(valence=4, charge=0)], []),
+    "Mc": ([ValenceAndCharge(valence=3, charge=0)], []),
+    "Lv": ([ValenceAndCharge(valence=4, charge=0)], []),
+    "Ts": ([ValenceAndCharge(valence=7, charge=0)], []),
+    "Og": ([ValenceAndCharge(valence=0, charge=0)], []),
+    "+": ([ValenceAndCharge(valence=1, charge=1)], []),
+    "-": ([ValenceAndCharge(valence=1, charge=-1)], []),
 }

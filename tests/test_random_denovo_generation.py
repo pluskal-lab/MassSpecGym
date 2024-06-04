@@ -10,7 +10,7 @@ from massspecgym.models.de_novo.random import AtomWithValence
 
 
 class RandomDeNovoTestcase(unittest.TestCase):
-    def setUp(self, draw_molecules: bool = True) -> None:
+    def setUp(self, draw_molecules: bool = False) -> None:
         self.generator_with_formula = RandomDeNovo(formula_known=True)
         self.generator_without_formula = RandomDeNovo(formula_known=True)
         self.draw_molecules = draw_molecules
@@ -67,7 +67,7 @@ class RandomDeNovoTestcase(unittest.TestCase):
             )
         )
         all_common_valence_possibilities = list(valence_assignment_generator)
-        self.assertEqual(len(all_common_valence_possibilities), 1)
+        self.assertEqual(3, len(all_common_valence_possibilities))
 
     def test_valence_assignment_2(self):
         valence_assignment_generator = (
@@ -105,7 +105,7 @@ class RandomDeNovoTestcase(unittest.TestCase):
                 common_valences_only=True,
             )
         )
-        self.assertEqual(len(list(valence_assignment_generator)), 4)
+        self.assertEqual(28, len(list(valence_assignment_generator)))
 
     def test_valence_assignment_5(self):
         valence_assignment_generator = (
@@ -115,14 +115,22 @@ class RandomDeNovoTestcase(unittest.TestCase):
                 common_valences_only=True,
             )
         )
-        self.assertEqual(len(list(valence_assignment_generator)), 1)
+        self.assertEqual(5, len(list(valence_assignment_generator)))
 
     def test_valence_feasibility_check_too_few_edges(self):
         valence_assignment = {
-            AtomWithValence(atom_type="C", atom_valence=1): 7,
-            AtomWithValence(atom_type="H", atom_valence=1): 5,
-            AtomWithValence(atom_type="N", atom_valence=1): 3,
-            AtomWithValence(atom_type="O", atom_valence=1): 6,
+            AtomWithValence(
+                atom_type="C", atom_valence_and_charge=ValenceAndCharge(1, 0)
+            ): 7,
+            AtomWithValence(
+                atom_type="H", atom_valence_and_charge=ValenceAndCharge(1, 0)
+            ): 5,
+            AtomWithValence(
+                atom_type="N", atom_valence_and_charge=ValenceAndCharge(1, 0)
+            ): 3,
+            AtomWithValence(
+                atom_type="O", atom_valence_and_charge=ValenceAndCharge(1, 0)
+            ): 6,
         }
         is_assignment_feasible = (
             self.generator_with_formula.is_valence_assignment_feasible(
@@ -133,9 +141,15 @@ class RandomDeNovoTestcase(unittest.TestCase):
 
     def test_valence_feasibility_check_odd_degrees_sum(self):
         valence_assignment = {
-            AtomWithValence(atom_type="C", atom_valence=3): 1,
-            AtomWithValence(atom_type="C", atom_valence=4): 1,
-            AtomWithValence(atom_type="H", atom_valence=1): 6,
+            AtomWithValence(
+                atom_type="C", atom_valence_and_charge=ValenceAndCharge(3, -1)
+            ): 1,
+            AtomWithValence(
+                atom_type="C", atom_valence_and_charge=ValenceAndCharge(4, 0)
+            ): 1,
+            AtomWithValence(
+                atom_type="H", atom_valence_and_charge=ValenceAndCharge(1, 0)
+            ): 6,
         }
         is_assignment_feasible = (
             self.generator_with_formula.is_valence_assignment_feasible(
@@ -145,9 +159,11 @@ class RandomDeNovoTestcase(unittest.TestCase):
         self.assertFalse(is_assignment_feasible)
 
     def test_sampling_of_atoms_by_valence_partition(self):
-        print(self.generator_with_formula.get_feasible_atom_valence_assignments(
-                    "C23H27N5O2"
-                ))
+        print(
+            self.generator_with_formula.get_feasible_atom_valence_assignments(
+                "C23H27N5O2"
+            )
+        )
         self.assertEqual(
             len(
                 self.generator_with_formula.get_feasible_atom_valence_assignments(
@@ -159,31 +175,45 @@ class RandomDeNovoTestcase(unittest.TestCase):
 
     def test_random_molecule_generation_hard(self):
         start_time = time.time()
-        molecule = self.generator_with_formula.generate_random_molecule_graphs_via_traversal(chemical_formula='C13H24Cl6O8P2')
+        molecule = (
+            self.generator_with_formula.generate_random_molecule_graphs_via_traversal(
+                chemical_formula="C13H24Cl6O8P2"
+            )
+        )
         total_secs = time.time() - start_time
         self.assertLess(total_secs, 1)
 
     def test_random_molecule_generation_for_ion_1(self):
-        molecules = self.generator_with_formula.generate_random_molecule_graphs_via_traversal(chemical_formula='C8H18OP+')
+        molecules = (
+            self.generator_with_formula.generate_random_molecule_graphs_via_traversal(
+                chemical_formula="C8H18OP+"
+            )
+        )
         if self.draw_molecules:
             for mol_i, molecule in enumerate(molecules):
                 img = Draw.MolToImage(molecule)
-                img.save(f'molecule_charged_{mol_i}.png')
+                img.save(f"molecule_charged_{mol_i}.png")
 
     def test_random_molecule_generation_for_ion_2(self):
-        molecules = self.generator_with_formula.generate_random_molecule_graphs_via_traversal(chemical_formula='C3H6NO4S-')
+        molecules = (
+            self.generator_with_formula.generate_random_molecule_graphs_via_traversal(
+                chemical_formula="C3H6NO4S-"
+            )
+        )
         if self.draw_molecules:
             for mol_i, molecule in enumerate(molecules):
                 img = Draw.MolToImage(molecule)
-                img.save(f'molecule_charged_{mol_i}.png')
+                img.save(f"molecule_charged_{mol_i}.png")
 
     def test_random_molecule_generation(self):
         for gen_i in range(100):
-            molecules = self.generator_with_formula.generate_random_molecule_graphs_via_traversal(chemical_formula='C23H17Cl2N5O4')
+            molecules = self.generator_with_formula.generate_random_molecule_graphs_via_traversal(
+                chemical_formula="C23H17Cl2N5O4"
+            )
             if self.draw_molecules:
                 for mol_i, molecule in enumerate(molecules):
                     img = Draw.MolToImage(molecule)
-                    img.save(f'molecule_{gen_i}_{mol_i}.png')
+                    img.save(f"molecule_{gen_i}_{mol_i}.png")
 
     def test_step_function(self):
         batch = {
@@ -195,16 +225,16 @@ class RandomDeNovoTestcase(unittest.TestCase):
                 "Cc1c(C)c2c(cc1)c(=O)c1cccc(CC(=O)O)c1o2",
             ]
         }
-        for batch_i in range(200):
+        for batch_i in range(100):
             mol_preds = self.generator_with_formula.step(batch)["mols_pred"]
-            print('mol_preds: ', mol_preds)
+            # print('mol_preds: ', mol_preds)
             if self.draw_molecules:
                 for input_mol_i, molecule_smiles in enumerate(mol_preds):
                     for mol_i, _smiles in enumerate(molecule_smiles):
-                        print('_smiles: ', _smiles)
+                        # print('_smiles: ', _smiles)
                         molecule = Chem.MolFromSmiles(_smiles)
                         img = Draw.MolToImage(molecule)
-                        img.save(f'step_molecule_{input_mol_i}_{mol_i}.png')
+                        img.save(f"step_molecule_{input_mol_i}_{mol_i}.png")
 
 
 if __name__ == "__main__":
