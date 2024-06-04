@@ -24,6 +24,7 @@ srun --export=ALL --preserve-env python3 train.py \
     --run_name="lr={p['lr']},bs={p['batch_size']},k={p['k_predictions']},d={p['d_model']},nhead={p['nhead']},nel={p['num_encoder_layers']}" \
     --task=de_novo \
     --model=smiles_transformer \
+    --validate_only_loss \
     --batch_size={p['batch_size']} \
     --lr={p['lr']} \
     --k_predictions={p['k_predictions']} \
@@ -67,7 +68,7 @@ def main():
     grid = {
         'lr': [3e-4, 1e-4, 5e-5],
         'batch_size': [64, 128],  # per GPU
-        'k_predictions': [1, 10],
+        'k_predictions': [1],
         'd_model': [256, 512],
         'nhead': [4, 8],
         'num_encoder_layers': [3, 6],

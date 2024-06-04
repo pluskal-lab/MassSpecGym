@@ -62,6 +62,8 @@ parser.add_argument('--model', type=str, required=True)
 
 # - De novo
 
+parser.add_argument('--validate_only_loss', action='store_true')
+
 # 1. SmilesTransformer
 parser.add_argument('--input_dim', type=int, default=2)
 parser.add_argument('--d_model', type=int, default=512)
@@ -148,7 +150,8 @@ def main(args):
                 smiles_tokenizer=args.smiles_tokenizer,
                 k_predictions=args.k_predictions,
                 pre_norm=args.pre_norm,
-                max_smiles_len=args.max_smiles_len
+                max_smiles_len=args.max_smiles_len,
+                validate_only_loss=args.validate_only_loss
             )
         else:
             raise NotImplementedError(f"Model {args.model} not implemented.")

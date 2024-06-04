@@ -24,8 +24,10 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
         k_predictions: int = 1,
         temperature: T.Optional[float] = None,
         pre_norm=False,
+        *args,
+        **kwargs
     ):
-        super().__init__()
+        super().__init__(*args, **kwargs)
         self.smiles_tokenizer = smiles_tokenizer
         self.vocab_size = smiles_tokenizer.get_vocab_size()
         for token in [start_token, end_token, pad_token]:
@@ -104,6 +106,11 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
         return dict(loss=loss, mols_pred=None)
 
     def validation_step(self, batch: dict, batch_idx: torch.Tensor) -> tuple:
+        outputs = self.step(batch)
+        decoded_smiles = self.decode_smiles(batch["spec"].float())
+        return dict(loss=outputs["loss"], mols_pred=decoded_smiles)
+    
+    def test_step(self, batch: dict, batch_idx: torch.Tensor) -> tuple:
         outputs = self.step(batch)
         decoded_smiles = self.decode_smiles(batch["spec"].float())
         return dict(loss=outputs["loss"], mols_pred=decoded_smiles)
