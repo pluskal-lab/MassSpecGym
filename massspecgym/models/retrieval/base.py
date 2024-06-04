@@ -12,7 +12,7 @@ from massspecgym.models.base import MassSpecGymModel
 
 class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
 
-    def __init__(self, at_ks: T.Iterable[int] = (1, 5, 10), *args, **kwargs):
+    def __init__(self, at_ks: T.Iterable[int] = (1, 5, 20), *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.at_ks = at_ks
 
