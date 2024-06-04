@@ -127,6 +127,7 @@ def get_smiles_bpe_tokenizer() -> ByteLevelBPETokenizer:
     """
     Return a Byte-level BPE tokenizer trained on the SMILES strings from the
     `MassSpecGym_test_fold_MCES2_disjoint_molecules_4M.tsv` dataset.
+    TODO: refactor to a well-organized class.
     """
     # Initialize the tokenizer
     special_tokens = ["<pad>", "<s>", "</s>", "<unk>"]

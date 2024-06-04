@@ -89,6 +89,7 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
                 smiles_pred_valid_sample, mols_pred_valid_sample = [], []
                 for s in mols_pred_sample:
                     m = Chem.MolFromSmiles(s) if s is not None else None
+                    # If SMILES cannot be converted to RDKit molecule, the molecule is set to None
                     smiles_pred_valid_sample.append(s if m is not None else None)
                     mols_pred_valid_sample.append(m)
                 smiles_pred_valid.append(smiles_pred_valid_sample)
@@ -101,6 +102,14 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
             ]
         else:
             raise ValueError(f"Invalid mol_pred_kind: {self.mol_pred_kind}")
+
+        # Auxiliary metric: number of valid molecules
+        self._update_metric(
+            metric_pref + f"num_valid_mols",
+            MeanMetric,
+            ([sum([m is not None for m in ms]) for ms in mols_pred],),
+            batch_size=len(mols_pred),
+        )
 
         # Get RDKit molecule objects for ground truth
         smile_true = mol_true
@@ -117,15 +126,16 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
             # report the minimum distance. The minimum distances for each sample in the batch are
             # averaged across the epoch.
             min_mces_dists = []
+            mces_thld = 100
             # Iterate over batch
             for preds, true in zip(smiles_pred_top_k, smile_true):
                 # Iterate over top-k predicted molecule samples
                 dists = [
                     MCES(s1=true, s2=pred, **self.myopic_mces_kwargs)[1]
-                    if pred is not None else 20  # TODO Replace with a more sensible value
+                    if pred is not None else mces_thld
                     for pred in preds
                 ]
-                min_mces_dists.append(min(dists))
+                min_mces_dists.append(min(min(dists), mces_thld))
             self._update_metric(
                 metric_pref + f"top_{top_k}_min_mces_dist",
                 MeanMetric,

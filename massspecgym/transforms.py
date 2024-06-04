@@ -54,8 +54,10 @@ class SpecTokenizer(SpecTransform):
     def __init__(
         self,
         n_peaks: Optional[int] = 60,
+        prec_mz_intensity: Optional[float] = 1.1
     ) -> None:
         self.n_peaks = n_peaks
+        self.prec_mz_intensity = prec_mz_intensity
 
     def matchms_transforms(self, spec: matchms.Spectrum) -> matchms.Spectrum:
         return default_matchms_transforms(spec, n_max_peaks=self.n_peaks)
@@ -65,24 +67,28 @@ class SpecTokenizer(SpecTransform):
         Stack arrays of mz and intensities into a matrix of shape (num_peaks, 2).
         If the number of peaks is less than `n_peaks`, pad the matrix with zeros.
         """
-        spec = np.vstack([spec.peaks.mz, spec.peaks.intensities]).T
+        spec_t = np.vstack([spec.peaks.mz, spec.peaks.intensities]).T
+        if self.prec_mz_intensity is not None:
+            spec_t = np.vstack([[spec.metadata["precursor_mz"], self.prec_mz_intensity], spec_t])
         if self.n_peaks is not None:
-            spec = utils.pad_spectrum(spec, self.n_peaks)
-        spec = torch.from_numpy(spec)
-        return spec
+            spec_t = utils.pad_spectrum(
+                spec_t,
+                self.n_peaks + 1 if self.prec_mz_intensity is not None else self.n_peaks
+            )
+        return torch.from_numpy(spec_t)
 
 
 class SpecBinner(SpecTransform):
     def __init__(
         self,
-        max_mz: float = 1000,
+        max_mz: float = 1005,
         bin_width: float = 1,
         to_rel_intensities: bool = True,
     ) -> None:
         self.max_mz = max_mz
         self.bin_width = bin_width
         self.to_rel_intensities = to_rel_intensities
-        if max_mz % bin_width != 0:
+        if not (max_mz / bin_width).is_integer():
             raise ValueError("`max_mz` must be divisible by `bin_width`.")
 
     def matchms_transforms(self, spec: matchms.Spectrum) -> matchms.Spectrum:

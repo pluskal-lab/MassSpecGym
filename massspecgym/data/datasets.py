@@ -26,6 +26,7 @@ class MassSpecDataset(Dataset):
         spec_transform: Optional[SpecTransform] = None,
         mol_transform: Optional[MolTransform] = None,
         pth: Optional[Path] = None,
+        return_mol_freq: bool = True
     ):
         """
         Args:
@@ -35,6 +36,7 @@ class MassSpecDataset(Dataset):
         self.pth = pth
         self.spec_transform = spec_transform
         self.mol_transform = mol_transform
+        self.return_mol_freq = return_mol_freq
 
         if self.pth is None:
             self.pth = utils.hugging_face_download("MassSpecGym.tsv")
@@ -60,6 +62,11 @@ class MassSpecDataset(Dataset):
             self.metadata = pd.DataFrame([s.metadata for s in self.spectra])
         else:
             raise ValueError(f"{self.pth.suffix} file format not supported.")
+        
+        if self.return_mol_freq:
+            if "inchikey" not in self.metadata.columns:
+                self.metadata["inchikey"] = self.metadata["smiles"].apply(utils.smiles_to_inchi_key)
+            self.metadata["mol_freq"] = self.metadata.groupby("inchikey")["inchikey"].transform("count")
 
     def __len__(self) -> int:
         return len(self.spectra)
@@ -84,6 +91,9 @@ class MassSpecDataset(Dataset):
         item.update({
             k: metadata[k] for k in ["precursor_mz", "adduct"]
         })
+
+        if self.return_mol_freq:
+            item["mol_freq"] = metadata["mol_freq"]
 
         return item
 
