@@ -20,6 +20,7 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
         self,
         top_ks: T.Iterable[int] = (1, 10),
         myopic_mces_kwargs: T.Optional[T.Mapping] = None,
+        validate_only_loss: bool = False,
         *args,
         **kwargs
     ):
@@ -34,6 +35,7 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
             solver_options=dict(msg=0)  # make ILP solver silent
         )
         self.myopic_mces_kwargs |= myopic_mces_kwargs or {}
+        self.validate_only_loss = validate_only_loss
         self.mol_pred_kind: T.Literal["smiles", "rdkit"] = "smiles"
 
     def on_batch_end(
@@ -56,7 +58,22 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
         outputs: T.Any,
         batch: dict,
         batch_idx: int,
-        metric_pref: str = ''
+        metric_pref: str = 'val_'
+    ) -> None:
+        self.on_batch_end(outputs, batch, batch_idx, metric_pref)
+        if not self.validate_only_loss:
+            self.evaluate_de_novo_step(
+                outputs["mols_pred"],  # (bs, k) list of generated rdkit molecules or SMILES strings
+                batch["mol"],  # (bs) list of ground truth SMILES strings
+                metric_pref=metric_pref
+            )
+
+    def on_test_batch_end(
+        self,
+        outputs: T.Any,
+        batch: dict,
+        batch_idx: int,
+        metric_pref: str = 'test_'
     ) -> None:
         self.on_batch_end(outputs, batch, batch_idx, metric_pref)
         self.evaluate_de_novo_step(
