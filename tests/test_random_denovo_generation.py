@@ -6,7 +6,7 @@ from rdkit import Chem
 from rdkit.Chem import Draw
 
 from massspecgym.models.de_novo import RandomDeNovo
-from massspecgym.models.de_novo.random import AtomWithValence
+from massspecgym.models.de_novo.random import AtomWithValence, ValenceAndCharge
 
 
 class RandomDeNovoTestcase(unittest.TestCase):
@@ -235,6 +235,26 @@ class RandomDeNovoTestcase(unittest.TestCase):
                         molecule = Chem.MolFromSmiles(_smiles)
                         img = Draw.MolToImage(molecule)
                         img.save(f"step_molecule_{input_mol_i}_{mol_i}.png")
+
+    def test_single_candidate_generation(self):
+        generator = RandomDeNovo(formula_known=True, max_top_k=1)
+        batch = {
+            "mol": [
+                'CCCC[C@@H](C)[C@H]([C@H](C[C@@H](C)C[C@@H](CCCCCC[C@@H]([C@@H](C)N)O)O)OC(=O)CC(CC(=O)O)C(=O)O)OC(=O)CC(CC(=O)O)C(=O)O',
+            ]
+        }
+        for _ in range(100):
+            print(generator.step(batch))
+
+    def test_difficult_molecule(self):
+        batch = {
+            "mol": [
+                'CC(C)C[C@H]1C(=O)N2CCC[C@H]2[C@]3(N1C(=O)[C@](O3)(C(C)C)NC(=O)[C@@H]4CN([C@@H]5CC6=CNC7=CC=CC(=C67)C5=C4)C)O',
+            ]
+        }
+        for _ in range(100):
+            print(self.generator_with_formula.step(batch))
+
 
 
 if __name__ == "__main__":

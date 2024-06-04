@@ -11,6 +11,7 @@ from rdkit import Chem
 from rdkit.Chem.MolStandardize import rdMolStandardize
 from rdkit.Chem.rdMolDescriptors import CalcMolFormula
 from rdkit.Chem.rdchem import Mol, BondType
+from copy import deepcopy
 
 # type aliases for code readability
 chem_element = str
@@ -159,6 +160,7 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         formula_known: bool = True,
         count_of_valid_valence_assignments: int = 10,
         estimate_chem_element_stats: bool = True,
+        max_top_k: int = 10
     ):
         """
 
@@ -173,14 +175,15 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                                                     When setting to 1, the first feasible valence assignment will be used.
         @param estimate_chem_element_stats: a boolean flag controlling if prior information about elements' valences
                                             and bond type distributions is estimated from training data
+        @param max_top_k: a maximum number of candidates to generate. If the count of valid valence assignments do
+                          not allow generation of max_top_k, then less candidates are returned
         """
         super(RandomDeNovo, self).__init__()
         self.formula_known = formula_known
         self.count_of_valid_valence_assignments = count_of_valid_valence_assignments
         self.estimate_chem_element_stats = estimate_chem_element_stats
-        # a maximum number of candidates to generate. If the count of valid valence assignments do
-        # not allow generation of max_top_k, then less candidates are returned
-        self.max_top_k = max(self.top_ks)
+        #
+        self.max_top_k = min(max(self.top_ks), max_top_k)
         # prior chemical knownledge about element valences
         self.element_2_valences = ELEMENT_VALENCES
         # a dictionary structure for statistics about bond type distributions, if fit is called
@@ -189,12 +192,12 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         ] = None
         # a helping structures for (optional) derivation of statistics about valences and bond type distributions
         # the dictionary has the following mapping:
-        # chem_element -> [(valence_val, charge) ->
-        #                                           [(bond_type, other_bond_atom_type) ->
+        # chem_element ->
+        #   [(valence_val, charge) ->
+        #       [(tuple of already bonded (atom_type, valence, charge) neighbours] ->
+        #                                           [(bond_type, other_bond_atom_type, valence, charge) ->
         #                                                                                  bond_count]]
-        self._element_2_observed_valence_2_bondtypes: defaultdict[
-            chem_element, dict[tuple[int, int], defaultdict(int)]
-        ] = defaultdict(dict)
+        self._element_2_observed_valence_2_bondtypes = defaultdict(dict)
 
     def generator_for_splits_of_chem_element_atoms_by_possible_valences(
         self,
@@ -473,19 +476,29 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
 
         def _sample_edge_at_random(
             all_graph_nodes: list[AtomNodeForRandomTraversal],
-            edge_start_node_i: int,
-            possible_candidates_for_end_node: set[int],
-            nodes_open_to_traversal: set[int],
+            open_nodes_for_sampling: dict[str, set[int]],
+            edge_start_node_i: int = None,
+            closed_set: set[int] = None
         ) -> tuple[tuple[int, int], list[AtomNodeForRandomTraversal], set[int]]:
             """
             Helper routine function to filter atoms suitable for generation of a random bond with `edge_start_node_i`
             and sampling a random edge
             @param all_graph_nodes: a list of all nodes in the molecule graph
             @param edge_start_node_i: index of the first edge node
-            @param possible_candidates_for_end_node: a broader set of node indices which can be considered for closing the edge
-            @param nodes_open_to_traversal: an open set of nodes to sample from
-            @return: a sampled edge and updated structures `all_graph_nodes`, `nodes_open_to_traversal`
+            @param open_nodes_for_sampling: dictionary with sets of node indices which
+                                                     can be considered for closing the edge.
+                                                     Each set is specified by the dictionary key:
+                                                     "coordinate_bond_negatively_charged_targets",
+                                                     "coordinate_bond_positively_charged_targets",
+                                                     "covalent_bond_targets"
+            @param closed_set: closed set for traversal
+            @return: a sampled edge and updated structures `all_graph_nodes`, `open_nodes_for_sampling`
             """
+            # sample the start node for the edge if it's not specified
+            if edge_start_node_i is None:
+                edge_start_node_i = choice(sum(map(list, open_nodes_for_sampling.values()), []))
+            if closed_set is None:
+                closed_set = {edge_start_node_i}
             # check if the start edge atom has the charge and therefore can form coordinate bond
             can_form_coordinate_bond = (
                 all_graph_nodes[edge_start_node_i].remaining_node_charge != 0
@@ -496,27 +509,24 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                 start_node_charge_sign = np.sign(
                     all_graph_nodes[edge_start_node_i].remaining_node_charge
                 )
-                possible_candidates_for_end_node = [
-                    node_i
-                    for node_i in possible_candidates_for_end_node
-                    if start_node_charge_sign
-                    == -np.sign(all_graph_nodes[node_i].remaining_node_charge)
-                ]
+                # if for the coordinate bond one atom is positively charged, then another must be charged negatively
+                if start_node_charge_sign > 0:
+                    possible_candidates_type = "coordinate_bond_neg_charged_targets"
+                else:
+                    possible_candidates_type = "coordinate_bond_pos_charged_targets"
             else:
-                possible_candidates_for_end_node = [
-                    node_i
-                    for node_i in possible_candidates_for_end_node
-                    if all_graph_nodes[node_i].remaining_node_charge == 0
-                    or all_graph_nodes[node_i].remaining_node_degree
-                    > np.abs(all_graph_nodes[node_i].remaining_node_charge)
-                ]
-            edge_end_node_i = choice(possible_candidates_for_end_node)
+                possible_candidates_type = "covalent_bond_targets"
+            edge_end_node_j = choice([candidate_node_j
+                                      for candidate_node_j in open_nodes_for_sampling[possible_candidates_type]
+                                      if candidate_node_j not in closed_set])
             # decrease the node degrees correspondingly
-            for node_of_a_new_edge_i in [edge_start_node_i, edge_end_node_i]:
+            for node_of_a_new_edge_i in [edge_start_node_i, edge_end_node_j]:
                 all_graph_nodes[node_of_a_new_edge_i].remaining_node_degree -= 1
                 # if all bonds are created for the particular atom, it is no more open for traversal
                 if all_graph_nodes[node_of_a_new_edge_i].remaining_node_degree == 0:
-                    nodes_open_to_traversal.remove(node_of_a_new_edge_i)
+                    for candidates_type in open_nodes_for_sampling.keys():
+                        if node_of_a_new_edge_i in open_nodes_for_sampling[candidates_type]:
+                            open_nodes_for_sampling[candidates_type].remove(node_of_a_new_edge_i)
                 # if the added bond was coordinate, modify the remaining charges correspondingly
                 elif is_bond_coordinate:
                     new_charge_abs_value = (
@@ -525,148 +535,163 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                         )
                         - 1
                     )
-                    charge_sign = np.sign(
-                        all_graph_nodes[node_of_a_new_edge_i].remaining_node_charge
-                    )
-                    all_graph_nodes[node_of_a_new_edge_i].remaining_node_charge = (
-                        charge_sign * new_charge_abs_value
-                    )
+                    # check if the node still can form coordinate bonds
+                    if new_charge_abs_value == 0:
+                        for candidates_type in ["coordinate_bond_neg_charged_targets",
+                                                "coordinate_bond_pos_charged_targets"]:
+                            if node_of_a_new_edge_i in open_nodes_for_sampling[candidates_type]:
+                                open_nodes_for_sampling[candidates_type].remove(node_of_a_new_edge_i)
+                    else:
+                        charge_sign = np.sign(
+                            all_graph_nodes[node_of_a_new_edge_i].remaining_node_charge
+                        )
+                        all_graph_nodes[node_of_a_new_edge_i].remaining_node_charge = (
+                            charge_sign * new_charge_abs_value
+                        )
             return (
-                (edge_start_node_i, edge_end_node_i),
+                (edge_start_node_i, edge_end_node_j),
                 all_graph_nodes,
-                nodes_open_to_traversal,
+                open_nodes_for_sampling,
             )
 
-        for _ in range(num_of_iterations_over_splits_into_valences):
-            for valence_assignment in candidate_valence_assignments:
-                # first randomly create a spanning tree of the molecule graph, to ensure the connectivity of molecule.
-                # The feasibility check `self.is_valence_assignment_feasible` inside the
-                # `self.get_feasible_atom_valence_assignments` function should ensure the possibility to create the tree.
-                spanning_tree_was_generated = False
-                spanning_tree_generation_attempts = 0
-                while (
-                    not spanning_tree_was_generated
-                    and spanning_tree_generation_attempts
-                    < max_number_of_retries_per_valence_assignment
-                ):
-                    spanning_tree_generation_attempts += 1
-                    # we optimistically set the value of `spanning_tree_was_generated` to True,
-                    # If the current traversal do not lead to a spanning tree,
-                    # then `spanning_tree_was_generated` is set to False in the code below
-                    spanning_tree_was_generated = True
+        # we request to generate at least one molecule
+        while len(generated_molecules) == 0:
+            for _ in range(num_of_iterations_over_splits_into_valences):
+                for valence_assignment in candidate_valence_assignments:
+                    # first randomly create a spanning tree of the molecule graph, to ensure the connectivity of molecule.
+                    # The feasibility check `self.is_valence_assignment_feasible` inside the
+                    # `self.get_feasible_atom_valence_assignments` function should ensure the possibility to create the tree.
+                    spanning_tree_was_generated = False
+                    spanning_tree_generation_attempts = 0
+                    while (
+                        not spanning_tree_was_generated
+                        and spanning_tree_generation_attempts
+                        < max_number_of_retries_per_valence_assignment
+                    ):
+                        spanning_tree_generation_attempts += 1
+                        # we optimistically set the value of `spanning_tree_was_generated` to True,
+                        # If the current traversal do not lead to a spanning tree,
+                        # then `spanning_tree_was_generated` is set to False in the code below
+                        spanning_tree_was_generated = True
 
-                    # prepare node list for a random edges generation
-                    all_graph_nodes = []
-                    for (
-                        atom_with_valence,
-                        num_of_atoms_in_molecule,
-                    ) in valence_assignment.items():
-                        for _ in range(num_of_atoms_in_molecule):
-                            all_graph_nodes.append(
-                                AtomNodeForRandomTraversal(
-                                    atom_with_valence.atom_type,
-                                    atom_with_valence.atom_valence_and_charge.valence,
-                                    atom_with_valence.atom_valence_and_charge.charge,
+                        # prepare node list for a random edges generation
+                        all_graph_nodes = []
+                        for (
+                            atom_with_valence,
+                            num_of_atoms_in_molecule,
+                        ) in valence_assignment.items():
+                            for _ in range(num_of_atoms_in_molecule):
+                                all_graph_nodes.append(
+                                    AtomNodeForRandomTraversal(
+                                        atom_with_valence.atom_type,
+                                        atom_with_valence.atom_valence_and_charge.valence,
+                                        atom_with_valence.atom_valence_and_charge.charge,
+                                    )
                                 )
-                            )
 
-                    # a set of nodes which still have unpaired electrons
-                    # (as indicated by the `remaining_node_degree` attribute)
-                    nodes_open_to_traversal = set(range(len(all_graph_nodes)))
-                    # the final edge list will be stored into the variable below.
-                    # An edge is defined by a pair of position indices in the `all_graph_nodes` list
-                    edge_list = []
+                        # recording sets of nodes available for random sampling of covalent and coordinate bonds
+                        coordinate_bond_neg_charged_targets = {
+                            node_i
+                            for node_i, node in enumerate(all_graph_nodes)
+                            if np.sign(node.remaining_node_charge) == -1
+                        }
+                        coordinate_bond_pos_charged_targets = {
+                            node_i
+                            for node_i, node in enumerate(all_graph_nodes)
+                            if np.sign(node.remaining_node_charge) == 1
+                        }
+                        covalent_bond_targets = {
+                            node_i
+                            for node_i, node in enumerate(all_graph_nodes)
+                            if node.remaining_node_charge == 0 or node.remaining_node_degree > np.abs(
+                                node.remaining_node_charge)
+                        }
 
-                    # the nodes already included into the spanning tree
-                    # the set is used for quick blacklisting, while the list is used for possible backtracking when
-                    spanning_tree_visited_nodes_set, spanning_tree_traversal_list = (
-                        set(),
-                        deque(),
-                    )
-                    # sample a random start of spanning tree generation
-                    edge_start_node_i = choice(list(nodes_open_to_traversal))
-                    spanning_tree_visited_nodes_set.add(edge_start_node_i)
-                    spanning_tree_traversal_list.append(edge_start_node_i)
-                    while len(spanning_tree_visited_nodes_set) < len(all_graph_nodes):
-                        # computing potential end nodes for the sampled bond
-                        possible_candidates_for_end_node = (
-                            nodes_open_to_traversal.difference(
-                                spanning_tree_visited_nodes_set
-                            )
+                        open_nodes_for_sampling = {
+                            "coordinate_bond_neg_charged_targets": coordinate_bond_neg_charged_targets,
+                            "coordinate_bond_pos_charged_targets": coordinate_bond_pos_charged_targets,
+                            "covalent_bond_targets": covalent_bond_targets}
+
+                        # the final edge list will be stored into the variable below.
+                        # An edge is defined by a pair of position indices in the `all_graph_nodes` list
+                        edge_list = []
+
+                        # the nodes already included into the spanning tree
+                        # the set is used for quick blacklisting, while the list is used for possible backtracking when
+                        spanning_tree_visited_nodes_set, spanning_tree_traversal_list = (
+                            set(),
+                            deque(),
                         )
-                        # check if the start edge atom has the charge and therefore can form coordinate bond
+                        # sample a random start of spanning tree generation
+                        edge_start_node_i = choice(list(range(len(all_graph_nodes))))
+                        spanning_tree_visited_nodes_set.add(edge_start_node_i)
+                        spanning_tree_traversal_list.append(edge_start_node_i)
+                        while len(spanning_tree_visited_nodes_set) < len(all_graph_nodes):
+                            # check if the start edge atom has the charge and therefore can form coordinate bond
+                            try:
+                                (
+                                    (edge_start_node_i, edge_end_node_i),
+                                    all_graph_nodes,
+                                    open_nodes_for_sampling
+                                ) = _sample_edge_at_random(
+                                    all_graph_nodes,
+                                    open_nodes_for_sampling,
+                                    edge_start_node_i=edge_start_node_i,
+                                    closed_set=spanning_tree_visited_nodes_set,
+                                )
+                            except IndexError:
+                                spanning_tree_was_generated = False
+                                break
+                            # note that the graph is undirected, start-end node refers to the random traversal only
+                            edge_list.append((edge_start_node_i, edge_end_node_i))
+                            # recording the node added to the random spanning tree
+                            spanning_tree_visited_nodes_set.add(edge_end_node_i)
+                            spanning_tree_traversal_list.append(edge_end_node_i)
+
+                            # finding a start node for the next sampled edge.
+                            # We have to ensure that such a node still has some degree not covered by sampling nodes.
+                            # For that, we might need to backtrack.
+                            candidate_for_start_node_i = edge_end_node_i
+                            try:
+                                while (
+                                    all_graph_nodes[
+                                        candidate_for_start_node_i
+                                    ].remaining_node_degree
+                                    == 0
+                                ):
+                                    spanning_tree_traversal_list.pop()
+                                    candidate_for_start_node_i = (
+                                        spanning_tree_traversal_list[-1]
+                                    )
+                            except IndexError:
+                                spanning_tree_was_generated = False
+                                break
+                            edge_start_node_i = candidate_for_start_node_i
+
+                    # after the spanning tree edges were sampled,
+                    # now we randomly connect nodes with remaining degrees yet uncovered by sampled bonds
+
+                    while sum(map(len, open_nodes_for_sampling.values())) >= 2:
                         try:
                             (
                                 (edge_start_node_i, edge_end_node_i),
                                 all_graph_nodes,
-                                nodes_open_to_traversal,
+                                open_nodes_for_sampling,
                             ) = _sample_edge_at_random(
                                 all_graph_nodes,
-                                edge_start_node_i,
-                                possible_candidates_for_end_node,
-                                nodes_open_to_traversal,
+                                open_nodes_for_sampling,
                             )
                         except IndexError:
-                            spanning_tree_was_generated = False
                             break
-                        # note that the graph is undirected, start-end node refers to the random traversal only
                         edge_list.append((edge_start_node_i, edge_end_node_i))
-                        # recording the node added to the random spanning tree
-                        spanning_tree_visited_nodes_set.add(edge_end_node_i)
-                        spanning_tree_traversal_list.append(edge_end_node_i)
 
-                        # finding a start node for the next sampled edge.
-                        # We have to ensure that such a node still has some degree not covered by sampling nodes.
-                        # For that, we might need to backtrack.
-                        candidate_for_start_node_i = edge_end_node_i
-                        try:
-                            while (
-                                all_graph_nodes[
-                                    candidate_for_start_node_i
-                                ].remaining_node_degree
-                                == 0
-                            ):
-                                spanning_tree_traversal_list.pop()
-                                candidate_for_start_node_i = (
-                                    spanning_tree_traversal_list[-1]
-                                )
-                        except IndexError:
-                            spanning_tree_was_generated = False
-                            break
-                        edge_start_node_i = candidate_for_start_node_i
-
-                # after the spanning tree edges were sampled,
-                # now we randomly connect nodes with remaining degrees yet uncovered by sampled bonds
-                while len(nodes_open_to_traversal) >= 2:
-                    # sample edge nodes
-                    edge_start_node_i = choice(list(nodes_open_to_traversal))
-                    # computing potential end nodes for the sampled bond
-                    possible_candidates_for_end_node = (
-                        nodes_open_to_traversal.difference({edge_start_node_i})
-                    )
-
-                    try:
-                        (
-                            (edge_start_node_i, edge_end_node_i),
-                            all_graph_nodes,
-                            nodes_open_to_traversal,
-                        ) = _sample_edge_at_random(
-                            all_graph_nodes,
-                            edge_start_node_i,
-                            possible_candidates_for_end_node,
-                            nodes_open_to_traversal,
+                    # if all nodes were covered by edges without self-loops, then we remember the generated molecule
+                    if sum(map(len, open_nodes_for_sampling.values())) == 0:
+                        generated_molecules.append(
+                            create_rdkit_molecule_from_edge_list(edge_list, all_graph_nodes)
                         )
-                    except IndexError:
-                        break
-                    edge_list.append((edge_start_node_i, edge_end_node_i))
-
-                # if all nodes were covered by edges without self-loops, then we remember the generated molecule
-                if len(nodes_open_to_traversal) == 0:
-                    generated_molecules.append(
-                        create_rdkit_molecule_from_edge_list(edge_list, all_graph_nodes)
-                    )
-                    if len(generated_molecules) == self.max_top_k:
-                        return generated_molecules
+                        if len(generated_molecules) == self.max_top_k:
+                            return generated_molecules
         return generated_molecules
 
     def training_step(

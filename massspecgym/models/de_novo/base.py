@@ -129,6 +129,7 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
             mces_thld = 100
             # Iterate over batch
             for preds, true in zip(smiles_pred_top_k, smile_true):
+                # print('true: ', true)
                 # Iterate over top-k predicted molecule samples
                 dists = [
                     MCES(s1=true, s2=pred, **self.myopic_mces_kwargs)[1]
