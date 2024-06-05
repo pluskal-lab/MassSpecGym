@@ -18,6 +18,14 @@ from standardizeUtils.standardizeUtils import (
 )
 
 
+def load_massspecgym():
+    df = pd.read_csv(hugging_face_download("MassSpecGym.tsv"), sep="\t")
+    df = df.set_index("identifier")
+    df['mzs'] = df['mzs'].apply(parse_spec_array)
+    df['intensities'] = df['intensities'].apply(parse_spec_array)
+    return df
+
+
 def pad_spectrum(
     spec: np.ndarray, max_n_peaks: int, pad_value: float = 0.0
 ) -> np.ndarray:
