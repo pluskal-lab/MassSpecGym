@@ -57,15 +57,6 @@ class FingerprintFFNRetrieval(RetrievalMassSpecGymModel):
         fp_true = fp_true.type_as(fp_pred)  # convert fingerprint from int to float/double
         loss = self.loss_fn(fp_true, fp_pred)
 
-        # Log loss
-        self.log(
-            metric_pref + "loss",
-            loss,
-            batch_size=x.size(0),
-            sync_dist=True,
-            prog_bar=True,
-        )
-
         # Evaluation performance on fingerprint prediction (optional)
         self.evaluate_fingerprint_step(fp_true, fp_pred, metric_pref=metric_pref)
 
