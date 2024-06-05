@@ -28,6 +28,7 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
         
         self.top_ks = top_ks
 
+        # TODO Replace with utils.MyopicMCES class
         self.myopic_mces_kwargs = dict(
             ind=0,  # dummy index
             solver=pulp.listSolvers(onlyAvailable=True)[0],  # Use the first available solver
