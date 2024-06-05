@@ -15,13 +15,14 @@ from rdkit.Chem.rdchem import Mol, BondType
 from copy import deepcopy
 from collections import Counter
 import bisect
+from itertools import combinations
 
 # type aliases for code readability
 chem_element = str
 number_of_atoms = int
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, order=True)
 class ValenceAndCharge:
     """
     A data class to store valence value with the corresponding charge
@@ -31,7 +32,7 @@ class ValenceAndCharge:
     charge: int
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, order=True)
 class AtomWithValence:
     """
     A data class to store atom info including the computed valence
@@ -41,22 +42,34 @@ class AtomWithValence:
     atom_valence_and_charge: ValenceAndCharge
 
 
+@dataclass(frozen=True, order=True)
+class BondToNeighbouringAtom:
+    """
+    A data class to store info about the adjacent atom
+    """
+
+    adjacent_atom: AtomWithValence
+    bond_type: int
+
+
 @dataclass
 class AtomNodeForRandomTraversal:
     """
     A data class to store atom info including the computed valence
     """
 
-    atom_type: chem_element
-    valence: int
-    charge: int
+    atom_with_valence: AtomWithValence
     _remaining_node_degree: int = None
     _remaining_node_charge: int = None
 
     def __post_init__(self):
         """Setting up remaining node degree and charge for random traversal"""
-        self._remaining_node_degree = self.valence
-        self._remaining_node_charge = self.charge
+        self._remaining_node_degree = (
+            self.atom_with_valence.atom_valence_and_charge.valence
+        )
+        self._remaining_node_charge = (
+            self.atom_with_valence.atom_valence_and_charge.charge
+        )
 
     @property
     def remaining_node_degree(self):
@@ -122,10 +135,12 @@ def create_rdkit_molecule_from_edge_list(
     all_graph_atom_idx_2_mol_atom_idx = {}
     for all_graph_atom_idx, atom in enumerate(all_graph_nodes):
         # ignoring charge-related graph nodes
-        if atom.atom_type not in {"+", "-"}:
+        if atom.atom_with_valence.atom_type not in {"+", "-"}:
             all_graph_atom_idx_2_mol_atom_idx[all_graph_atom_idx] = mol.GetNumAtoms()
-            next_atom = Chem.Atom(atom.atom_type)
-            next_atom.SetFormalCharge(atom.charge)
+            next_atom = Chem.Atom(atom.atom_with_valence.atom_type)
+            next_atom.SetFormalCharge(
+                atom.atom_with_valence.atom_valence_and_charge.charge
+            )
             mol.AddAtom(next_atom)
 
     # adding bonds
@@ -133,15 +148,19 @@ def create_rdkit_molecule_from_edge_list(
         # checking if the edge represents a charge of connected atom
         the_edge_represents_charge = len(
             {
-                all_graph_nodes[node_i].atom_type
+                all_graph_nodes[node_i].atom_with_valence.atom_type
                 for node_i in [edge_node_i, edge_node_j]
             }.intersection({"+", "-"})
         )
         if the_edge_represents_charge:
             # setting a charge to the corresponding atom
             for node_i in [edge_node_i, edge_node_j]:
-                if all_graph_nodes[node_i].atom_type in {"+", "-"}:
-                    charge_value = 1 if all_graph_nodes[node_i].atom_type == "+" else -1
+                if all_graph_nodes[node_i].atom_with_valence.atom_type in {"+", "-"}:
+                    charge_value = (
+                        1
+                        if all_graph_nodes[node_i].atom_with_valence.atom_type == "+"
+                        else -1
+                    )
                 else:
                     atom_node_i = node_i
             mol.GetAtomWithIdx(
@@ -162,7 +181,7 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         self,
         formula_known: bool = True,
         count_of_valid_valence_assignments: int = 10,
-        estimate_chem_element_stats: bool = True,
+        estimate_chem_element_stats: bool = False,
         max_top_k: int = 10,
     ):
         """
@@ -197,18 +216,15 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         # a helper array to store sorted list of train molecular weights.
         # It will be used for the O(logn) lookup of the closest mol weight
         self.mol_weight_trn_values: list[float] = None
-        # a dictionary structure for statistics about bond type distributions, if fit is called
-        self.element_2_valence_2_bondtype_proportions: dict[
-            chem_element, dict[int, float]
-        ] = None
-        # a helping structures for (optional) derivation of statistics about valences and bond type distributions
+        # a dictionary structure for statistics about bond type distributions
         # the dictionary has the following mapping:
         # chem_element ->
-        #   [(valence_val, charge) ->
-        #       [(tuple of already bonded (atom_type, valence, charge) neighbours] ->
-        #                                           [(bond_type, other_bond_atom_type, valence, charge) ->
-        #                                                                                  bond_count]]
-        self._element_2_observed_bonds_2_bondtypes = defaultdict(dict)
+        #   ValenceAndCharge ->
+        #     number of already bonded atoms ->
+        #       [already created BondToNeighbouringAtom] ->
+        #                                           AtomWithValence ->
+        #                                                          list of (bond_type, count) + total_count
+        self.element_2_bond_stats = None
         # a cache with already precomputed sets of randomly generated molecules for the given formula
         self.formula_2_random_smiles = {}
 
@@ -455,6 +471,259 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         shuffle(generated_candidate_valence_assignments)
         return generated_candidate_valence_assignments
 
+    def sample_second_edgenode_at_random(
+        self,
+        edge_start_node_i: int,
+        all_graph_nodes: list[AtomNodeForRandomTraversal],
+        open_nodes_for_sampling: dict[str, set[int]],
+        possible_candidates_type: str,
+        closed_set: set[int],
+        use_chem_element_stats: bool = False,
+        already_connected_neighbours: list[BondToNeighbouringAtom] = None,
+    ):
+        """
+        A function randomly sampling the second node for an edge
+        @param edge_start_node_i: index of the first edge node
+        @param all_graph_nodes: a list of all nodes in the molecule graph
+        @param open_nodes_for_sampling: dictionary with sets of node indices which
+                                                 can be considered for closing the edge.
+                                                 Each set is specified by the dictionary key:
+                                                     "coordinate_bond_negatively_charged_targets",
+                                                     "coordinate_bond_positively_charged_targets",
+                                                     "covalent_bond_targets"
+        @param possible_candidates_type: the `open_nodes_for_sampling` dictionary key
+        @param closed_set: closed set for traversal
+        @param use_chem_element_stats: a boolean flag setting up usage of per chem. elements statistics about its bonds
+        @param already_connected_neighbours: an adjacency list of already sampled neighbours
+        """
+        if not use_chem_element_stats:
+            edge_end_node_j = choice(
+                [
+                    candidate_node_j
+                    for candidate_node_j in open_nodes_for_sampling[
+                        possible_candidates_type
+                    ]
+                    if candidate_node_j not in closed_set
+                ]
+            )
+            bond_degree = 1
+        else:
+            # checking the current state of the atom and gathering the corresponding stats
+            number_of_already_sampled_neighbours = len(already_connected_neighbours)
+            # note that the graph is undirected, start-end node refers to the random traversal only
+            start_atom = all_graph_nodes[edge_start_node_i]
+            if self.element_2_bond_stats is None:
+                raise RuntimeError(
+                    "To use chem. element stats, the model has to be trained first,"
+                    "to record training molecular weights with corresponding formulas."
+                )
+            # the structure of `self.element_2_bond_stats` is
+            # chem_element ->
+            #   ValenceAndCharge ->
+            #     number of already bonded atoms ->
+            #       [already created BondToNeighbouringAtom] ->
+            #                                           AtomWithValence ->
+            #                                                          list of (bond_type, count)+ total_count
+
+            # if we don't have stats  -> fall back to sampling from all candidates
+            try:
+                element_stats = self.element_2_bond_stats[start_atom.atom_with_valence.atom_type][
+                    ValenceAndCharge(start_atom.atom_with_valence.atom_valence_and_charge.valence,
+                                     start_atom.atom_with_valence.atom_valence_and_charge.charge)
+                ][number_of_already_sampled_neighbours][
+                    tuple(sorted(already_connected_neighbours))
+                ]
+
+                full_candidates_list = []
+                neighb_with_stats_candidates_list = []
+                neighb_with_stats_bondcounts = []
+                neighb_with_stats_bondlists = []
+                # iterating over open nodes of the corresponding bond type
+                for candidate_node_j in open_nodes_for_sampling[possible_candidates_type]:
+                    if candidate_node_j not in closed_set:
+                        # remembering all candidates in case no statistic-based option is there
+                        full_candidates_list.append(candidate_node_j)
+                        # checking if the candidate is present in element-specific bond stats
+                        candidate_neighb_atom = all_graph_nodes[
+                            candidate_node_j
+                        ].atom_with_valence
+                        if candidate_neighb_atom in element_stats:
+                            neighb_with_stats_candidates_list.append(candidate_node_j)
+                            bondslist, total_bond_count = element_stats[
+                                candidate_neighb_atom
+                            ]
+                            neighb_with_stats_bondcounts.append(total_bond_count)
+                            neighb_with_stats_bondlists.append(bondslist)
+                # when no stats-based neighbour remain (e.g. hydrogens are not recorded in the stats)
+                if len(neighb_with_stats_candidates_list) == 0:
+                    edge_end_node_j = choice(full_candidates_list)
+                    bond_degree = 1
+                else:
+                    # sampling based on frequences in bond stats
+                    total_bondcount_sum = sum(neighb_with_stats_bondcounts)
+                    proportions = [
+                        val / total_bondcount_sum for val in neighb_with_stats_bondcounts
+                    ]
+                    edge_end_node_j = np.random.choice(
+                        neighb_with_stats_candidates_list, p=proportions
+                    )
+                    # getting i of the sampled neighbour to access its bond-stats
+                    neighb_i = neighb_with_stats_candidates_list.index(edge_end_node_j)
+                    # for the sampled end node, we sample the type of the bond based on the stats
+                    bondtypes_possible = []
+                    counts_of_possible_bondtypes = []
+                    total_possible_bondtype_count = 0
+                    # we leave only the bonds which current state of random generation allows
+                    # i.e., we cannot sample a bond violating the current remaining degree of `edge_start_node_i`
+                    start_node_remaining_degree = all_graph_nodes[
+                        edge_start_node_i
+                    ].remaining_node_degree
+                    for bondtype, count in neighb_with_stats_bondlists[neighb_i]:
+                        if bondtype <= start_node_remaining_degree:
+                            bondtypes_possible.append(bondtype)
+                            counts_of_possible_bondtypes.append(count)
+                            total_possible_bondtype_count += count
+                    # if no bonds can be closed for the sampled element, fall back to sampling from full candidates list
+                    if len(bondtypes_possible) == 0:
+                        edge_end_node_j = choice(full_candidates_list)
+                        bond_degree = 1
+                    else:
+                        bond_degree_proportions = [
+                            num / total_possible_bondtype_count
+                            for num in counts_of_possible_bondtypes
+                        ]
+                        bond_degree = np.random.choice(
+                            bondtypes_possible, p=bond_degree_proportions
+                        )
+                        already_connected_neighbours.append(
+                            BondToNeighbouringAtom(
+                                adjacent_atom=all_graph_nodes[
+                                    edge_end_node_j
+                                ].atom_with_valence,
+                                bond_type=bond_degree,
+                            )
+                        )
+            except:
+                edge_end_node_j = choice(
+                    [
+                        candidate_node_j
+                        for candidate_node_j in open_nodes_for_sampling[
+                        possible_candidates_type
+                    ]
+                        if candidate_node_j not in closed_set
+                    ]
+                )
+                bond_degree = 1
+        return edge_end_node_j, bond_degree, already_connected_neighbours
+
+    def sample_edge_at_random(
+        self,
+        all_graph_nodes: list[AtomNodeForRandomTraversal],
+        open_nodes_for_sampling: dict[str, set[int]],
+        edge_start_node_i: int = None,
+        closed_set: set[int] = None,
+        use_chem_element_stats: bool = False,
+        atom_2_already_connected_neighbours: list[list[BondToNeighbouringAtom]] = None,
+    ) -> tuple[tuple[int, int], list[AtomNodeForRandomTraversal], set[int]]:
+        """
+        Helper function to filter atoms suitable for generation of a random bond with `edge_start_node_i`
+        and sampling a random edge
+        @param all_graph_nodes: a list of all nodes in the molecule graph
+        @param edge_start_node_i: index of the first edge node
+        @param open_nodes_for_sampling: dictionary with sets of node indices which
+                                                 can be considered for closing the edge.
+                                                 Each set is specified by the dictionary key:
+                                                     "coordinate_bond_negatively_charged_targets",
+                                                     "coordinate_bond_positively_charged_targets",
+                                                     "covalent_bond_targets"
+        @param use_chem_element_stats: a boolean flag setting up usage of per chem. elements statistics about its bonds
+        @param closed_set: closed set for traversal
+        @param atom_2_already_connected_neighbours: a mapping from atom to its adjacency list of already sampled neighbours
+        @return: a sampled edge and updated structures `all_graph_nodes`, `open_nodes_for_sampling`
+        """
+        # sample the start node for the edge if it's not specified
+        if edge_start_node_i is None:
+            edge_start_node_i = choice(
+                sum(map(list, open_nodes_for_sampling.values()), [])
+            )
+        if closed_set is None:
+            closed_set = {edge_start_node_i}
+        # check if the start edge atom has the charge and therefore can form coordinate bond
+        can_form_coordinate_bond = (
+            all_graph_nodes[edge_start_node_i].remaining_node_charge != 0
+        )
+        # if possible, create coordinate bond at random
+        is_bond_coordinate = can_form_coordinate_bond and np.random.rand() < 0.5
+        if is_bond_coordinate:
+            start_node_charge_sign = np.sign(
+                all_graph_nodes[edge_start_node_i].remaining_node_charge
+            )
+            # if for the coordinate bond one atom is positively charged, then another must be charged negatively
+            if start_node_charge_sign > 0:
+                possible_candidates_type = "coordinate_bond_neg_charged_targets"
+            else:
+                possible_candidates_type = "coordinate_bond_pos_charged_targets"
+        else:
+            possible_candidates_type = "covalent_bond_targets"
+
+        (
+            edge_end_node_j,
+            node_degree_reduction,
+            atom_2_already_connected_neighbours[edge_start_node_i],
+        ) = self.sample_second_edgenode_at_random(
+            edge_start_node_i,
+            all_graph_nodes,
+            open_nodes_for_sampling,
+            possible_candidates_type,
+            closed_set,
+            use_chem_element_stats,
+            atom_2_already_connected_neighbours[edge_start_node_i],
+        )
+
+        # decrease the node degrees correspondingly
+        for node_of_a_new_edge_i in [edge_start_node_i, edge_end_node_j]:
+            all_graph_nodes[
+                node_of_a_new_edge_i
+            ].remaining_node_degree -= node_degree_reduction
+            # if all bonds are created for the particular atom, it is no more open for traversal
+            if all_graph_nodes[node_of_a_new_edge_i].remaining_node_degree <= 0:
+                for candidates_type in open_nodes_for_sampling.keys():
+                    if node_of_a_new_edge_i in open_nodes_for_sampling[candidates_type]:
+                        open_nodes_for_sampling[candidates_type].remove(
+                            node_of_a_new_edge_i
+                        )
+            # if the added bond was coordinate, modify the remaining charges correspondingly
+            elif is_bond_coordinate:
+                new_charge_abs_value = (
+                    np.abs(all_graph_nodes[node_of_a_new_edge_i].remaining_node_charge)
+                    - 1
+                )
+                # check if the node still can form coordinate bonds
+                if new_charge_abs_value == 0:
+                    for candidates_type in [
+                        "coordinate_bond_neg_charged_targets",
+                        "coordinate_bond_pos_charged_targets",
+                    ]:
+                        if (
+                            node_of_a_new_edge_i
+                            in open_nodes_for_sampling[candidates_type]
+                        ):
+                            open_nodes_for_sampling[candidates_type].remove(
+                                node_of_a_new_edge_i
+                            )
+                else:
+                    charge_sign = np.sign(
+                        all_graph_nodes[node_of_a_new_edge_i].remaining_node_charge
+                    )
+                    all_graph_nodes[node_of_a_new_edge_i].remaining_node_charge = (
+                        charge_sign * new_charge_abs_value
+                    )
+        return (
+            (edge_start_node_i, edge_end_node_j),
+            all_graph_nodes,
+            open_nodes_for_sampling,
+        )
+
     def generate_random_molecule_graphs_via_traversal(
         self,
         chemical_formula: str,
@@ -491,108 +760,8 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         )
         generated_molecules = []
 
-        def _sample_edge_at_random(
-            all_graph_nodes: list[AtomNodeForRandomTraversal],
-            open_nodes_for_sampling: dict[str, set[int]],
-            edge_start_node_i: int = None,
-            closed_set: set[int] = None,
-        ) -> tuple[tuple[int, int], list[AtomNodeForRandomTraversal], set[int]]:
-            """
-            Helper routine function to filter atoms suitable for generation of a random bond with `edge_start_node_i`
-            and sampling a random edge
-            @param all_graph_nodes: a list of all nodes in the molecule graph
-            @param edge_start_node_i: index of the first edge node
-            @param open_nodes_for_sampling: dictionary with sets of node indices which
-                                                     can be considered for closing the edge.
-                                                     Each set is specified by the dictionary key:
-                                                     "coordinate_bond_negatively_charged_targets",
-                                                     "coordinate_bond_positively_charged_targets",
-                                                     "covalent_bond_targets"
-            @param closed_set: closed set for traversal
-            @return: a sampled edge and updated structures `all_graph_nodes`, `open_nodes_for_sampling`
-            """
-            # sample the start node for the edge if it's not specified
-            if edge_start_node_i is None:
-                edge_start_node_i = choice(
-                    sum(map(list, open_nodes_for_sampling.values()), [])
-                )
-            if closed_set is None:
-                closed_set = {edge_start_node_i}
-            # check if the start edge atom has the charge and therefore can form coordinate bond
-            can_form_coordinate_bond = (
-                all_graph_nodes[edge_start_node_i].remaining_node_charge != 0
-            )
-            # if possible, create coordinate bond at random
-            is_bond_coordinate = can_form_coordinate_bond and np.random.rand() < 0.5
-            if is_bond_coordinate:
-                start_node_charge_sign = np.sign(
-                    all_graph_nodes[edge_start_node_i].remaining_node_charge
-                )
-                # if for the coordinate bond one atom is positively charged, then another must be charged negatively
-                if start_node_charge_sign > 0:
-                    possible_candidates_type = "coordinate_bond_neg_charged_targets"
-                else:
-                    possible_candidates_type = "coordinate_bond_pos_charged_targets"
-            else:
-                possible_candidates_type = "covalent_bond_targets"
-            edge_end_node_j = choice(
-                [
-                    candidate_node_j
-                    for candidate_node_j in open_nodes_for_sampling[
-                        possible_candidates_type
-                    ]
-                    if candidate_node_j not in closed_set
-                ]
-            )
-            # decrease the node degrees correspondingly
-            for node_of_a_new_edge_i in [edge_start_node_i, edge_end_node_j]:
-                all_graph_nodes[node_of_a_new_edge_i].remaining_node_degree -= 1
-                # if all bonds are created for the particular atom, it is no more open for traversal
-                if all_graph_nodes[node_of_a_new_edge_i].remaining_node_degree == 0:
-                    for candidates_type in open_nodes_for_sampling.keys():
-                        if (
-                            node_of_a_new_edge_i
-                            in open_nodes_for_sampling[candidates_type]
-                        ):
-                            open_nodes_for_sampling[candidates_type].remove(
-                                node_of_a_new_edge_i
-                            )
-                # if the added bond was coordinate, modify the remaining charges correspondingly
-                elif is_bond_coordinate:
-                    new_charge_abs_value = (
-                        np.abs(
-                            all_graph_nodes[node_of_a_new_edge_i].remaining_node_charge
-                        )
-                        - 1
-                    )
-                    # check if the node still can form coordinate bonds
-                    if new_charge_abs_value == 0:
-                        for candidates_type in [
-                            "coordinate_bond_neg_charged_targets",
-                            "coordinate_bond_pos_charged_targets",
-                        ]:
-                            if (
-                                node_of_a_new_edge_i
-                                in open_nodes_for_sampling[candidates_type]
-                            ):
-                                open_nodes_for_sampling[candidates_type].remove(
-                                    node_of_a_new_edge_i
-                                )
-                    else:
-                        charge_sign = np.sign(
-                            all_graph_nodes[node_of_a_new_edge_i].remaining_node_charge
-                        )
-                        all_graph_nodes[node_of_a_new_edge_i].remaining_node_charge = (
-                            charge_sign * new_charge_abs_value
-                        )
-            return (
-                (edge_start_node_i, edge_end_node_j),
-                all_graph_nodes,
-                open_nodes_for_sampling,
-            )
-
-        # we request to generate at least one molecule
-        while len(generated_molecules) == 0:
+        # we request to generate self.max_top_k molecule(s)
+        while len(generated_molecules) < self.max_top_k:
             for _ in range(num_of_iterations_over_splits_into_valences):
                 for valence_assignment in candidate_valence_assignments:
                     # first randomly create a spanning tree of the molecule graph, to ensure the connectivity of molecule.
@@ -620,11 +789,15 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                             for _ in range(num_of_atoms_in_molecule):
                                 all_graph_nodes.append(
                                     AtomNodeForRandomTraversal(
-                                        atom_with_valence.atom_type,
-                                        atom_with_valence.atom_valence_and_charge.valence,
-                                        atom_with_valence.atom_valence_and_charge.charge,
+                                        atom_with_valence=atom_with_valence
                                     )
                                 )
+
+                        # a helper structure to record already sampled bonds
+                        # it is used only if we use estimated chem elements stats in the generation process
+                        atom_2_already_connected_neighbours = [
+                            [] for _ in range(len(all_graph_nodes))
+                        ]
 
                         # recording sets of nodes available for random sampling of covalent and coordinate bonds
                         coordinate_bond_neg_charged_targets = {
@@ -677,11 +850,13 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                                     (edge_start_node_i, edge_end_node_i),
                                     all_graph_nodes,
                                     open_nodes_for_sampling,
-                                ) = _sample_edge_at_random(
+                                ) = self.sample_edge_at_random(
                                     all_graph_nodes,
                                     open_nodes_for_sampling,
                                     edge_start_node_i=edge_start_node_i,
                                     closed_set=spanning_tree_visited_nodes_set,
+                                    use_chem_element_stats=self.estimate_chem_element_stats,
+                                    atom_2_already_connected_neighbours=atom_2_already_connected_neighbours,
                                 )
                             except IndexError:
                                 spanning_tree_was_generated = False
@@ -721,9 +896,11 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                                 (edge_start_node_i, edge_end_node_i),
                                 all_graph_nodes,
                                 open_nodes_for_sampling,
-                            ) = _sample_edge_at_random(
+                            ) = self.sample_edge_at_random(
                                 all_graph_nodes,
                                 open_nodes_for_sampling,
+                                use_chem_element_stats=self.estimate_chem_element_stats,
+                                atom_2_already_connected_neighbours=atom_2_already_connected_neighbours,
                             )
                         except IndexError:
                             break
@@ -747,9 +924,82 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
     def training_step(
         self, batch: dict, batch_idx: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        # recording statistics about chemical element statistics
+        # recording statistics about chemical elements
         if self.estimate_chem_element_stats:
-            pass
+            if self.element_2_bond_stats is None:
+                self.element_2_bond_stats = defaultdict(dict)
+            for mol_smiles in batch["mol"]:
+                molecule = Chem.MolFromSmiles(mol_smiles)
+                # in order to work with double and single bonds instead of aromatic
+                Chem.Kekulize(molecule, clearAromaticFlags=True)
+                formula = CalcMolFormula(molecule)
+                for atom in molecule.GetAtoms():
+                    valence = atom.GetTotalValence()
+                    charge = atom.GetFormalCharge()
+                    valence_charge = ValenceAndCharge(valence, charge)
+                    chem_element_type = atom.GetSymbol()
+                    atom_bonds = atom.GetBonds()
+                    if (
+                        valence_charge
+                        not in self.element_2_bond_stats[chem_element_type]
+                    ):
+                        # for each value of atom's valence, number of neighbours we will count types of neighbouring atoms
+                        self.element_2_bond_stats[chem_element_type][
+                            valence_charge
+                        ] = dict()
+
+                    all_atom_neighbours = set()
+                    for bond in atom_bonds:
+                        start_atom_idx = atom.GetIdx()
+                        end_atom = [
+                            _atom
+                            for _atom in [bond.GetBeginAtom(), bond.GetEndAtom()]
+                            if _atom.GetIdx() != start_atom_idx
+                        ][0]
+                        all_atom_neighbours.add(
+                            (
+                                end_atom.GetSymbol(),
+                                end_atom.GetTotalValence(),
+                                end_atom.GetFormalCharge(),
+                                bond.GetBondTypeAsDouble(),
+                            )
+                        )
+
+                    all_neighbour_subsets = [
+                        [set(subset) for subset in combinations(all_atom_neighbours, r)]
+                        for r in range(len(all_atom_neighbours))
+                    ]
+                    for neighbour_subsets_of_fixed_size in all_neighbour_subsets:
+                        subset_size = len(neighbour_subsets_of_fixed_size[0])
+                        # for each number of already connected atoms we record the neighbours and then possible bonds yet to be closed
+                        if (
+                            subset_size
+                            not in self.element_2_bond_stats[chem_element_type][
+                                valence_charge
+                            ]
+                        ):
+                            self.element_2_bond_stats[chem_element_type][
+                                valence_charge
+                            ][subset_size] = dict()
+                        for neighbours in neighbour_subsets_of_fixed_size:
+                            neighbours_tuple = tuple(sorted(neighbours))
+                            if (
+                                neighbours_tuple
+                                not in self.element_2_bond_stats[chem_element_type][
+                                    valence_charge
+                                ][subset_size]
+                            ):
+                                self.element_2_bond_stats[chem_element_type][
+                                    valence_charge
+                                ][subset_size][neighbours_tuple] = defaultdict(int)
+                            remaining_bonds = all_atom_neighbours.difference(neighbours)
+                            for remaining_bonded_neighbour in remaining_bonds:
+                                self.element_2_bond_stats[chem_element_type][
+                                    valence_charge
+                                ][subset_size][neighbours_tuple][
+                                    remaining_bonded_neighbour
+                                ] += 1
+
         # recording molecular weight
         for mol_smiles in batch["mol"]:
             molecule = Chem.MolFromSmiles(mol_smiles)
@@ -784,6 +1034,87 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         }
         # storing weights in the sorted list for the logarithmic time look-up of the closest weight value
         self.mol_weight_trn_values = sorted(self.mol_weight_2_formulas.keys())
+
+        # if chem element stats are used, then the corresponding data structure is reformated in accordance with the
+        # description from docstring to the class __init__:
+        # chem_element ->
+        #   ValenceAndCharge ->
+        #     number of already bonded atoms ->
+        #       [already created BondToNeighbouringAtom] ->
+        #                                           AtomWithValence ->
+        #                                                          list of (bond_type, count) + total_count
+        if self.estimate_chem_element_stats:
+            element_2_bond_stats = defaultdict(dict)
+            for (
+                chem_element,
+                valence_charge_2_stats,
+            ) in self.element_2_bond_stats.items():
+                for valence_charge, num_bonds_2_stats in valence_charge_2_stats.items():
+                    element_2_bond_stats[chem_element][valence_charge] = dict()
+                    for num_bonds, bonds_2_stats in num_bonds_2_stats.items():
+                        element_2_bond_stats[chem_element][valence_charge][
+                            num_bonds
+                        ] = dict()
+                        for (
+                            bonds,
+                            neighb_atom_with_valence_2_stats,
+                        ) in bonds_2_stats.items():
+                            present_bonds_sorted = tuple(
+                                sorted(
+                                    [
+                                        BondToNeighbouringAtom(
+                                            adjacent_atom=AtomWithValence(
+                                                atom_type=bond[0],
+                                                atom_valence_and_charge=ValenceAndCharge(
+                                                    valence=bond[1], charge=bond[2]
+                                                ),
+                                            ),
+                                            bond_type=bond[3],
+                                        )
+                                        for bond in bonds
+                                    ]
+                                )
+                            )
+                            element_2_bond_stats[chem_element][valence_charge][
+                                num_bonds
+                            ][present_bonds_sorted] = defaultdict(list)
+                            for (
+                                neighb_atom_type,
+                                neighb_atom_valence,
+                                neighb_atom_charge,
+                                bondtype,
+                            ), count in neighb_atom_with_valence_2_stats.items():
+                                neighbouring_atom = AtomWithValence(
+                                    atom_type=neighb_atom_type,
+                                    atom_valence_and_charge=ValenceAndCharge(
+                                        valence=neighb_atom_valence,
+                                        charge=neighb_atom_charge,
+                                    ),
+                                )
+                                element_2_bond_stats[chem_element][valence_charge][
+                                    num_bonds
+                                ][present_bonds_sorted][neighbouring_atom].append(
+                                    (bondtype, count)
+                                )
+                            # computing total count of all bound per neighbouring atom
+                            for (
+                                neighbouring_atom,
+                                list_of_bondtype_counts,
+                            ) in element_2_bond_stats[chem_element][valence_charge][
+                                num_bonds
+                            ][
+                                present_bonds_sorted
+                            ].items():
+                                total_count_of_bonds = sum(
+                                    map(lambda x: x[1], list_of_bondtype_counts)
+                                )
+                                element_2_bond_stats[chem_element][valence_charge][
+                                    num_bonds
+                                ][present_bonds_sorted][neighbouring_atom] = (
+                                    list_of_bondtype_counts,
+                                    total_count_of_bonds,
+                                )
+            self.element_2_bond_stats = element_2_bond_stats
 
     def sample_formula_with_the_closest_molecular_weight(
         self, molecular_weight: float
@@ -860,6 +1191,10 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
             self.generate_random_molecule_graphs_via_traversal(formula)
             for formula in formulas
         ]
+
+        for predicted_mol_group in mols_pred:
+            for mol in predicted_mol_group:
+                Chem.SanitizeMol(mol)
 
         # list of predicted smiles
         smiles_pred = [
