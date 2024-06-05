@@ -114,7 +114,7 @@ class RetrievalDataset(MassSpecDataset):
     def __init__(
         self,
         mol_label_transform: MolTransform = MolToInChIKey(),
-        candidates_pth: Optional[Path] = None,
+        candidates_pth: T.Optional[T.Union[Path, str]] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -127,6 +127,8 @@ class RetrievalDataset(MassSpecDataset):
             self.candidates_pth = utils.hugging_face_download(
                 "molecules/MassSpecGym_retrieval_candidates_mass.json"
             )
+        elif isinstance(self.candidates_pth, str):
+            self.candidates_pth = utils.hugging_face_download(candidates_pth)
 
         # Read candidates_pth from json to dict: SMILES -> respective candidate SMILES
         with open(self.candidates_pth, "r") as file:
