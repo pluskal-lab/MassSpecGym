@@ -29,3 +29,5 @@ pip install -U torch --index-url https://download.pytorch.org/whl/rocm6.0
 
 - [ ] Refactor `transforms.py` -> `data/transforms.py`
 - [ ] Optimize de novo evaluation metrics to run in parallel by workers initialized in the corresponding pl.Module constructor
+- [ ] Link to documentation.
+- [ ] Link to Papers With Code leaderboard.
