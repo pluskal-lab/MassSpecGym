@@ -32,6 +32,11 @@ parser.add_argument('--no_wandb', action='store_true')
 parser.add_argument('--seed', type=int, default=0)
 parser.add_argument('--debug', action='store_true')
 
+# Data paths
+parser.add_argument('--candidates_pth', type=str, default=None)
+parser.add_argument('--mgf_pth', type=str, default=None)
+parser.add_argument('--split_pth', type=str, default=None)
+
 # Data transforms setup
 
 # - Binner
@@ -91,26 +96,21 @@ def main(args):
 
     # Init paths to data files
     if args.debug:
-        mgf_pth = "../data/debug/example_5_spectra.mgf"
-        candidates_pth = "../data/debug/example_5_spectra_candidates.json"
-        split_pth="../data/debug/example_5_spectra_split.tsv"
-    else:
-        # Use default benchmark paths
-        mgf_pth = None
-        candidates_pth = None
-        split_pth = None
+        args.mgf_pth = "../data/debug/example_5_spectra.mgf"
+        args.candidates_pth = "../data/debug/example_5_spectra_candidates.json"
+        args.split_pth="../data/debug/example_5_spectra_split.tsv"
 
     # Load dataset
     if args.task == 'retrieval':
         dataset = RetrievalDataset(
-            pth=mgf_pth,
+            pth=args.mgf_pth,
             spec_transform=SpecBinner(max_mz=args.max_mz, bin_width=args.bin_width),
             mol_transform=MolFingerprinter(fp_size=args.fp_size),
-            candidates_pth=candidates_pth,
+            candidates_pth=args.candidates_pth,
         )
     elif args.task == 'de_novo':
         dataset = MassSpecDataset(
-            pth=mgf_pth,
+            pth=args.mgf_pth,
             spec_transform=SpecTokenizer(n_peaks=args.n_peaks),
             mol_transform=None
         )
@@ -120,21 +120,25 @@ def main(args):
     # Init data module
     data_module = MassSpecDataModule(
         dataset=dataset,
-        split_pth=split_pth,
+        split_pth=args.split_pth,
         batch_size=args.batch_size
     )
 
     # Init model
+    common_kwargs = dict(
+        lr=args.lr,
+        weight_decay=args.weight_decay,
+        validate_only_loss=args.validate_only_loss
+    )
     if args.task == 'retrieval':
         if args.model == 'fingerprint_ffn':
             model = FingerprintFFNRetrieval(
-                lr=args.lr,
-                weight_decay=args.weight_decay,
                 in_channels=int(args.max_mz * (1 / args.bin_width)),
                 hidden_channels=args.hidden_channels,
                 out_channels=args.fp_size,
                 num_layers=args.num_layers,
                 dropout=args.dropout,
+                **common_kwargs
             )
         else:
             raise NotImplementedError(f"Model {args.model} not implemented.")
@@ -151,7 +155,7 @@ def main(args):
                 k_predictions=args.k_predictions,
                 pre_norm=args.pre_norm,
                 max_smiles_len=args.max_smiles_len,
-                validate_only_loss=args.validate_only_loss
+                **common_kwargs
             )
         else:
             raise NotImplementedError(f"Model {args.model} not implemented.")
