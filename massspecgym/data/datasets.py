@@ -114,7 +114,7 @@ class RetrievalDataset(MassSpecDataset):
     def __init__(
         self,
         mol_label_transform: MolTransform = MolToInChIKey(),
-        candidates_pth: Optional[Path] = None,
+        candidates_pth: T.Optional[T.Union[Path, str]] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -127,6 +127,8 @@ class RetrievalDataset(MassSpecDataset):
             self.candidates_pth = utils.hugging_face_download(
                 "molecules/MassSpecGym_retrieval_candidates_mass.json"
             )
+        elif isinstance(self.candidates_pth, str):
+            self.candidates_pth = utils.hugging_face_download(candidates_pth)
 
         # Read candidates_pth from json to dict: SMILES -> respective candidate SMILES
         with open(self.candidates_pth, "r") as file:
@@ -135,11 +137,18 @@ class RetrievalDataset(MassSpecDataset):
     def __getitem__(self, i) -> dict:
         item = super().__getitem__(i, transform_mol=False)
 
+        # Save the original SMILES representation of the query molecule (for evaluation)
+        item["smiles"] = item["mol"]
+
+        # Get candidates
         if item["mol"] not in self.candidates:
             raise ValueError(f'No candidates for the query molecule {item["mol"]}.')
+        item["candidates"] = self.candidates[item["mol"]]
+
+        # Save the original SMILES representations of the canidates (for evaluation)
+        item["candidates_smiles"] = item["candidates"]
 
         # Create neg/pos label mask by matching the query molecule with the candidates
-        item["candidates"] = self.candidates[item["mol"]]
         item_label = self.mol_label_transform(item["mol"])
         item["labels"] = [
             self.mol_label_transform(c) == item_label for c in item["candidates"]
@@ -161,10 +170,10 @@ class RetrievalDataset(MassSpecDataset):
         # Standard collate for everything except candidates and their labels (which may have different length per sample)
         collated_batch = {}
         for k in batch[0].keys():
-            if k not in ["candidates", "labels"]:
+            if k not in ["candidates", "labels", "candidates_smiles"]:
                 collated_batch[k] = default_collate([item[k] for item in batch])
 
-        # Collate candidates and labels by concatenating and storing pointers to the start of each list
+        # Collate candidates and labels by concatenating and storing sizes of each list
         collated_batch["candidates"] = torch.as_tensor(
             np.concatenate([item["candidates"] for item in batch])
         )
@@ -174,6 +183,8 @@ class RetrievalDataset(MassSpecDataset):
         collated_batch["batch_ptr"] = torch.as_tensor(
             [len(item["candidates"]) for item in batch]
         )
+        collated_batch["candidates_smiles"] = \
+            sum([item["candidates_smiles"] for item in batch], start=[])
 
         return collated_batch
 

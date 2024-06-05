@@ -7,6 +7,8 @@ import matplotlib.colors as mcolors
 import matplotlib.ticker as ticker
 import pandas as pd
 import typing as T
+import pulp
+from myopic_mces.myopic_mces import MCES
 from rdkit.Chem import AllChem as Chem
 from rdkit.Chem import DataStructs
 from huggingface_hub import hf_hub_download
@@ -221,3 +223,31 @@ def plot_spectrum(spec, hue=None, xlim=None, ylim=None, mirror_spec=None, highl_
 
     if save_pth is not None:
         raise NotImplementedError()
+
+
+class MyopicMCES():
+    def __init__(
+        self,
+        ind: int = 0,  # dummy index
+        solver: str = pulp.listSolvers(onlyAvailable=True)[0],  # Use the first available solver
+        threshold: int = 15,  # MCES threshold
+        solver_options: dict = None  
+    ):
+        self.ind = ind
+        self.solver = solver
+        self.threshold = threshold
+        if solver_options is None:
+            solver_options = dict(msg=0)  # make ILP solver silent
+        self.solver_options = solver_options
+
+    def __call__(self, smiles_1: str, smiles_2: str) -> int:
+        retval = MCES(
+            s1=smiles_1,
+            s2=smiles_2,
+            ind=self.ind,
+            threshold=self.threshold,
+            solver=self.solver,
+            solver_options=self.solver_options
+        )
+        dist = retval[1]
+        return dist
