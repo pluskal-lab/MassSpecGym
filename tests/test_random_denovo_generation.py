@@ -2,6 +2,7 @@ import time
 import unittest
 from collections.abc import Generator
 
+import torch
 from rdkit import Chem
 from rdkit.Chem import Draw
 
@@ -159,11 +160,6 @@ class RandomDeNovoTestcase(unittest.TestCase):
         self.assertFalse(is_assignment_feasible)
 
     def test_sampling_of_atoms_by_valence_partition(self):
-        print(
-            self.generator_with_formula.get_feasible_atom_valence_assignments(
-                "C23H27N5O2"
-            )
-        )
         self.assertEqual(
             len(
                 self.generator_with_formula.get_feasible_atom_valence_assignments(
@@ -227,11 +223,9 @@ class RandomDeNovoTestcase(unittest.TestCase):
         }
         for batch_i in range(100):
             mol_preds = self.generator_with_formula.step(batch)["mols_pred"]
-            # print('mol_preds: ', mol_preds)
             if self.draw_molecules:
                 for input_mol_i, molecule_smiles in enumerate(mol_preds):
                     for mol_i, _smiles in enumerate(molecule_smiles):
-                        # print('_smiles: ', _smiles)
                         molecule = Chem.MolFromSmiles(_smiles)
                         img = Draw.MolToImage(molecule)
                         img.save(f"step_molecule_{input_mol_i}_{mol_i}.png")
@@ -240,29 +234,112 @@ class RandomDeNovoTestcase(unittest.TestCase):
         generator = RandomDeNovo(formula_known=True, max_top_k=1)
         batch = {
             "mol": [
-                'CCCC[C@@H](C)[C@H]([C@H](C[C@@H](C)C[C@@H](CCCCCC[C@@H]([C@@H](C)N)O)O)OC(=O)CC(CC(=O)O)C(=O)O)OC(=O)CC(CC(=O)O)C(=O)O',
+                "CCCC[C@@H](C)[C@H]([C@H](C[C@@H](C)C[C@@H](CCCCCC[C@@H]([C@@H](C)N)O)O)OC(=O)CC(CC(=O)O)C(=O)O)OC(=O)CC(CC(=O)O)C(=O)O",
             ]
         }
         for _ in range(100):
-            print(generator.step(batch))
+            self.assertEqual(1, len(generator.step(batch)["mols_pred"]))
 
     def test_slow_eval_molecule(self):
-        molecules = self.generator_with_formula.generate_random_molecule_graphs_via_traversal(
-            chemical_formula="C23H17Cl2N5O4"
+        molecules = (
+            self.generator_with_formula.generate_random_molecule_graphs_via_traversal(
+                chemical_formula="C23H17Cl2N5O4"
+            )
         )
         if self.draw_molecules:
             for mol_i, molecule in enumerate(molecules):
                 img = Draw.MolToImage(molecule)
                 img.save(f"molecule_{gen_i}_{mol_i}.png")
 
-        # batch = {
-        #     "mol": [
-        #         'CC(C)C[C@H]1C(=O)N2CCC[C@H]2[C@]3(N1C(=O)[C@](O3)(C(C)C)NC(=O)[C@@H]4CN([C@@H]5CC6=CNC7=CC=CC(=C67)C5=C4)C)O',
-        #     ]
-        # }
-        # for _ in range(100):
-        #     print(self.generator_with_formula.step(batch))
+    def test_mz_recording(self):
+        batch = {
+            "mol": [
+                "CC(C)C[C@H]1C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N1C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C",
+                "CC(C)C[C@H]1C(=O)N2CCC[C@H]2[C@]3(N1C(=O)[C@](O3)(C(C)C)NC(=O)[C@H]4CN([C@@H]5CC6=CNC7=CC=CC(=C67)C5=C4)C)O",
+            ],
+        }
+        self.generator_without_formula.training_step(batch, batch_idx=torch.Tensor())
+        self.assertEqual(
+            {575.3107694120001: ["C32H41N5O5"], 908.6085741279999: ["C48H84N4O12"]},
+            self.generator_without_formula.mol_weight_2_formulas,
+        )
 
+    def test_mz_recording_on_train_end(self):
+        batch = {
+            "mol": [
+                "CC(C)C[C@H]1C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N1C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C",
+                "CC(C)C[C@H]1C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N1C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C",
+                "C",  # dummy for the test
+                "CC(C)C[C@H]1C(=O)N2CCC[C@H]2[C@]3(N1C(=O)[C@](O3)(C(C)C)NC(=O)[C@H]4CN([C@@H]5CC6=CNC7=CC=CC(=C67)C5=C4)C)O",
+            ],
+        }
+        self.generator_without_formula.training_step(batch, batch_idx=torch.Tensor())
+        self.generator_without_formula.on_train_end()
+        self.assertEqual(
+            {
+                16.031300127999998: [["CH4"], [1.0]],
+                575.3107694120001: [["C32H41N5O5"], [1.0]],
+                908.6085741279999: [["C48H84N4O12"], [1.0]],
+            },
+            self.generator_without_formula.mol_weight_2_formulas,
+        )
+
+    def test_sample_formula_with_the_closest_molecular_weight_1(self):
+        batch = {
+            "mol": [
+                "CC(C)C[C@H]1C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N1C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C",
+                "CC(C)C[C@H]1C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N1C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C",
+                "C",  # dummy for the test
+                "CC(C)C[C@H]1C(=O)N2CCC[C@H]2[C@]3(N1C(=O)[C@](O3)(C(C)C)NC(=O)[C@H]4CN([C@@H]5CC6=CNC7=CC=CC(=C67)C5=C4)C)O",
+            ],
+        }
+        self.generator_without_formula.training_step(batch, batch_idx=torch.Tensor())
+        self.generator_without_formula.on_train_end()
+
+        self.assertEqual(
+            "CH4",
+            self.generator_without_formula.sample_formula_with_the_closest_molecular_weight(
+                20
+            ),
+        )
+
+    def test_sample_formula_with_the_closest_molecular_weight_2(self):
+        batch = {
+            "mol": [
+                "CC(C)C[C@H]1C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N1C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C",
+                "CC(C)C[C@H]1C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N1C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C",
+                "C",  # dummy for the test
+                "CC(C)C[C@H]1C(=O)N2CCC[C@H]2[C@]3(N1C(=O)[C@](O3)(C(C)C)NC(=O)[C@H]4CN([C@@H]5CC6=CNC7=CC=CC(=C67)C5=C4)C)O",
+            ],
+        }
+        self.generator_without_formula.training_step(batch, batch_idx=torch.Tensor())
+        self.generator_without_formula.on_train_end()
+
+        self.assertEqual(
+            "C32H41N5O5",
+            self.generator_without_formula.sample_formula_with_the_closest_molecular_weight(
+                300
+            ),
+        )
+
+    def test_sample_formula_with_the_closest_molecular_weight_3(self):
+        batch = {
+            "mol": [
+                "CC(C)C[C@H]1C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N1C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C",
+                "CC(C)C[C@H]1C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N1C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C",
+                "C",  # dummy for the test
+                "CC(C)C[C@H]1C(=O)N2CCC[C@H]2[C@]3(N1C(=O)[C@](O3)(C(C)C)NC(=O)[C@H]4CN([C@@H]5CC6=CNC7=CC=CC(=C67)C5=C4)C)O",
+            ],
+        }
+        self.generator_without_formula.training_step(batch, batch_idx=torch.Tensor())
+        self.generator_without_formula.on_train_end()
+
+        self.assertEqual(
+            "C48H84N4O12",
+            self.generator_without_formula.sample_formula_with_the_closest_molecular_weight(
+                908.6085741279999
+            ),
+        )
 
 
 if __name__ == "__main__":

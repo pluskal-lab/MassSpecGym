@@ -142,7 +142,7 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
             @return:
             """
             if mol not in self.mol_2_morgan_fp:
-                self.mol_2_morgan_fp[mol] = morgan_fp(m, to_np=False)
+                self.mol_2_morgan_fp[mol] = morgan_fp(mol, to_np=False)
             return self.mol_2_morgan_fp[mol]
 
 
@@ -188,6 +188,7 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
                 for ms in mols_pred_top_k
             ]
             fp_true = [_get_morgan_fp_with_cache(m) for m in mol_true]
+
             max_tanimoto_sims = []
             # Iterate over batch
             for preds, true in zip(fps_pred_top_k, fp_true):

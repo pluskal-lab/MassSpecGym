@@ -10,8 +10,11 @@ from massspecgym.models.de_novo.base import DeNovoMassSpecGymModel
 from rdkit import Chem
 from rdkit.Chem.MolStandardize import rdMolStandardize
 from rdkit.Chem.rdMolDescriptors import CalcMolFormula
+from rdkit.Chem.Descriptors import ExactMolWt
 from rdkit.Chem.rdchem import Mol, BondType
 from copy import deepcopy
+from collections import Counter
+import bisect
 
 # type aliases for code readability
 chem_element = str
@@ -160,7 +163,7 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         formula_known: bool = True,
         count_of_valid_valence_assignments: int = 10,
         estimate_chem_element_stats: bool = True,
-        max_top_k: int = 10
+        max_top_k: int = 10,
     ):
         """
 
@@ -186,11 +189,18 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         self.max_top_k = min(max(self.top_ks), max_top_k)
         # prior chemical knownledge about element valences
         self.element_2_valences = ELEMENT_VALENCES
+        # a dictionary structure to record molecular weights with corresponding formulas from training data
+        # during training steps, for each molecular weight we record all encountered formulas
+        # then on training end we compute proportions of the formulas and record it as a mapping
+        # mol_weight -> [[formula_1, formula_2], [proportion_of_formula_1, proportion_of_formula_2]]
+        self.mol_weight_2_formulas = defaultdict(list)
+        # a helper array to store sorted list of train molecular weights.
+        # It will be used for the O(logn) lookup of the closest mol weight
+        self.mol_weight_trn_values: list[float] = None
         # a dictionary structure for statistics about bond type distributions, if fit is called
         self.element_2_valence_2_bondtype_proportions: dict[
             chem_element, dict[int, float]
         ] = None
-        # TODO: use stats about each atom bonds in the generation process
         # a helping structures for (optional) derivation of statistics about valences and bond type distributions
         # the dictionary has the following mapping:
         # chem_element ->
@@ -198,7 +208,7 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         #       [(tuple of already bonded (atom_type, valence, charge) neighbours] ->
         #                                           [(bond_type, other_bond_atom_type, valence, charge) ->
         #                                                                                  bond_count]]
-        self._element_2_observed_valence_2_bondtypes = defaultdict(dict)
+        self._element_2_observed_bonds_2_bondtypes = defaultdict(dict)
         # a cache with already precomputed sets of randomly generated molecules for the given formula
         self.formula_2_random_smiles = {}
 
@@ -485,7 +495,7 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
             all_graph_nodes: list[AtomNodeForRandomTraversal],
             open_nodes_for_sampling: dict[str, set[int]],
             edge_start_node_i: int = None,
-            closed_set: set[int] = None
+            closed_set: set[int] = None,
         ) -> tuple[tuple[int, int], list[AtomNodeForRandomTraversal], set[int]]:
             """
             Helper routine function to filter atoms suitable for generation of a random bond with `edge_start_node_i`
@@ -503,7 +513,9 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
             """
             # sample the start node for the edge if it's not specified
             if edge_start_node_i is None:
-                edge_start_node_i = choice(sum(map(list, open_nodes_for_sampling.values()), []))
+                edge_start_node_i = choice(
+                    sum(map(list, open_nodes_for_sampling.values()), [])
+                )
             if closed_set is None:
                 closed_set = {edge_start_node_i}
             # check if the start edge atom has the charge and therefore can form coordinate bond
@@ -523,17 +535,28 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                     possible_candidates_type = "coordinate_bond_pos_charged_targets"
             else:
                 possible_candidates_type = "covalent_bond_targets"
-            edge_end_node_j = choice([candidate_node_j
-                                      for candidate_node_j in open_nodes_for_sampling[possible_candidates_type]
-                                      if candidate_node_j not in closed_set])
+            edge_end_node_j = choice(
+                [
+                    candidate_node_j
+                    for candidate_node_j in open_nodes_for_sampling[
+                        possible_candidates_type
+                    ]
+                    if candidate_node_j not in closed_set
+                ]
+            )
             # decrease the node degrees correspondingly
             for node_of_a_new_edge_i in [edge_start_node_i, edge_end_node_j]:
                 all_graph_nodes[node_of_a_new_edge_i].remaining_node_degree -= 1
                 # if all bonds are created for the particular atom, it is no more open for traversal
                 if all_graph_nodes[node_of_a_new_edge_i].remaining_node_degree == 0:
                     for candidates_type in open_nodes_for_sampling.keys():
-                        if node_of_a_new_edge_i in open_nodes_for_sampling[candidates_type]:
-                            open_nodes_for_sampling[candidates_type].remove(node_of_a_new_edge_i)
+                        if (
+                            node_of_a_new_edge_i
+                            in open_nodes_for_sampling[candidates_type]
+                        ):
+                            open_nodes_for_sampling[candidates_type].remove(
+                                node_of_a_new_edge_i
+                            )
                 # if the added bond was coordinate, modify the remaining charges correspondingly
                 elif is_bond_coordinate:
                     new_charge_abs_value = (
@@ -544,10 +567,17 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                     )
                     # check if the node still can form coordinate bonds
                     if new_charge_abs_value == 0:
-                        for candidates_type in ["coordinate_bond_neg_charged_targets",
-                                                "coordinate_bond_pos_charged_targets"]:
-                            if node_of_a_new_edge_i in open_nodes_for_sampling[candidates_type]:
-                                open_nodes_for_sampling[candidates_type].remove(node_of_a_new_edge_i)
+                        for candidates_type in [
+                            "coordinate_bond_neg_charged_targets",
+                            "coordinate_bond_pos_charged_targets",
+                        ]:
+                            if (
+                                node_of_a_new_edge_i
+                                in open_nodes_for_sampling[candidates_type]
+                            ):
+                                open_nodes_for_sampling[candidates_type].remove(
+                                    node_of_a_new_edge_i
+                                )
                     else:
                         charge_sign = np.sign(
                             all_graph_nodes[node_of_a_new_edge_i].remaining_node_charge
@@ -610,14 +640,16 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                         covalent_bond_targets = {
                             node_i
                             for node_i, node in enumerate(all_graph_nodes)
-                            if node.remaining_node_charge == 0 or node.remaining_node_degree > np.abs(
-                                node.remaining_node_charge)
+                            if node.remaining_node_charge == 0
+                            or node.remaining_node_degree
+                            > np.abs(node.remaining_node_charge)
                         }
 
                         open_nodes_for_sampling = {
                             "coordinate_bond_neg_charged_targets": coordinate_bond_neg_charged_targets,
                             "coordinate_bond_pos_charged_targets": coordinate_bond_pos_charged_targets,
-                            "covalent_bond_targets": covalent_bond_targets}
+                            "covalent_bond_targets": covalent_bond_targets,
+                        }
 
                         # the final edge list will be stored into the variable below.
                         # An edge is defined by a pair of position indices in the `all_graph_nodes` list
@@ -625,7 +657,10 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
 
                         # the nodes already included into the spanning tree
                         # the set is used for quick blacklisting, while the list is used for possible backtracking when
-                        spanning_tree_visited_nodes_set, spanning_tree_traversal_list = (
+                        (
+                            spanning_tree_visited_nodes_set,
+                            spanning_tree_traversal_list,
+                        ) = (
                             set(),
                             deque(),
                         )
@@ -633,13 +668,15 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                         edge_start_node_i = choice(list(range(len(all_graph_nodes))))
                         spanning_tree_visited_nodes_set.add(edge_start_node_i)
                         spanning_tree_traversal_list.append(edge_start_node_i)
-                        while len(spanning_tree_visited_nodes_set) < len(all_graph_nodes):
+                        while len(spanning_tree_visited_nodes_set) < len(
+                            all_graph_nodes
+                        ):
                             # check if the start edge atom has the charge and therefore can form coordinate bond
                             try:
                                 (
                                     (edge_start_node_i, edge_end_node_i),
                                     all_graph_nodes,
-                                    open_nodes_for_sampling
+                                    open_nodes_for_sampling,
                                 ) = _sample_edge_at_random(
                                     all_graph_nodes,
                                     open_nodes_for_sampling,
@@ -695,10 +732,14 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                     # if all nodes were covered by edges without self-loops, then we remember the generated molecule
                     if sum(map(len, open_nodes_for_sampling.values())) == 0:
                         generated_molecules.append(
-                            create_rdkit_molecule_from_edge_list(edge_list, all_graph_nodes)
+                            create_rdkit_molecule_from_edge_list(
+                                edge_list, all_graph_nodes
+                            )
                         )
                         if len(generated_molecules) == self.max_top_k:
-                            self.formula_2_random_smiles[chemical_formula] = generated_molecules
+                            self.formula_2_random_smiles[
+                                chemical_formula
+                            ] = generated_molecules
                             return generated_molecules
         self.formula_2_random_smiles[chemical_formula] = generated_molecules
         return generated_molecules
@@ -709,7 +750,91 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         # recording statistics about chemical element statistics
         if self.estimate_chem_element_stats:
             pass
-        super().training_step()
+        # recording molecular weight
+        for mol_smiles in batch["mol"]:
+            molecule = Chem.MolFromSmiles(mol_smiles)
+            formula = CalcMolFormula(molecule)
+            weight = ExactMolWt(molecule)
+            self.mol_weight_2_formulas[weight].append(formula)
+        # Random baseline, so we return a dummy loss
+        loss = torch.tensor(0.0, requires_grad=True)
+        return dict(loss=loss, mols_pred=["C"])
+
+    def on_train_end(self) -> None:
+        # for each molecular weight we compute proportions of recorded molecular formulas
+        molecular_weight_2_formula_counts = {
+            weight: Counter(formulas)
+            for weight, formulas in self.mol_weight_2_formulas.items()
+        }
+        weight_2_formula_proportions = {}
+        for weight, formula_2_count in molecular_weight_2_formula_counts.items():
+            total_count = sum(formula_2_count.values())
+            weight_2_formula_proportions[weight] = {
+                formula: count / total_count
+                for formula, count in formula_2_count.items()
+            }
+        # for consequent sampling using numpy.random.choice function, we store the results in the format
+        # weight -> [[formula_1, formula_2], [proportion_of_formula_1, proportion_of_formula_2]]
+        self.mol_weight_2_formulas = {
+            weight: [
+                list(formula_2_proportions.keys()),
+                list(formula_2_proportions.values()),
+            ]
+            for weight, formula_2_proportions in weight_2_formula_proportions.items()
+        }
+        # storing weights in the sorted list for the logarithmic time look-up of the closest weight value
+        self.mol_weight_trn_values = sorted(self.mol_weight_2_formulas.keys())
+
+    def sample_formula_with_the_closest_molecular_weight(
+        self, molecular_weight: float
+    ) -> str:
+        """
+        A method sampling chemical formula observed in training data with the closest weight to `molecular_weight`
+        @param molecular_weight: Molecular weight of a structure to be generated
+        """
+        if self.mol_weight_trn_values is None:
+            raise RuntimeError(
+                "For random denovo generation without known formula, the model has to be trained first,"
+                "to record training molecular weights with corresponding formulas."
+            )
+        # finding a place in the sorted array for insertion of the `molecular_weight`, while preserving sorted order
+        idx_of_closest_larger = bisect.bisect_left(
+            self.mol_weight_trn_values, molecular_weight
+        )
+        # check if the exact same molecular weight was observed in training data, otherwise select the closest weight
+        if molecular_weight == self.mol_weight_trn_values[idx_of_closest_larger]:
+            idx_of_closest = idx_of_closest_larger
+        elif idx_of_closest_larger > 0:
+            # determining the closest molecular weight out of both neighbours
+            idx_of_closest_smaller = idx_of_closest_larger - 1
+            weight_difference_with_smaller_neighbour = (
+                molecular_weight - self.mol_weight_trn_values[idx_of_closest_smaller]
+            )
+            weight_difference_with_larger_neighbour = (
+                self.mol_weight_trn_values[idx_of_closest_larger] - molecular_weight
+            )
+            if (
+                weight_difference_with_larger_neighbour
+                < weight_difference_with_smaller_neighbour
+            ):
+                idx_of_closest = idx_of_closest_larger
+            else:
+                idx_of_closest = idx_of_closest_smaller
+        else:
+            idx_of_closest = 0
+        # the value of the molecular weight observed in training labels, which is the closest to `molecular_weight`
+        closest_observed_molecular_weight = self.mol_weight_trn_values[idx_of_closest]
+        # getting chemical formulas observed for this molecular weight
+        # self.mol_weight_2_formulas is a dictionary containing the following mapping
+        #  weight -> [[formula_1, formula_2], [proportion_of_formula_1, proportion_of_formula_2]]
+        feasible_formulas, formula_proportions = self.mol_weight_2_formulas[
+            closest_observed_molecular_weight
+        ]
+        # if just one formula is known, it is returned directly
+        if len(feasible_formulas) == 1:
+            return feasible_formulas[0]
+        # otherwise we randomly sample in accordance with proportions
+        return np.random.choice(feasible_formulas, p=formula_proportions)
 
     def step(
         self, batch: dict, metric_pref: str = ""
@@ -717,16 +842,19 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         mols = batch["mol"]  # List of SMILES of length batch_size
 
         # If formula_known is True, we should generate molecules with the same formula as label (`mols` above)
-        # If formula_known is False, we should generate any molecule with the same mass as label (`mols` above)
+        # If formula_known is False, we should generate any molecule with the same mass as label
 
-        # getting the formula from SMILES
+        # obtaining molecule objects from SMILES
+        molecules = [Chem.MolFromSmiles(smiles) for smiles in mols]
+        # getting the formulas
         if self.formula_known:
-            formulas = []
-            for smiles in mols:
-                molecule = Chem.MolFromSmiles(smiles)
-                formulas.append(CalcMolFormula(molecule))
+            formulas = [CalcMolFormula(molecule) for molecule in molecules]
         else:
-            raise NotImplementedError
+            molecular_weights = [ExactMolWt(molecule) for molecule in molecules]
+            formulas = [
+                self.sample_formula_with_the_closest_molecular_weight(mol_weight)
+                for mol_weight in molecular_weights
+            ]
         # (bs, k) list of rdkit molecules
         mols_pred = [
             self.generate_random_molecule_graphs_via_traversal(formula)
