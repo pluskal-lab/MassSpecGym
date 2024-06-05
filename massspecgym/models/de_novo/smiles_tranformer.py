@@ -22,7 +22,7 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
         dropout: float = 0.1,
         max_smiles_len: int = 100,
         k_predictions: int = 1,
-        temperature: T.Optional[float] = None,
+        temperature: T.Optional[float] = 1.0,
         pre_norm=False,
         *args,
         **kwargs
@@ -40,7 +40,7 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
         self.max_smiles_len = max_smiles_len
         self.k_predictions = k_predictions
         self.temperature = temperature
-        if self.k_predictions == 1:
+        if self.k_predictions == 1:  # TODO: this logic should be changed because sampling with k = 1 also makes sense
             self.temperature = None
 
         self.src_encoder = nn.Linear(input_dim, d_model)
