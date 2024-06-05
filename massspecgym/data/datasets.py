@@ -26,7 +26,8 @@ class MassSpecDataset(Dataset):
         spec_transform: Optional[SpecTransform] = None,
         mol_transform: Optional[MolTransform] = None,
         pth: Optional[Path] = None,
-        return_mol_freq: bool = True
+        return_mol_freq: bool = True,
+        return_identifier: bool = True,
     ):
         """
         Args:
@@ -68,6 +69,8 @@ class MassSpecDataset(Dataset):
                 self.metadata["inchikey"] = self.metadata["smiles"].apply(utils.smiles_to_inchi_key)
             self.metadata["mol_freq"] = self.metadata.groupby("inchikey")["inchikey"].transform("count")
 
+        self.return_identifier = return_identifier
+
     def __len__(self) -> int:
         return len(self.spectra)
 
@@ -94,6 +97,9 @@ class MassSpecDataset(Dataset):
 
         if self.return_mol_freq:
             item["mol_freq"] = metadata["mol_freq"]
+
+        if self.return_identifier:
+            item["identifier"] = metadata["identifier"]
 
         return item
 

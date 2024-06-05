@@ -36,6 +36,9 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
         )
         self.myopic_mces_kwargs |= myopic_mces_kwargs or {}
         self.mol_pred_kind: T.Literal["smiles", "rdkit"] = "smiles"
+        # caches of already computed results to avoid expensive re-computations
+        self.mces_cache = dict()
+        self.mol_2_morgan_fp = dict()
 
     def on_batch_end(
         self,
@@ -131,6 +134,18 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
         smile_true = mol_true
         mol_true = [Chem.MolFromSmiles(sm) for sm in mol_true]
 
+        def _get_morgan_fp_with_cache(mol):
+            """
+            A helper function to retrieve either cached Morgan Fingerprint value, or to compute and cache it
+            @param mol: RDKit molecule object
+            @return:
+            """
+            if mol not in self.mol_2_morgan_fp:
+                self.mol_2_morgan_fp[mol] = morgan_fp(mol, to_np=False)
+            return self.mol_2_morgan_fp[mol]
+
+
+
         # Evaluate top-k metrics
         for top_k in self.top_ks:
             # Get top-k predicted molecules for each ground-truth sample
@@ -146,11 +161,15 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
             # Iterate over batch
             for preds, true in zip(smiles_pred_top_k, smile_true):
                 # Iterate over top-k predicted molecule samples
-                dists = [
-                    MCES(s1=true, s2=pred, **self.myopic_mces_kwargs)[1]
-                    if pred is not None else mces_thld
-                    for pred in preds
-                ]
+                dists = []
+                for pred in preds:
+                    if pred is None:
+                        dists.append(mces_thld)
+                    else:
+                        if (true, pred) not in self.mces_cache:
+                            mce_val = MCES(s1=true, s2=pred, **self.myopic_mces_kwargs)[1]
+                            self.mces_cache[(true, pred)] = mce_val
+                        dists.append(self.mces_cache[(true, pred)])
                 min_mces_dists.append(min(min(dists), mces_thld))
             self._update_metric(
                 metric_pref + f"top_{top_k}_min_mces_dist",
@@ -164,10 +183,11 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
             # report the maximum similarity. The maximum similarities for each sample in the batch
             # are averaged across the epoch.
             fps_pred_top_k = [
-                [morgan_fp(m, to_np=False) if m is not None else None for m in ms]
+                [_get_morgan_fp_with_cache(m) if m is not None else None for m in ms]
                 for ms in mols_pred_top_k
             ]
-            fp_true = [morgan_fp(m, to_np=False) for m in mol_true]            
+            fp_true = [_get_morgan_fp_with_cache(m) for m in mol_true]
+
             max_tanimoto_sims = []
             # Iterate over batch
             for preds, true in zip(fps_pred_top_k, fp_true):
