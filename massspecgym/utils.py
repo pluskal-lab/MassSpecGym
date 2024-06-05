@@ -20,6 +20,14 @@ from standardizeUtils.standardizeUtils import (
 )
 
 
+def load_massspecgym():
+    df = pd.read_csv(hugging_face_download("MassSpecGym.tsv"), sep="\t")
+    df = df.set_index("identifier")
+    df['mzs'] = df['mzs'].apply(parse_spec_array)
+    df['intensities'] = df['intensities'].apply(parse_spec_array)
+    return df
+
+
 def pad_spectrum(
     spec: np.ndarray, max_n_peaks: int, pad_value: float = 0.0
 ) -> np.ndarray:
@@ -62,6 +70,7 @@ def morgan_fp(mol: Chem.Mol, fp_size=2048, radius=2, to_np=True):
         DataStructs.ConvertToNumpyArray(fp, fp_np)
         fp = fp_np
     return fp
+
 
 def tanimoto_morgan_similarity(mol1: Chem.Mol, mol2: Chem.Mol) -> float:
     return DataStructs.TanimotoSimilarity(morgan_fp(mol1, to_np=False), morgan_fp(mol2, to_np=False))
