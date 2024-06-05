@@ -527,10 +527,16 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
 
             # if we don't have stats  -> fall back to sampling from all candidates
             try:
-                element_stats = self.element_2_bond_stats[start_atom.atom_with_valence.atom_type][
-                    ValenceAndCharge(start_atom.atom_with_valence.atom_valence_and_charge.valence,
-                                     start_atom.atom_with_valence.atom_valence_and_charge.charge)
-                ][number_of_already_sampled_neighbours][
+                element_stats = self.element_2_bond_stats[
+                    start_atom.atom_with_valence.atom_type
+                ][
+                    ValenceAndCharge(
+                        start_atom.atom_with_valence.atom_valence_and_charge.valence,
+                        start_atom.atom_with_valence.atom_valence_and_charge.charge,
+                    )
+                ][
+                    number_of_already_sampled_neighbours
+                ][
                     tuple(sorted(already_connected_neighbours))
                 ]
 
@@ -539,7 +545,9 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                 neighb_with_stats_bondcounts = []
                 neighb_with_stats_bondlists = []
                 # iterating over open nodes of the corresponding bond type
-                for candidate_node_j in open_nodes_for_sampling[possible_candidates_type]:
+                for candidate_node_j in open_nodes_for_sampling[
+                    possible_candidates_type
+                ]:
                     if candidate_node_j not in closed_set:
                         # remembering all candidates in case no statistic-based option is there
                         full_candidates_list.append(candidate_node_j)
@@ -562,7 +570,8 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                     # sampling based on frequences in bond stats
                     total_bondcount_sum = sum(neighb_with_stats_bondcounts)
                     proportions = [
-                        val / total_bondcount_sum for val in neighb_with_stats_bondcounts
+                        val / total_bondcount_sum
+                        for val in neighb_with_stats_bondcounts
                     ]
                     edge_end_node_j = np.random.choice(
                         neighb_with_stats_candidates_list, p=proportions
@@ -608,8 +617,8 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                     [
                         candidate_node_j
                         for candidate_node_j in open_nodes_for_sampling[
-                        possible_candidates_type
-                    ]
+                            possible_candidates_type
+                        ]
                         if candidate_node_j not in closed_set
                     ]
                 )
