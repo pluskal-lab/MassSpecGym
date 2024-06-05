@@ -42,7 +42,7 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
             prog_bar=True,
         )
         # TODO Rewrite not to check the prefix, similar to the de novo class
-        if metric_pref == 'val_' and self.validate_only_loss:
+        if metric_pref in ['train_', 'val_'] and self.validate_only_loss:
             return
         self.evaluate_retrieval_step(
             outputs["scores"],
