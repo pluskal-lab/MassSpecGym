@@ -246,14 +246,22 @@ class RandomDeNovoTestcase(unittest.TestCase):
         for _ in range(100):
             print(generator.step(batch))
 
-    def test_difficult_molecule(self):
-        batch = {
-            "mol": [
-                'CC(C)C[C@H]1C(=O)N2CCC[C@H]2[C@]3(N1C(=O)[C@](O3)(C(C)C)NC(=O)[C@@H]4CN([C@@H]5CC6=CNC7=CC=CC(=C67)C5=C4)C)O',
-            ]
-        }
-        for _ in range(100):
-            print(self.generator_with_formula.step(batch))
+    def test_slow_eval_molecule(self):
+        molecules = self.generator_with_formula.generate_random_molecule_graphs_via_traversal(
+            chemical_formula="C23H17Cl2N5O4"
+        )
+        if self.draw_molecules:
+            for mol_i, molecule in enumerate(molecules):
+                img = Draw.MolToImage(molecule)
+                img.save(f"molecule_{gen_i}_{mol_i}.png")
+
+        # batch = {
+        #     "mol": [
+        #         'CC(C)C[C@H]1C(=O)N2CCC[C@H]2[C@]3(N1C(=O)[C@](O3)(C(C)C)NC(=O)[C@@H]4CN([C@@H]5CC6=CNC7=CC=CC(=C67)C5=C4)C)O',
+        #     ]
+        # }
+        # for _ in range(100):
+        #     print(self.generator_with_formula.step(batch))
 
 
 

@@ -190,6 +190,7 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         self.element_2_valence_2_bondtype_proportions: dict[
             chem_element, dict[int, float]
         ] = None
+        # TODO: use stats about each atom bonds in the generation process
         # a helping structures for (optional) derivation of statistics about valences and bond type distributions
         # the dictionary has the following mapping:
         # chem_element ->
@@ -198,6 +199,8 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         #                                           [(bond_type, other_bond_atom_type, valence, charge) ->
         #                                                                                  bond_count]]
         self._element_2_observed_valence_2_bondtypes = defaultdict(dict)
+        # already precomputed sets of randomly generated molecules for given formula is stored in
+        self.formula_2_random_smiles = {}
 
     def generator_for_splits_of_chem_element_atoms_by_possible_valences(
         self,
@@ -460,6 +463,13 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         @note In the future the method can be made into a function in a separate utils module,
         for the simplicity of codebase organization and testing purposes it's kept as the method for now
         """
+        # check if for the input formula the random structures have been already generated
+        print('input formula: ', chemical_formula)
+
+        if chemical_formula in self.formula_2_random_smiles:
+            return self.formula_2_random_smiles[chemical_formula]
+
+        print('New!')
         # get candidate partitions of all molecule atoms into valences
         candidate_valence_assignments = self.get_feasible_atom_valence_assignments(
             chemical_formula
@@ -691,7 +701,9 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                             create_rdkit_molecule_from_edge_list(edge_list, all_graph_nodes)
                         )
                         if len(generated_molecules) == self.max_top_k:
+                            self.formula_2_random_smiles[chemical_formula] = generated_molecules
                             return generated_molecules
+        self.formula_2_random_smiles[chemical_formula] = generated_molecules
         return generated_molecules
 
     def training_step(
@@ -719,15 +731,20 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         else:
             raise NotImplementedError
         # (bs, k) list of rdkit molecules
+        print('='*40)
         mols_pred = [
             self.generate_random_molecule_graphs_via_traversal(formula)
             for formula in formulas
         ]
+        for formula in formulas:
+            mols = self.generate_random_molecule_graphs_via_traversal(formula)
+            for mol in mols:
+                print(Chem.MolToSmiles(mol))
 
         # list of predicted smiles
         smiles_pred = [
             [
-                rdMolStandardize.StandardizeSmiles(Chem.MolToSmiles(mol_candidate))
+                Chem.MolToSmiles(mol_candidate)
                 for mol_candidate in candidates_per_input_mol
             ]
             for candidates_per_input_mol in mols_pred
