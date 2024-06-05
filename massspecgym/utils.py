@@ -71,6 +71,7 @@ def morgan_fp(mol: Chem.Mol, fp_size=2048, radius=2, to_np=True):
         fp = fp_np
     return fp
 
+
 def tanimoto_morgan_similarity(mol1: Chem.Mol, mol2: Chem.Mol) -> float:
     return DataStructs.TanimotoSimilarity(morgan_fp(mol1, to_np=False), morgan_fp(mol2, to_np=False))
 
