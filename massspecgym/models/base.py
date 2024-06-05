@@ -8,10 +8,19 @@ from torchmetrics import Metric, SumMetric
 
 class MassSpecGymModel(pl.LightningModule, ABC):
 
-    def __init__(self, lr: float = 1e-4, weight_decay: float = 0.0, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(
+        self,
+        lr: float = 1e-4,
+        weight_decay: float = 0.0,
+        validate_only_loss: bool = False,
+        *args,
+        **kwargs
+    ):
+        super().__init__(*args, **kwargs)
         self.lr = lr
         self.weight_decay = weight_decay
+        # TODO Implement validate_only_loss logic in this class rather than in the child classes separately
+        self.validate_only_loss = validate_only_loss
 
     @abstractmethod
     def step(

@@ -34,6 +34,16 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
         assert (
             isinstance(outputs, dict) and "scores" in outputs
         ), "No predicted candidate scores in the model outputs."
+        self.log(
+            f"{metric_pref}loss",
+            outputs['loss'],
+            batch_size=batch['spec'].size(0),
+            sync_dist=True,
+            prog_bar=True,
+        )
+        # TODO Rewrite not to check the prefix, similar to the de novo class
+        if metric_pref == 'val_' and self.validate_only_loss:
+            return
         self.evaluate_retrieval_step(
             outputs["scores"],
             batch["labels"],

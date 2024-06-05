@@ -20,7 +20,6 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
         self,
         top_ks: T.Iterable[int] = (1, 10),
         myopic_mces_kwargs: T.Optional[T.Mapping] = None,
-        validate_only_loss: bool = False,
         *args,
         **kwargs
     ):
@@ -36,7 +35,6 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
             solver_options=dict(msg=0)  # make ILP solver silent
         )
         self.myopic_mces_kwargs |= myopic_mces_kwargs or {}
-        self.validate_only_loss = validate_only_loss
         self.mol_pred_kind: T.Literal["smiles", "rdkit"] = "smiles"
 
     def on_batch_end(
