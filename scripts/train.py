@@ -9,7 +9,7 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 import massspecgym.utils as utils
 from massspecgym.data import RetrievalDataset, MassSpecDataset, MassSpecDataModule
 from massspecgym.transforms import MolFingerprinter, SpecBinner, SpecTokenizer
-from massspecgym.models.retrieval import FingerprintFFNRetrieval
+from massspecgym.models.retrieval import FingerprintFFNRetrieval, FromDictRetrieval
 from massspecgym.models.de_novo import SmilesTransformer
 
 
@@ -31,6 +31,7 @@ parser.add_argument('--wandb_entity_name', type=str, default='mass-spec-ml')
 parser.add_argument('--no_wandb', action='store_true')
 parser.add_argument('--seed', type=int, default=0)
 parser.add_argument('--debug', action='store_true')
+parser.add_argument('--test_only', action='store_true')
 
 # Data paths
 parser.add_argument('--candidates_pth', type=str, default=None)
@@ -76,7 +77,6 @@ parser.add_argument('--nhead', type=int, default=8)
 parser.add_argument('--num_encoder_layers', type=int, default=4)
 parser.add_argument('--num_decoder_layers', type=int, default=4)
 parser.add_argument('--dropout', type=float, default=0.1)
-parser.add_argument('--smiles_tokenizer', type=str, default=utils.get_smiles_bpe_tokenizer())
 parser.add_argument('--k_predictions', type=int, default=1)
 parser.add_argument('--pre_norm', type=bool, default=False)
 parser.add_argument('--max_smiles_len', type=int, default=100)
@@ -88,6 +88,9 @@ parser.add_argument('--temperature', type=float, default=1)
 parser.add_argument('--hidden_channels', type=int, default=512)
 parser.add_argument('--num_layers', type=int, default=2)
 # parser.add_argument('--dropout', type=float, default=0.0)
+
+# 2. FromDict (for evaluating given fingerprints)
+parser.add_argument('--dct_path', type=str, default=None)
 
 
 def main(args):
@@ -140,6 +143,11 @@ def main(args):
                 dropout=args.dropout,
                 **common_kwargs
             )
+        elif args.model == 'from_dict':
+            model = FromDictRetrieval(
+                dct_path=args.dct_path,
+                **common_kwargs
+            )
         else:
             raise NotImplementedError(f"Model {args.model} not implemented.")
     elif args.task == 'de_novo':
@@ -151,7 +159,7 @@ def main(args):
                 num_encoder_layers=args.num_encoder_layers,
                 num_decoder_layers=args.num_decoder_layers,
                 dropout=args.dropout,
-                smiles_tokenizer=args.smiles_tokenizer,
+                smiles_tokenizer=utils.get_smiles_bpe_tokenizer(),
                 k_predictions=args.k_predictions,
                 pre_norm=args.pre_norm,
                 max_smiles_len=args.max_smiles_len,
@@ -206,15 +214,19 @@ def main(args):
         callbacks=callbacks
     )
 
-    # Validate before training
-    data_module.prepare_data()  # Explicit call needed for validate before fit
-    data_module.setup()  # Explicit call needed for validate before fit
-    trainer.validate(model, datamodule=data_module)
+    if not args.test_only:
+        # Validate before training
+        data_module.prepare_data()  # Explicit call needed for validate before fit
+        data_module.setup()  # Explicit call needed for validate before fit
+        trainer.validate(model, datamodule=data_module)
 
-    # Train
-    trainer.fit(model, datamodule=data_module)
+        # Train
+        trainer.fit(model, datamodule=data_module)
 
     # Test
+    if args.test_only:
+        data_module.prepare_data()  # Explicit call needed for validate before fit
+        data_module.setup()  # Explicit call needed for validate before fit
     trainer.test(model, datamodule=data_module)
 
 
