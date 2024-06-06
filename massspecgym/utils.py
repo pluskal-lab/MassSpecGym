@@ -128,7 +128,7 @@ def hugging_face_download(file_name: str) -> str:
     )
 
 
-def init_plotting(figsize=(6, 2), font_scale=0.95, style="whitegrid"):
+def init_plotting(figsize=(6, 2), font_scale=1.0, style="whitegrid"):
     # Set default figure size
     plt.show()  # Does not work without this line for some reason
     sns.set_theme(rc={"figure.figsize": figsize})
