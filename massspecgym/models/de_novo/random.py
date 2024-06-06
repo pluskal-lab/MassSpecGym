@@ -183,6 +183,8 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         count_of_valid_valence_assignments: int = 10,
         estimate_chem_element_stats: bool = False,
         max_top_k: int = 10,
+        enforce_connectivity: bool = True,
+        cache_results: bool = True,
     ):
         """
 
@@ -199,13 +201,18 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                                             and bond type distributions is estimated from training data
         @param max_top_k: a maximum number of candidates to generate. If the count of valid valence assignments do
                           not allow generation of max_top_k, then less candidates are returned
+        @param enforce_connectivity: a boolean flag controlling connectivity of randomly generated molecules.
+                                     When it is set to True, first a random spanning tree is sampled
+        @param cache_results: a boolean flag controlling caching of already generated structures.
+                              When set to True, for each unique formula the set of random molecules is cached to avoid
+                              recomputation.
         """
         super(RandomDeNovo, self).__init__()
         self.formula_known = formula_known
         self.count_of_valid_valence_assignments = count_of_valid_valence_assignments
         self.estimate_chem_element_stats = estimate_chem_element_stats
-        #
         self.max_top_k = min(max(self.top_ks), max_top_k)
+        self.enforce_connectivity = enforce_connectivity
         # prior chemical knownledge about element valences
         self.element_2_valences = ELEMENT_VALENCES
         # a dictionary structure to record molecular weights with corresponding formulas from training data
@@ -227,6 +234,7 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         self.element_2_bond_stats = None
         # a cache with already precomputed sets of randomly generated molecules for the given formula
         self.formula_2_random_smiles = {}
+        self.cache_results = cache_results
 
     def generator_for_splits_of_chem_element_atoms_by_possible_valences(
         self,
@@ -752,7 +760,7 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         for the simplicity of codebase organization and testing purposes it's kept as the method for now
         """
         # check if for the input formula the random structures have been already generated
-        if chemical_formula in self.formula_2_random_smiles:
+        if self.cache_results and chemical_formula in self.formula_2_random_smiles:
             return self.formula_2_random_smiles[chemical_formula]
 
         # get candidate partitions of all molecule atoms into valences
@@ -850,9 +858,9 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                         edge_start_node_i = choice(list(range(len(all_graph_nodes))))
                         spanning_tree_visited_nodes_set.add(edge_start_node_i)
                         spanning_tree_traversal_list.append(edge_start_node_i)
-                        while len(spanning_tree_visited_nodes_set) < len(
-                            all_graph_nodes
-                        ):
+                        while self.enforce_connectivity and len(
+                            spanning_tree_visited_nodes_set
+                        ) < len(all_graph_nodes):
                             # check if the start edge atom has the charge and therefore can form coordinate bond
                             try:
                                 (
@@ -898,7 +906,6 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
 
                     # after the spanning tree edges were sampled,
                     # now we randomly connect nodes with remaining degrees yet uncovered by sampled bonds
-
                     while sum(map(len, open_nodes_for_sampling.values())) >= 2:
                         try:
                             (
@@ -923,11 +930,13 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                             )
                         )
                         if len(generated_molecules) == self.max_top_k:
-                            self.formula_2_random_smiles[
-                                chemical_formula
-                            ] = generated_molecules
+                            if self.cache_results:
+                                self.formula_2_random_smiles[
+                                    chemical_formula
+                                ] = generated_molecules
                             return generated_molecules
-        self.formula_2_random_smiles[chemical_formula] = generated_molecules
+        if self.cache_results:
+            self.formula_2_random_smiles[chemical_formula] = generated_molecules
         return generated_molecules
 
     def training_step(
@@ -941,6 +950,8 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                 molecule = Chem.MolFromSmiles(mol_smiles)
                 # in order to work with double and single bonds instead of aromatic
                 Chem.Kekulize(molecule, clearAromaticFlags=True)
+                # we add hydrogen atoms (which are ommited by default)
+                molecule = Chem.AddHs(molecule)
                 formula = CalcMolFormula(molecule)
                 for atom in molecule.GetAtoms():
                     valence = atom.GetTotalValence()
@@ -1203,7 +1214,7 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
 
         for predicted_mol_group in mols_pred:
             for mol in predicted_mol_group:
-                Chem.SanitizeMol(mol)
+                Chem.RemoveHs(mol)
 
         # list of predicted smiles
         smiles_pred = [
