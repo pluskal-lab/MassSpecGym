@@ -1,4 +1,4 @@
-# MassSpecGym: Benchmark For the Discovery of New Molecules From Mass Spectra
+# MassSpecGym: A benchmark for the discovery and identification of molecules
 
 <p>
   <a href="https://github.com/pytorch/pytorch"> <img src="https://img.shields.io/badge/PyTorch-%23EE4C2C.svg?style=for-the-badge&logo=PyTorch&logoColor=white" height="22px"></a>
@@ -7,6 +7,8 @@
 <p>
 
 [![Dataset on Hugging Face](https://huggingface.co/datasets/huggingface/badges/resolve/main/dataset-on-hf-md-dark.svg)](https://huggingface.co/datasets/roman-bushuiev/MassSpecGym)  
+
+📣 A paper will be available soon!
 
 ## Installation
 
