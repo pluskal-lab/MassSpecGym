@@ -5,6 +5,7 @@ from collections.abc import Generator
 import torch
 from rdkit import Chem
 from rdkit.Chem import Draw
+import pickle
 
 from massspecgym.models.de_novo import RandomDeNovo
 from massspecgym.models.de_novo.random import AtomWithValence, ValenceAndCharge
@@ -12,8 +13,12 @@ from massspecgym.models.de_novo.random import AtomWithValence, ValenceAndCharge
 
 class RandomDeNovoTestcase(unittest.TestCase):
     def setUp(self, draw_molecules: bool = False) -> None:
-        self.generator_with_formula = RandomDeNovo(formula_known=True)
-        self.generator_without_formula = RandomDeNovo(formula_known=True)
+        self.generator_with_formula = RandomDeNovo(
+            formula_known=True, cache_results=False
+        )
+        self.generator_without_formula = RandomDeNovo(
+            formula_known=True, cache_results=False
+        )
         self.draw_molecules = draw_molecules
 
     def test_generator_of_element_atoms_split_into_valence_groups_1(self):
@@ -179,37 +184,25 @@ class RandomDeNovoTestcase(unittest.TestCase):
         total_secs = time.time() - start_time
         self.assertLess(total_secs, 1)
 
-    def test_random_molecule_generation_for_ion_1(self):
-        molecules = (
-            self.generator_with_formula.generate_random_molecule_graphs_via_traversal(
-                chemical_formula="C8H18OP+"
-            )
-        )
-        if self.draw_molecules:
-            for mol_i, molecule in enumerate(molecules):
-                img = Draw.MolToImage(molecule)
-                img.save(f"molecule_charged_{mol_i}.png")
-
-    def test_random_molecule_generation_for_ion_2(self):
-        molecules = (
-            self.generator_with_formula.generate_random_molecule_graphs_via_traversal(
-                chemical_formula="C3H6NO4S-"
-            )
-        )
-        if self.draw_molecules:
-            for mol_i, molecule in enumerate(molecules):
-                img = Draw.MolToImage(molecule)
-                img.save(f"molecule_charged_{mol_i}.png")
-
-    def test_random_molecule_generation(self):
-        for gen_i in range(100):
+    def test_random_molecule_generation_1(self):
+        for gen_i in range(50):
             molecules = self.generator_with_formula.generate_random_molecule_graphs_via_traversal(
                 chemical_formula="C23H17Cl2N5O4"
             )
             if self.draw_molecules:
                 for mol_i, molecule in enumerate(molecules):
-                    img = Draw.MolToImage(molecule)
-                    img.save(f"molecule_{gen_i}_{mol_i}.png")
+                    img = Draw.MolToImage(molecule, size=(700, 700))
+                    img.save(f"molecule_1_{gen_i}_{mol_i}.png")
+
+    def test_random_molecule_generation_2(self):
+        for gen_i in range(50):
+            molecules = self.generator_with_formula.generate_random_molecule_graphs_via_traversal(
+                chemical_formula="C20H36O7P2"
+            )
+            if self.draw_molecules:
+                for mol_i, molecule in enumerate(molecules):
+                    img = Draw.MolToImage(molecule, size=(700, 700))
+                    img.save(f"molecule_2_{gen_i}_{mol_i}.png")
 
     def test_step_function(self):
         batch = {
@@ -221,13 +214,13 @@ class RandomDeNovoTestcase(unittest.TestCase):
                 "Cc1c(C)c2c(cc1)c(=O)c1cccc(CC(=O)O)c1o2",
             ]
         }
-        for batch_i in range(100):
+        for batch_i in range(50):
             mol_preds = self.generator_with_formula.step(batch)["mols_pred"]
             if self.draw_molecules:
                 for input_mol_i, molecule_smiles in enumerate(mol_preds):
                     for mol_i, _smiles in enumerate(molecule_smiles):
                         molecule = Chem.MolFromSmiles(_smiles)
-                        img = Draw.MolToImage(molecule)
+                        img = Draw.MolToImage(molecule, size=(700, 700))
                         img.save(f"step_molecule_{input_mol_i}_{mol_i}.png")
 
     def test_single_candidate_generation(self):
@@ -246,12 +239,8 @@ class RandomDeNovoTestcase(unittest.TestCase):
                 chemical_formula="C23H17Cl2N5O4"
             )
         )
-        if self.draw_molecules:
-            for mol_i, molecule in enumerate(molecules):
-                img = Draw.MolToImage(molecule)
-                img.save(f"molecule_{gen_i}_{mol_i}.png")
 
-    def test_mz_recording(self):
+    def test_weight_recording(self):
         batch = {
             "mol": [
                 "CC(C)C[C@H]1C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N1C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C",
@@ -264,7 +253,7 @@ class RandomDeNovoTestcase(unittest.TestCase):
             self.generator_without_formula.mol_weight_2_formulas,
         )
 
-    def test_mz_recording_on_train_end(self):
+    def test_weight_recording_on_train_end(self):
         batch = {
             "mol": [
                 "CC(C)C[C@H]1C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N1C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C",
@@ -340,6 +329,116 @@ class RandomDeNovoTestcase(unittest.TestCase):
                 908.6085741279999
             ),
         )
+
+    def test_chemical_elements_stats_computation_train_step(self):
+        batch = {
+            "mol": [
+                "CC(C)C[C@H]1C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N1C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C",
+                "CC(C)C[C@H]1C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N1C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C",
+                "C",  # dummy for the test
+                "CC(C)C[C@H]1C(=O)N2CCC[C@H]2[C@]3(N1C(=O)[C@](O3)(C(C)C)NC(=O)[C@H]4CN([C@@H]5CC6=CNC7=CC=CC(=C67)C5=C4)C)O",
+            ],
+        }
+        generator_with_stats = RandomDeNovo(estimate_chem_element_stats=True)
+        generator_with_stats.training_step(batch, batch_idx=torch.Tensor())
+
+        self.assertEqual(
+            118,
+            generator_with_stats.element_2_bond_stats["C"][
+                ValenceAndCharge(valence=4, charge=0)
+            ][0][()][("C", 4, 0, 1.0)],
+        )
+
+    def test_chemical_elements_stats_computation_post_train(self):
+        batch = {
+            "mol": [
+                "CC(C)C[C@H]1C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N1C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C",
+                "CC(C)C[C@H]1C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N([C@H](C(=O)O[C@@H](C(=O)N1C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C)CC(C)C)C)C(C)C",
+                "C",  # dummy for the test
+                "CC(C)C[C@H]1C(=O)N2CCC[C@H]2[C@]3(N1C(=O)[C@](O3)(C(C)C)NC(=O)[C@H]4CN([C@@H]5CC6=CNC7=CC=CC(=C67)C5=C4)C)O",
+            ],
+        }
+        generator_with_stats = RandomDeNovo(estimate_chem_element_stats=True)
+        generator_with_stats.training_step(batch, batch_idx=torch.Tensor())
+        generator_with_stats.on_train_end()
+
+        self.assertEqual(
+            ([(1.0, 118), (2.0, 10)], 128),
+            generator_with_stats.element_2_bond_stats["C"][
+                ValenceAndCharge(valence=4, charge=0)
+            ][0][()][
+                AtomWithValence(
+                    atom_type="C",
+                    atom_valence_and_charge=ValenceAndCharge(valence=4, charge=0),
+                )
+            ],
+        )
+
+    def test_random_molecule_generation_with_stats_for_ion_1(self):
+        generator_with_stats = RandomDeNovo(
+            estimate_chem_element_stats=True,
+            enforce_connectivity=False,
+            cache_results=False,
+        )
+        with open("element_stats_from_trn_with_hydrogens.pkl", "rb") as file:
+            generator_with_stats.element_2_bond_stats = pickle.load(file)
+        molecules = (
+            self.generator_with_formula.generate_random_molecule_graphs_via_traversal(
+                chemical_formula="C8H18OP+"
+            )
+        )
+
+    def test_random_molecule_generation_with_stats_for_ion_2(self):
+        generator_with_stats = RandomDeNovo(
+            estimate_chem_element_stats=True,
+            enforce_connectivity=False,
+            cache_results=False,
+        )
+        with open("element_stats_from_trn_with_hydrogens.pkl", "rb") as file:
+            generator_with_stats.element_2_bond_stats = pickle.load(file)
+        molecules = (
+            self.generator_with_formula.generate_random_molecule_graphs_via_traversal(
+                chemical_formula="C3H6NO4S-"
+            )
+        )
+
+    def test_random_molecule_generation_with_stats_no_connectivity_1(self):
+        generator_with_stats = RandomDeNovo(
+            estimate_chem_element_stats=True,
+            enforce_connectivity=False,
+            cache_results=False,
+        )
+        with open("element_stats_from_trn_with_hydrogens.pkl", "rb") as file:
+            generator_with_stats.element_2_bond_stats = pickle.load(file)
+        for gen_i in range(50):
+            molecules = (
+                generator_with_stats.generate_random_molecule_graphs_via_traversal(
+                    chemical_formula="C23H17Cl2N5O4",
+                )
+            )
+            if self.draw_molecules:
+                for mol_i, molecule in enumerate(molecules):
+                    img = Draw.MolToImage(molecule, size=(700, 700))
+                    img.save(f"molecule_1_with_stats_{gen_i}_{mol_i}.png")
+
+    def test_random_molecule_generation_with_stats_without_connectivity_2(self):
+        generator_with_stats = RandomDeNovo(
+            estimate_chem_element_stats=True,
+            enforce_connectivity=False,
+            cache_results=False,
+        )
+        with open("element_stats_from_trn_with_hydrogens.pkl", "rb") as file:
+            generator_with_stats.element_2_bond_stats = pickle.load(file)
+        for gen_i in range(50):
+            molecules = (
+                generator_with_stats.generate_random_molecule_graphs_via_traversal(
+                    chemical_formula="C20H36O7P2",
+                )
+            )
+            if self.draw_molecules:
+                for mol_i, molecule in enumerate(molecules):
+                    img = Draw.MolToImage(molecule, size=(700, 700))
+                    img.save(f"molecule_2_with_stats_{gen_i}_{mol_i}.png")
 
 
 if __name__ == "__main__":

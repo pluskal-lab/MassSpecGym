@@ -130,7 +130,7 @@ def hugging_face_download(file_name: str) -> str:
     )
 
 
-def init_plotting(figsize=(6, 2), font_scale=0.95, style="whitegrid"):
+def init_plotting(figsize=(6, 2), font_scale=1.0, style="whitegrid"):
     # Set default figure size
     plt.show()  # Does not work without this line for some reason
     sns.set_theme(rc={"figure.figsize": figsize})
@@ -170,7 +170,7 @@ def get_smiles_bpe_tokenizer() -> ByteLevelBPETokenizer:
 
 
 def parse_spec_array(arr: str) -> np.ndarray:
-    return list(map(float, arr.split(",")))
+    return np.array(list(map(float, arr.split(","))))
 
 
 def plot_spectrum(spec, hue=None, xlim=None, ylim=None, mirror_spec=None, highl_idx=None,
@@ -285,21 +285,24 @@ class MyopicMCES():
         ind: int = 0,  # dummy index
         solver: str = pulp.listSolvers(onlyAvailable=True)[0],  # Use the first available solver
         threshold: int = 15,  # MCES threshold
-        solver_options: dict = None  
+        always_stronger_bound: bool = True, # "False" makes computations a lot faster, but leads to overall higher MCES values
+        solver_options: dict = None
     ):
         self.ind = ind
         self.solver = solver
         self.threshold = threshold
+        self.always_stronger_bound = always_stronger_bound
         if solver_options is None:
             solver_options = dict(msg=0)  # make ILP solver silent
         self.solver_options = solver_options
 
-    def __call__(self, smiles_1: str, smiles_2: str) -> int:
+    def __call__(self, smiles_1: str, smiles_2: str) -> float:
         retval = MCES(
             s1=smiles_1,
             s2=smiles_2,
             ind=self.ind,
             threshold=self.threshold,
+            always_stronger_bound=self.always_stronger_bound,
             solver=self.solver,
             solver_options=self.solver_options
         )
