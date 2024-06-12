@@ -240,21 +240,24 @@ class MyopicMCES():
         ind: int = 0,  # dummy index
         solver: str = pulp.listSolvers(onlyAvailable=True)[0],  # Use the first available solver
         threshold: int = 15,  # MCES threshold
-        solver_options: dict = None  
+        always_stronger_bound: bool = True, # "False" makes computations a lot faster, but leads to overall higher MCES values
+        solver_options: dict = None
     ):
         self.ind = ind
         self.solver = solver
         self.threshold = threshold
+        self.always_stronger_bound = always_stronger_bound
         if solver_options is None:
             solver_options = dict(msg=0)  # make ILP solver silent
         self.solver_options = solver_options
 
-    def __call__(self, smiles_1: str, smiles_2: str) -> int:
+    def __call__(self, smiles_1: str, smiles_2: str) -> float:
         retval = MCES(
             s1=smiles_1,
             s2=smiles_2,
             ind=self.ind,
             threshold=self.threshold,
+            always_stronger_bound=self.always_stronger_bound,
             solver=self.solver,
             solver_options=self.solver_options
         )
