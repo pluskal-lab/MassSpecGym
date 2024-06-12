@@ -231,7 +231,7 @@ class MyopicMCES():
         ind: int = 0,  # dummy index
         solver: str = pulp.listSolvers(onlyAvailable=True)[0],  # Use the first available solver
         threshold: int = 15,  # MCES threshold
-        always_stronger_bound: bool = False, # makes computations a lot faster
+        always_stronger_bound: bool = True, # "False" makes computations a lot faster, but leads to overall higher MCES values
         solver_options: dict = None
     ):
         self.ind = ind
