@@ -9,9 +9,11 @@ import matplotlib.ticker as ticker
 import pandas as pd
 import typing as T
 import pulp
+from pathlib import Path
 from myopic_mces.myopic_mces import MCES
 from rdkit.Chem import AllChem as Chem
-from rdkit.Chem import DataStructs
+from rdkit.Chem import DataStructs, Draw
+from rdkit.Chem.Descriptors import ExactMolWt
 from huggingface_hub import hf_hub_download
 from tokenizers import ByteLevelBPETokenizer
 from tokenizers.processors import TemplateProcessing
@@ -234,6 +236,49 @@ def plot_spectrum(spec, hue=None, xlim=None, ylim=None, mirror_spec=None, highl_
 
     if save_pth is not None:
         raise NotImplementedError()
+
+
+def show_mols(mols, legends='new_indices', smiles_in=False, svg=False, sort_by_legend=False, max_mols=500,
+              legend_float_decimals=4, mols_per_row=6, save_pth: T.Optional[Path] = None):
+    """
+    Returns svg image representing a grid of skeletal structures of the given molecules. Copy-pasted
+     from https://github.com/pluskal-lab/DreaMS/blob/main/dreams/utils/mols.py
+
+    :param mols: list of rdkit molecules
+    :param smiles_in: True - SMILES inputs, False - RDKit mols
+    :param legends: list of labels for each molecule, length must be equal to the length of mols
+    :param svg: True - return svg image, False - return png image
+    :param sort_by_legend: True - sort molecules by legend values
+    :param max_mols: maximum number of molecules to show
+    :param legend_float_decimals: number of decimal places to show for float legends
+    :param mols_per_row: number of molecules per row to show
+    :param save_pth: path to save the .svg image to
+    """
+    if smiles_in:
+        mols = [Chem.MolFromSmiles(e) for e in mols]
+
+    if legends == 'new_indices':
+        legends = list(range(len(mols)))
+    elif legends == 'masses':
+        legends = [ExactMolWt(m) for m in mols]
+    elif callable(legends):
+        legends = [legends(e) for e in mols]
+
+    if sort_by_legend:
+        idx = np.argsort(legends).tolist()
+        legends = [legends[i] for i in idx]
+        mols = [mols[i] for i in idx]
+
+    legends = [f'{l:.{legend_float_decimals}f}' if isinstance(l, float) else str(l) for l in legends]
+
+    img = Draw.MolsToGridImage(mols, maxMols=max_mols, legends=legends, molsPerRow=min(max_mols, mols_per_row),
+                         useSVG=svg, returnPNG=False)
+
+    if save_pth:
+        with open(save_pth, 'w') as f:
+            f.write(img.data)
+
+    return img
 
 
 class MyopicMCES():
