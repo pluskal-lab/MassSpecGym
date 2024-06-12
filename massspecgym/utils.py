@@ -1,5 +1,6 @@
 import numpy as np
 import seaborn as sns
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.colors
 import matplotlib.cm as cm
@@ -132,6 +133,7 @@ def init_plotting(figsize=(6, 2), font_scale=1.0, style="whitegrid"):
     # Set default figure size
     plt.show()  # Does not work without this line for some reason
     sns.set_theme(rc={"figure.figsize": figsize})
+    mpl.rcParams['svg.fonttype'] = 'none'
     # Set default style and font scale
     sns.set_style(style)
     sns.set_context("paper", font_scale=font_scale)
