@@ -168,7 +168,7 @@ def get_smiles_bpe_tokenizer() -> ByteLevelBPETokenizer:
 
 
 def parse_spec_array(arr: str) -> np.ndarray:
-    return list(map(float, arr.split(",")))
+    return np.array(list(map(float, arr.split(","))))
 
 
 def plot_spectrum(spec, hue=None, xlim=None, ylim=None, mirror_spec=None, highl_idx=None,
