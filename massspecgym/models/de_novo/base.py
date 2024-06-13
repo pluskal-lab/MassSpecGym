@@ -52,7 +52,7 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
             prog_bar=True,
         )
 
-        if self.validate_only_loss and stage != Stage.TEST:
+        if stage in self.log_only_loss_at_stages:
             return
         
         self.evaluate_de_novo_step(

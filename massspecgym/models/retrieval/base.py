@@ -36,6 +36,9 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
             sync_dist=True,
             prog_bar=True,
         )
+        if stage in self.log_only_loss_at_stages:
+            return
+
         self.evaluate_retrieval_step(
             outputs["scores"],
             batch["labels"],

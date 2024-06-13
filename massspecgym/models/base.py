@@ -23,14 +23,16 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         self,
         lr: float = 1e-4,
         weight_decay: float = 0.0,
-        validate_only_loss: bool = False,
+        log_only_loss_at_stages: T.Sequence[Stage | str] = (),
         *args,
         **kwargs
     ):
         super().__init__(*args, **kwargs)
         self.lr = lr
         self.weight_decay = weight_decay
-        self.validate_only_loss = validate_only_loss
+        self.log_only_loss_at_stages = [
+            Stage(s) if isinstance(s, str) else s for s in log_only_loss_at_stages
+        ]
 
     @abstractmethod
     def step(
