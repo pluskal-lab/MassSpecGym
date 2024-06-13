@@ -49,11 +49,8 @@ class FromDictRetrieval(RetrievalMassSpecGymModel):
         # Read predicted fingerprints from dictionary
         fp_pred = torch.stack([self.dct[id] for id in ids]).to(fp_true.device)
 
-        # Convert fingerprint from int to float/double
-        fp_true = fp_true.type_as(fp_pred)
-
         # Evaluation performance on fingerprint prediction (optional)
-        self.evaluate_fingerprint_step(fp_true, fp_pred, metric_pref=metric_pref)
+        self.evaluate_fingerprint_step(fp_true, fp_pred, stage=stage)
 
         # Calculate final similarity scores between predicted fingerprints and corresponding
         # candidate fingerprints for retrieval

@@ -77,7 +77,7 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
         return output
 
     def step(self, batch: dict, stage: Stage) -> dict:
-        spec = batch["spec"].float()  # (batch_size, seq_len, in_dim)
+        spec = batch["spec"]  # (batch_size, seq_len, in_dim)
         smiles = batch["mol"]  # List of SMILES of length batch_size
 
         smiles = self.smiles_tokenizer.encode_batch(smiles)
@@ -108,12 +108,12 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
 
     def validation_step(self, batch: dict, batch_idx: torch.Tensor) -> tuple:
         outputs = self.step(batch)
-        decoded_smiles = self.decode_smiles(batch["spec"].float())
+        decoded_smiles = self.decode_smiles(batch["spec"])
         return dict(loss=outputs["loss"], mols_pred=decoded_smiles)
     
     def test_step(self, batch: dict, batch_idx: torch.Tensor) -> tuple:
         outputs = self.step(batch)
-        decoded_smiles = self.decode_smiles(batch["spec"].float())
+        decoded_smiles = self.decode_smiles(batch["spec"])
         return dict(loss=outputs["loss"], mols_pred=decoded_smiles)
 
     def generate_src_padding_mask(self, spec):

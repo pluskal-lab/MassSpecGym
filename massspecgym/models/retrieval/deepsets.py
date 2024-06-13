@@ -29,7 +29,7 @@ class DeepSetsRetrieval(RetrievalMassSpecGymModel):
         self, batch: dict, stage: Stage
     ) -> tuple[torch.Tensor, torch.Tensor]:
         # Unpack inputs
-        x = batch["spec"].float()  # TODO Remove retyping
+        x = batch["spec"]
         fp_true = batch["mol"]
         cands = batch["candidates"]
         labels = batch["labels"]
@@ -39,12 +39,7 @@ class DeepSetsRetrieval(RetrievalMassSpecGymModel):
         fp_pred = self.forward(x)
 
         # Calculate loss
-        fp_true = fp_true.type_as(
-            fp_pred
-        )  # convert fingerprint from int to float/double
-        loss = nn.functional.mse_loss(
-            fp_true, fp_pred
-        )  # TODO Change to cosine similarity?
+        loss = nn.functional.mse_loss(fp_true, fp_pred)
 
         # Evaluation performance on fingerprint prediction (optional)
         self.evaluate_fingerprint_step(fp_true, fp_pred, stage=stage)

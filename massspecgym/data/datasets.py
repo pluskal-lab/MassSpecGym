@@ -28,6 +28,7 @@ class MassSpecDataset(Dataset):
         pth: Optional[Path] = None,
         return_mol_freq: bool = True,
         return_identifier: bool = True,
+        dtype: T.Type = torch.float32
     ):
         """
         Args:
@@ -70,6 +71,7 @@ class MassSpecDataset(Dataset):
             self.metadata["mol_freq"] = self.metadata.groupby("inchikey")["inchikey"].transform("count")
 
         self.return_identifier = return_identifier
+        self.dtype = dtype
 
     def __len__(self) -> int:
         return len(self.spectra)
@@ -83,10 +85,13 @@ class MassSpecDataset(Dataset):
             if transform_spec and self.spec_transform
             else spec
         )
+        spec = torch.as_tensor(spec, dtype=self.dtype)
 
         metadata = self.metadata.iloc[i]
         mol = metadata["smiles"]
         mol = self.mol_transform(mol) if transform_mol and self.mol_transform else mol
+        if isinstance(mol, np.ndarray):
+            mol = torch.as_tensor(mol, dtype=self.dtype)
 
         item = {"spec": spec, "mol": mol}
 
@@ -168,6 +173,9 @@ class RetrievalDataset(MassSpecDataset):
         # Transform the query and candidate molecules
         item["mol"] = self.mol_transform(item["mol"])
         item["candidates"] = [self.mol_transform(c) for c in item["candidates"]]
+        if isinstance(item["mol"], np.ndarray):
+            item["mol"] = torch.as_tensor(item["mol"], dtype=self.dtype)
+            # item["candidates"] = [torch.as_tensor(c, dtype=self.dtype) for c in item["candidates"]]
 
         return item
 

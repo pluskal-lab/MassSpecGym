@@ -45,17 +45,15 @@ class FingerprintFFNRetrieval(RetrievalMassSpecGymModel):
         self, batch: dict, stage: Stage
     ) -> tuple[torch.Tensor, torch.Tensor]:
         # Unpack inputs
-        x = batch["spec"].float()  # TODO Remove retyping
+        x = batch["spec"]
         fp_true = batch["mol"]
         cands = batch["candidates"]
-        labels = batch["labels"]
         batch_ptr = batch["batch_ptr"]
 
         # Predict fingerprint
         fp_pred = self.forward(x)
 
         # Calculate loss
-        fp_true = fp_true.type_as(fp_pred)  # convert fingerprint from int to float/double
         loss = self.loss_fn(fp_true, fp_pred)
 
         # Evaluation performance on fingerprint prediction (optional)
