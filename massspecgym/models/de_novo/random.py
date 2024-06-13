@@ -6,6 +6,7 @@ from random import choice, shuffle
 import chemparse
 import numpy as np
 import torch
+from massspecgym.models.base import Stage
 from massspecgym.models.de_novo.base import DeNovoMassSpecGymModel
 from rdkit import Chem
 from rdkit.Chem.MolStandardize import rdMolStandardize
@@ -1188,7 +1189,7 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         return np.random.choice(feasible_formulas, p=formula_proportions)
 
     def step(
-        self, batch: dict, metric_pref: str = ""
+        self, batch: dict, stage: Stage
     ) -> tuple[torch.Tensor, torch.Tensor]:
         mols = batch["mol"]  # List of SMILES of length batch_size
 
