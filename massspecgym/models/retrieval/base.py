@@ -2,12 +2,10 @@ import typing as T
 from abc import ABC
 
 import torch
-import torch.nn as nn
-import pytorch_lightning as pl
 from torchmetrics import CosineSimilarity, MeanMetric
 from torchmetrics.retrieval import RetrievalHitRate
 
-from massspecgym.models.base import MassSpecGymModel
+from massspecgym.models.base import MassSpecGymModel, Stage
 import massspecgym.utils as utils
 
 
@@ -25,30 +23,24 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
         self.myopic_mces = utils.MyopicMCES(**(myopic_mces_kwargs or {}))
 
     def on_batch_end(
-        self, outputs: T.Any, batch: dict, batch_idx: int, metric_pref: str = ""
+        self, outputs: T.Any, batch: dict, batch_idx: int, stage: Stage
     ) -> None:
         """
         Compute evaluation metrics for the retrieval model based on the batch and corresponding
         predictions.
         """
-        assert (
-            isinstance(outputs, dict) and "scores" in outputs
-        ), "No predicted candidate scores in the model outputs."
         self.log(
-            f"{metric_pref}loss",
+            f"{stage.to_pref()}loss",
             outputs['loss'],
             batch_size=batch['spec'].size(0),
             sync_dist=True,
             prog_bar=True,
         )
-        # TODO Rewrite not to check the prefix, similar to the de novo class
-        if metric_pref in ['train_', 'val_'] and self.validate_only_loss:
-            return
         self.evaluate_retrieval_step(
             outputs["scores"],
             batch["labels"],
             batch["batch_ptr"],
-            metric_pref=metric_pref,
+            stage=stage,
         )
         self.evaluate_mces_at_1(
             outputs["scores"],
@@ -56,7 +48,7 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
             batch["smiles"],
             batch["candidates_smiles"],
             batch["batch_ptr"],
-            metric_pref=metric_pref,
+            stage=stage,
         )
 
     def evaluate_retrieval_step(
@@ -64,7 +56,7 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
         scores: torch.Tensor,
         labels: torch.Tensor,
         batch_ptr: torch.Tensor,
-        metric_pref: str = "",
+        stage: Stage,
     ) -> None:
         """
         Main evaluation method for the retrieval models. The retrieval step is evaluated by 
@@ -82,7 +74,7 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
         indexes = torch.repeat_interleave(indexes, batch_ptr)
         for at_k in self.at_ks:
             self._update_metric(
-                metric_pref + f"hit_rate@{at_k}",
+                stage.to_pref() + f"hit_rate@{at_k}",
                 RetrievalHitRate,
                 (scores, labels, indexes),
                 batch_size=batch_ptr.size(0),
@@ -96,7 +88,7 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
         smiles: list[str],
         candidates_smiles: list[str],
         batch_ptr: torch.Tensor,
-        metric_pref: str = "",
+        stage: Stage,
     ) -> None:
         """
         TODO
@@ -118,7 +110,7 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
             for sm, sm_pred in zip(smiles, smiles_pred_top_1)
         ]
         self._update_metric(
-            f"{metric_pref}mces_at_1",
+            f"{stage.to_pref()}mces_at_1",
             MeanMetric,
             (mces_dists,),
             batch_size=len(mces_dists)
@@ -129,8 +121,7 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
         self,
         y_true: torch.Tensor,
         y_pred: torch.Tensor,
-        batch_idx: T.Optional[torch.Tensor] = None,
-        metric_pref: str = "",
+        stage: Stage,
     ) -> None:
         """
         Utility evaluation method to assess the quality of predicted fingerprints. This method is
@@ -143,7 +134,7 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
         """
         # Cosine similarity between predicted and true fingerprints
         self._update_metric(
-            metric_pref + "fingerprint_cos_sim",
+            f"{stage.to_pref()}fingerprint_cos_sim",
             CosineSimilarity,
             (y_pred, y_true),
             batch_size=y_true.size(0),

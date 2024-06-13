@@ -2,6 +2,7 @@ import random
 
 import torch
 
+from massspecgym.models.base import Stage
 from massspecgym.models.de_novo.base import DeNovoMassSpecGymModel
 
 
@@ -27,7 +28,7 @@ class DummyDeNovo(DeNovoMassSpecGymModel):
         self.mol_pred_kind = "smiles"
 
     def step(
-        self, batch: dict, metric_pref: str = ""
+        self, batch: dict, stage: Stage
     ) -> tuple[torch.Tensor, torch.Tensor]:
         bs = batch['spec'].shape[0]
 

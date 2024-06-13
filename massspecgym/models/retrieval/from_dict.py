@@ -5,6 +5,7 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 
+from massspecgym.models.base import Stage
 from massspecgym.models.retrieval.base import RetrievalMassSpecGymModel
 
 
@@ -37,7 +38,7 @@ class FromDictRetrieval(RetrievalMassSpecGymModel):
         self.dct = dct
 
     def step(
-        self, batch: dict, metric_pref: str = ""
+        self, batch: dict, stage: Stage
     ) -> tuple[torch.Tensor, torch.Tensor]:
         # Unpack inputs
         ids = batch["identifier"]
