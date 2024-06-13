@@ -4,11 +4,10 @@ from abc import ABC
 import pulp
 from rdkit import Chem
 from rdkit.DataStructs import TanimotoSimilarity
-from myopic_mces.myopic_mces import MCES
 from torchmetrics.aggregation import MeanMetric
 
 from massspecgym.models.base import MassSpecGymModel, Stage
-from massspecgym.utils import morgan_fp, mol_to_inchi_key
+from massspecgym.utils import morgan_fp, mol_to_inchi_key, MyopicMCES
 
 
 class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
@@ -23,15 +22,7 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
         super().__init__(*args, **kwargs)
         
         self.top_ks = top_ks
-
-        # TODO Replace with utils.MyopicMCES class
-        self.myopic_mces_kwargs = dict(
-            ind=0,  # dummy index
-            solver=pulp.listSolvers(onlyAvailable=True)[0],  # Use the first available solver
-            threshold=15,  # MCES threshold
-            solver_options=dict(msg=0)  # make ILP solver silent
-        )
-        self.myopic_mces_kwargs |= myopic_mces_kwargs or {}
+        self.myopic_mces = MyopicMCES(**(myopic_mces_kwargs or {}))
         self.mol_pred_kind: T.Literal["smiles", "rdkit"] = "smiles"
         # caches of already computed results to avoid expensive re-computations
         self.mces_cache = dict()
@@ -144,7 +135,7 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
                         dists.append(mces_thld)
                     else:
                         if (true, pred) not in self.mces_cache:
-                            mce_val = MCES(s1=true, s2=pred, **self.myopic_mces_kwargs)[1]
+                            mce_val = self.myopic_mces(true, pred)
                             self.mces_cache[(true, pred)] = mce_val
                         dists.append(self.mces_cache[(true, pred)])
                 min_mces_dists.append(min(min(dists), mces_thld))
