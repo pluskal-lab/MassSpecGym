@@ -7,7 +7,7 @@
 <p>
 
 <p align="center">
-  <img src="assets/MassSpecGym_abstract.svg"/>
+  <img src="assets/MassSpecGym_abstract.svg" width="80%"/>
 </p>
 
 MassSpecGym provides three challenges for benchmarking the discovery and identification of new molecules from MS/MS spectra. The provided challenges abstract the process of scientific discovery from biological and environmental samples into well-defined machine learning problems.
@@ -36,7 +36,7 @@ pip install -U torch --index-url https://download.pytorch.org/whl/rocm6.0
 ## Codebase structure
 
 <p align="center">
-  <img src="assets/MassSpecGym_infrastructure.svg"/>
+  <img src="assets/MassSpecGym_infrastructure.svg" width="80%"/>
 </p>
 
 ## TODO
