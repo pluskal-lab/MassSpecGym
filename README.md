@@ -6,7 +6,10 @@
   <a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg" height="22px"></a>
 <p>
 
-![](assets/MassSpecGym_abstract.svg)
+<p align="center">
+  <img src="assets/MassSpecGym_abstract.svg"/>
+</p>
+
 MassSpecGym provides three challenges for benchmarking the discovery and identification of new molecules from MS/MS spectra. The provided challenges abstract the process of scientific discovery from biological and environmental samples into well-defined machine learning problems.
 
 [![Dataset on Hugging Face](https://huggingface.co/datasets/huggingface/badges/resolve/main/dataset-on-hf-md-dark.svg)](https://huggingface.co/datasets/roman-bushuiev/MassSpecGym)  
@@ -32,7 +35,9 @@ pip install -U torch --index-url https://download.pytorch.org/whl/rocm6.0
 
 ## Codebase structure
 
-![Some title here](assets/MassSpecGym_infrastructure.svg)
+<p align="center">
+  <img src="assets/MassSpecGym_infrastructure.svg"/>
+</p>
 
 ## TODO
 
