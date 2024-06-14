@@ -5,6 +5,7 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 
+from massspecgym.models.base import Stage
 from massspecgym.models.retrieval.base import RetrievalMassSpecGymModel
 
 
@@ -37,7 +38,7 @@ class FromDictRetrieval(RetrievalMassSpecGymModel):
         self.dct = dct
 
     def step(
-        self, batch: dict, metric_pref: str = ""
+        self, batch: dict, stage: Stage
     ) -> tuple[torch.Tensor, torch.Tensor]:
         # Unpack inputs
         ids = batch["identifier"]
@@ -48,11 +49,8 @@ class FromDictRetrieval(RetrievalMassSpecGymModel):
         # Read predicted fingerprints from dictionary
         fp_pred = torch.stack([self.dct[id] for id in ids]).to(fp_true.device)
 
-        # Convert fingerprint from int to float/double
-        fp_true = fp_true.type_as(fp_pred)
-
         # Evaluation performance on fingerprint prediction (optional)
-        self.evaluate_fingerprint_step(fp_true, fp_pred, metric_pref=metric_pref)
+        self.evaluate_fingerprint_step(fp_true, fp_pred, stage=stage)
 
         # Calculate final similarity scores between predicted fingerprints and corresponding
         # candidate fingerprints for retrieval

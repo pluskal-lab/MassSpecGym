@@ -1,17 +1,13 @@
 import typing as T
 from abc import ABC
 
+import pulp
 from rdkit import Chem
 from rdkit.DataStructs import TanimotoSimilarity
-import pulp
-from myopic_mces.myopic_mces import MCES
-import torch
-import torch.nn as nn
-import pytorch_lightning as pl
 from torchmetrics.aggregation import MeanMetric
 
-from massspecgym.models.base import MassSpecGymModel
-from massspecgym.utils import morgan_fp, mol_to_inchi_key
+from massspecgym.models.base import MassSpecGymModel, Stage
+from massspecgym.utils import morgan_fp, mol_to_inchi_key, MyopicMCES
 
 
 class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
@@ -26,15 +22,7 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
         super().__init__(*args, **kwargs)
         
         self.top_ks = top_ks
-
-        # TODO Replace with utils.MyopicMCES class
-        self.myopic_mces_kwargs = dict(
-            ind=0,  # dummy index
-            solver=pulp.listSolvers(onlyAvailable=True)[0],  # Use the first available solver
-            threshold=15,  # MCES threshold
-            solver_options=dict(msg=0)  # make ILP solver silent
-        )
-        self.myopic_mces_kwargs |= myopic_mces_kwargs or {}
+        self.myopic_mces = MyopicMCES(**(myopic_mces_kwargs or {}))
         self.mol_pred_kind: T.Literal["smiles", "rdkit"] = "smiles"
         # caches of already computed results to avoid expensive re-computations
         self.mces_cache = dict()
@@ -45,50 +33,30 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
         outputs: T.Any,
         batch: dict,
         batch_idx: int,
-        metric_pref: str = ''
+        stage: Stage
     ) -> None:
         self.log(
-            f"{metric_pref}loss",
+            f"{stage.to_pref()}loss",
             outputs['loss'],
             batch_size=batch['spec'].size(0),
             sync_dist=True,
             prog_bar=True,
         )
 
-    def on_validation_batch_end(
-        self,
-        outputs: T.Any,
-        batch: dict,
-        batch_idx: int,
-        metric_pref: str = 'val_'
-    ) -> None:
-        self.on_batch_end(outputs, batch, batch_idx, metric_pref)
-        if not self.validate_only_loss:
-            self.evaluate_de_novo_step(
-                outputs["mols_pred"],  # (bs, k) list of generated rdkit molecules or SMILES strings
-                batch["mol"],  # (bs) list of ground truth SMILES strings
-                metric_pref=metric_pref
-            )
-
-    def on_test_batch_end(
-        self,
-        outputs: T.Any,
-        batch: dict,
-        batch_idx: int,
-        metric_pref: str = 'test_'
-    ) -> None:
-        self.on_batch_end(outputs, batch, batch_idx, metric_pref)
+        if stage in self.log_only_loss_at_stages:
+            return
+        
         self.evaluate_de_novo_step(
             outputs["mols_pred"],  # (bs, k) list of generated rdkit molecules or SMILES strings
             batch["mol"],  # (bs) list of ground truth SMILES strings
-            metric_pref=metric_pref
+            stage=stage
         )
 
     def evaluate_de_novo_step(
         self,
         mols_pred: list[list[T.Optional[Chem.Mol | str]]],
         mol_true: list[str],
-        metric_pref: str = "",
+        stage: Stage,
     ) -> None:
         """
         # TODO: refactor to compute only for max(k) and then use the result to obtain the rest by
@@ -124,7 +92,7 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
 
         # Auxiliary metric: number of valid molecules
         self._update_metric(
-            metric_pref + f"num_valid_mols",
+            stage.to_pref() + f"num_valid_mols",
             MeanMetric,
             ([sum([m is not None for m in ms]) for ms in mols_pred],),
             batch_size=len(mols_pred),
@@ -167,12 +135,12 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
                         dists.append(mces_thld)
                     else:
                         if (true, pred) not in self.mces_cache:
-                            mce_val = MCES(s1=true, s2=pred, **self.myopic_mces_kwargs)[1]
+                            mce_val = self.myopic_mces(true, pred)
                             self.mces_cache[(true, pred)] = mce_val
                         dists.append(self.mces_cache[(true, pred)])
                 min_mces_dists.append(min(min(dists), mces_thld))
             self._update_metric(
-                metric_pref + f"top_{top_k}_min_mces_dist",
+                stage.to_pref() + f"top_{top_k}_min_mces_dist",
                 MeanMetric,
                 (min_mces_dists,),
                 batch_size=len(min_mces_dists),
@@ -199,7 +167,7 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
                 ]
                 max_tanimoto_sims.append(max(sims))
             self._update_metric(
-                metric_pref + f"top_{top_k}_max_tanimoto_sim",
+                stage.to_pref() + f"top_{top_k}_max_tanimoto_sim",
                 MeanMetric,
                 (max_tanimoto_sims,),
                 batch_size=len(max_tanimoto_sims),
@@ -217,7 +185,7 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
                 for true, preds in zip(mol_true, mols_pred_top_k)
             ]
             self._update_metric(
-                metric_pref + f"top_{top_k}_accuracy",
+                stage.to_pref() + f"top_{top_k}_accuracy",
                 MeanMetric,
                 (in_top_k,),
                 batch_size=len(in_top_k)
