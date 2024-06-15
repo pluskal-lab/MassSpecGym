@@ -44,7 +44,7 @@ pip install -U torch --index-url https://download.pytorch.org/whl/rocm6.0
 
 MassSpecGym allows you to implement, train, validate, and test your model with a few lines of code. Built on top of PyTorch Lightning, MassSpecGym abstracts data preparation and splitting while eliminating boilerplate code for training and evaluation loops. To train and evaluate your model, you only need to implement your custom architecture and prediction logic.
 
-Below is an example of how to implement a simple model based on [DeepSets](https://arxiv.org/abs/1703.06114) for the molecule retrieval task. The model is trained to predict the fingerprint of a molecule from its spectrum and then retrieve the most similar molecules from a set of candidates based on fingerprint similarity. For more examples, please see `notebooks/demo.ipynb`.
+Below is an example of how to implement a simple model based on [DeepSets](https://arxiv.org/abs/1703.06114) for the molecule retrieval task. The model is trained to predict the fingerprint of a molecule from its spectrum and then retrieves the most similar molecules from a set of candidates based on fingerprint similarity. For more examples, please see `notebooks/demo.ipynb`.
 
 1. Import necessary modules:
 
