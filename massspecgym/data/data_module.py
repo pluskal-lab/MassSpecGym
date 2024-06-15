@@ -51,9 +51,9 @@ class MassSpecDataModule(pl.LightningDataModule):
                 )
 
         self.split = self.split.set_index("identifier")["fold"]
-        if set(self.split) != {"train", "val", "test"}:
+        if not set(self.split) < {"train", "val", "test"}:
             raise ValueError(
-                '"Folds" column must contain only and all of "train", "val", and "test" values.'
+                '"Folds" column must contain only "train", "val", or "test" values.'
             )
 
     def setup(self, stage=None):
