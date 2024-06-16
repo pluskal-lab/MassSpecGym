@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import matchms
-from massspecgym.transforms import SpecTokenizer, SpecBinner
+from massspecgym.data.transforms import SpecTokenizer, SpecBinner
 
 
 def test_spec_tokenizer():
@@ -25,11 +25,15 @@ def test_spec_tokenizer():
         metadata={"precursor_mz": 406.22},
     )
 
-    tokenizer = SpecTokenizer(n_peaks=60)
+    # Prepend precursor
+    tokenizer = SpecTokenizer(n_peaks=60, prec_mz_intensity=1.1)
+    spec_t = tokenizer(spec)
+    assert spec_t.shape == (61, 2)
+
+    # Do not prepend precursor
+    tokenizer = SpecTokenizer(n_peaks=60, prec_mz_intensity=None)
     spec_t = tokenizer(spec)
     assert spec_t.shape == (60, 2)
-    print(spec_t[: spec.peaks.mz.shape[0], 0])
-    print(torch.from_numpy(spec.peaks.mz))
     assert (
         spec_t[: spec.peaks.mz.shape[0], 0] == torch.from_numpy(spec.peaks.mz)
     ).all()

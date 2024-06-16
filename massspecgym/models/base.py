@@ -12,9 +12,10 @@ class Stage(Enum):
     TRAIN = 'train'
     VAL = 'val'
     TEST = 'test'
+    NONE = 'none'
 
     def to_pref(self) -> str:
-        return f"{self.value}_"
+        return f"{self.value}_" if self != Stage.NONE else ""
 
 
 class MassSpecGymModel(pl.LightningModule, ABC):
@@ -36,7 +37,7 @@ class MassSpecGymModel(pl.LightningModule, ABC):
 
     @abstractmethod
     def step(
-        self, batch: dict, stage: Stage
+        self, batch: dict, stage: Stage = Stage.NONE
     ) -> tuple[torch.Tensor, torch.Tensor]:
         raise NotImplementedError(
             "Method `step` must be implemented in the model-specific child class."

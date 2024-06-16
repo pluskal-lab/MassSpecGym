@@ -76,7 +76,7 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
         output = self.tgt_decoder(output)  # (seq_len, batch_size, vocab_size)
         return output
 
-    def step(self, batch: dict, stage: Stage) -> dict:
+    def step(self, batch: dict, stage: Stage = Stage.NONE) -> dict:
         spec = batch["spec"]  # (batch_size, seq_len, in_dim)
         smiles = batch["mol"]  # List of SMILES of length batch_size
 
