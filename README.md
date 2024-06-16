@@ -55,7 +55,7 @@ import pytorch_lightning as pl
 from pytorch_lightning import Trainer
 
 from massspecgym.data import RetrievalDataset, MassSpecDataModule
-from massspecgym.transforms import SpecTokenizer, MolFingerprinter
+from massspecgym.data.transforms import SpecTokenizer, MolFingerprinter
 from massspecgym.models.base import Stage
 from massspecgym.models.retrieval.base import RetrievalMassSpecGymModel
 ```
@@ -156,7 +156,6 @@ trainer.test(model, datamodule=data_module)
 
 - [x] Croissant.
 - [ ] Testing API.
-- [ ] Refactor `transforms.py` -> `data/transforms.py`
 - [ ] Optimize de novo evaluation metrics to run in parallel by workers initialized in the corresponding pl.Module constructor
 - [ ] Link to documentation.
 - [ ] Link to Papers With Code leaderboard.
