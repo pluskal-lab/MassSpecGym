@@ -19,7 +19,7 @@ MassSpecGym provides three challenges for benchmarking the discovery and identif
 
 ## Installation
 
-Installation for development:
+Installation steps:
 
 ```bash
 conda create -n massspecgym python=3.11
@@ -33,6 +33,8 @@ For AMD GPUs, you may need to install PyTorch for ROCm:
 ```bash
 pip install -U torch --index-url https://download.pytorch.org/whl/rocm6.0
 ```
+
+📣 Easier installation via `pip` will be available soon!
 
 ## Codebase structure
 
