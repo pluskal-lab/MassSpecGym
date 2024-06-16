@@ -15,7 +15,7 @@ MassSpecGym provides three challenges for benchmarking the discovery and identif
 
 <!-- [![Dataset on Hugging Face](https://huggingface.co/datasets/huggingface/badges/resolve/main/dataset-on-hf-md-dark.svg)](https://huggingface.co/datasets/roman-bushuiev/MassSpecGym)   -->
 
-📣 A paper will be available soon!
+📣 The paper will be available soon!
 
 ## Installation
 
@@ -40,7 +40,7 @@ pip install -U torch --index-url https://download.pytorch.org/whl/rocm6.0
   <img src="assets/MassSpecGym_infrastructure.svg" width="80%"/>
 </p>
 
-## Train and Evaluate Your Model 🚀
+## Train and evaluate your model 🚀
 
 MassSpecGym allows you to implement, train, validate, and test your model with a few lines of code. Built on top of PyTorch Lightning, MassSpecGym abstracts data preparation and splitting while eliminating boilerplate code for training and evaluation loops. To train and evaluate your model, you only need to implement your custom architecture and prediction logic.
 
