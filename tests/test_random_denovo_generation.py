@@ -20,6 +20,9 @@ class RandomDeNovoTestcase(unittest.TestCase):
             formula_known=True, cache_results=False
         )
         self.draw_molecules = draw_molecules
+        with open("data/misc/random_de_novo_element_stats_from_trn_with_hydrogens.pkl", "rb") as file:
+            self.element_2_bond_stats = pickle.load(file)
+
 
     def test_generator_of_element_atoms_split_into_valence_groups_1(self):
         self.assertTrue(
@@ -380,8 +383,7 @@ class RandomDeNovoTestcase(unittest.TestCase):
             enforce_connectivity=False,
             cache_results=False,
         )
-        with open("element_stats_from_trn_with_hydrogens.pkl", "rb") as file:
-            generator_with_stats.element_2_bond_stats = pickle.load(file)
+        generator_with_stats.element_2_bond_stats = self.element_2_bond_stats
         molecules = (
             self.generator_with_formula.generate_random_molecule_graphs_via_traversal(
                 chemical_formula="C8H18OP+"
@@ -394,8 +396,7 @@ class RandomDeNovoTestcase(unittest.TestCase):
             enforce_connectivity=False,
             cache_results=False,
         )
-        with open("element_stats_from_trn_with_hydrogens.pkl", "rb") as file:
-            generator_with_stats.element_2_bond_stats = pickle.load(file)
+        generator_with_stats.element_2_bond_stats = self.element_2_bond_stats
         molecules = (
             self.generator_with_formula.generate_random_molecule_graphs_via_traversal(
                 chemical_formula="C3H6NO4S-"
@@ -408,8 +409,7 @@ class RandomDeNovoTestcase(unittest.TestCase):
             enforce_connectivity=False,
             cache_results=False,
         )
-        with open("element_stats_from_trn_with_hydrogens.pkl", "rb") as file:
-            generator_with_stats.element_2_bond_stats = pickle.load(file)
+        generator_with_stats.element_2_bond_stats = self.element_2_bond_stats
         for gen_i in range(50):
             molecules = (
                 generator_with_stats.generate_random_molecule_graphs_via_traversal(
@@ -427,8 +427,7 @@ class RandomDeNovoTestcase(unittest.TestCase):
             enforce_connectivity=False,
             cache_results=False,
         )
-        with open("element_stats_from_trn_with_hydrogens.pkl", "rb") as file:
-            generator_with_stats.element_2_bond_stats = pickle.load(file)
+        generator_with_stats.element_2_bond_stats = self.element_2_bond_stats
         for gen_i in range(50):
             molecules = (
                 generator_with_stats.generate_random_molecule_graphs_via_traversal(
