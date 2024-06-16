@@ -38,7 +38,7 @@ class FromDictRetrieval(RetrievalMassSpecGymModel):
         self.dct = dct
 
     def step(
-        self, batch: dict, stage: Stage
+        self, batch: dict, stage: Stage = Stage.NONE
     ) -> tuple[torch.Tensor, torch.Tensor]:
         # Unpack inputs
         ids = batch["identifier"]

@@ -7,7 +7,7 @@ from massspecgym.models.retrieval.base import RetrievalMassSpecGymModel
 class RandomRetrieval(RetrievalMassSpecGymModel):
 
     def step(
-        self, batch: dict, stage: Stage
+        self, batch: dict, stage: Stage = Stage.NONE
     ) -> tuple[torch.Tensor, torch.Tensor]:
         # Generate random retrieval scores
         scores = torch.rand(batch["candidates"].shape[0])

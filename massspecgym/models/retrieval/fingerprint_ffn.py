@@ -42,7 +42,7 @@ class FingerprintFFNRetrieval(RetrievalMassSpecGymModel):
         return x
 
     def step(
-        self, batch: dict, stage: Stage
+        self, batch: dict, stage: Stage = Stage.NONE
     ) -> tuple[torch.Tensor, torch.Tensor]:
         # Unpack inputs
         x = batch["spec"]

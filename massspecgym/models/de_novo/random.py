@@ -1189,7 +1189,7 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         return np.random.choice(feasible_formulas, p=formula_proportions)
 
     def step(
-        self, batch: dict, stage: Stage
+        self, batch: dict, stage: Stage = Stage.NONE
     ) -> tuple[torch.Tensor, torch.Tensor]:
         mols = batch["mol"]  # List of SMILES of length batch_size
 

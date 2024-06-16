@@ -28,7 +28,7 @@ class DummyDeNovo(DeNovoMassSpecGymModel):
         self.mol_pred_kind = "smiles"
 
     def step(
-        self, batch: dict, stage: Stage
+        self, batch: dict, stage: Stage = Stage.NONE
     ) -> tuple[torch.Tensor, torch.Tensor]:
         bs = batch['spec'].shape[0]
 
