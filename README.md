@@ -97,7 +97,7 @@ class MyDeepSetsRetrievalModel(RetrievalMassSpecGymModel):
     def step(
         self, batch: dict, stage: Stage
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Implement your custom logic of handling predictions."""
+        """Implement your custom logic of using predictions for training and inference."""
         # Unpack inputs
         x = batch["spec"]  # input spectra
         fp_true = batch["mol"]  # true fingerprints
