@@ -11,7 +11,7 @@ from rdkit import Chem
 from torch.utils.data.dataset import Dataset
 from torch.utils.data.dataloader import default_collate
 from matchms.importing import load_from_mgf
-from massspecgym.transforms import SpecTransform, MolTransform, MolToInChIKey
+from massspecgym.data.transforms import SpecTransform, MolTransform, MolToInChIKey
 
 
 class MassSpecDataset(Dataset):

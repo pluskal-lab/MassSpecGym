@@ -1,7 +1,6 @@
 import numpy as np
 import matchms
 from rdkit.Chem import AllChem as Chem
-from massspecgym.transforms import SpecTokenizer
 import massspecgym.utils as utils
 
 

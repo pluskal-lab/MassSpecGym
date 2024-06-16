@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import matchms
-from massspecgym.transforms import SpecTokenizer, SpecBinner
+from massspecgym.data.transforms import SpecTokenizer, SpecBinner
 
 
 def test_spec_tokenizer():
