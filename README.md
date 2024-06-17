@@ -36,7 +36,7 @@ pip install -U torch --index-url https://download.pytorch.org/whl/rocm6.0
 
 📣 Easier installation via `pip` will be available soon!
 
-## Codebase structure
+## MassSpecGym infrastructure
 
 <p align="center">
   <img src="assets/MassSpecGym_infrastructure.svg" width="80%"/>
