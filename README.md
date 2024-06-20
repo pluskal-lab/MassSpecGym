@@ -119,7 +119,7 @@ class MyDeepSetsRetrievalModel(RetrievalMassSpecGymModel):
         return dict(loss=loss, scores=scores)
 ```
 
-3. Train your model:
+3. Train and validate your model:
 
 ```python
 # Init hyperparameters
