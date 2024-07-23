@@ -11,7 +11,7 @@ from rdkit import Chem
 from torch.utils.data.dataset import Dataset
 from torch.utils.data.dataloader import default_collate
 from matchms.importing import load_from_mgf
-from massspecgym.data.transforms import SpecTransform, MolTransform, MolToInChIKey
+from massspecgym.transforms import SpecTransform, MolTransform, MolToInChIKey, MetaTransform
 
 
 class MassSpecDataset(Dataset):
@@ -202,5 +202,139 @@ class RetrievalDataset(MassSpecDataset):
 
         return collated_batch
 
+
+class SimulationDataset(MassSpecDataset):
+
+    def __init__(
+        self,
+        tsv_pth: Path,
+        meta_keys: T.List[str],
+        spec_transform: SpecTransform,
+        mol_transform: MolTransform,
+        meta_transform: MetaTransform,
+        cache_feats: bool): 
+        
+        self.tsv_pth = tsv_pth
+        self.meta_keys = meta_keys
+        self.spec_transform = spec_transform
+        self.mol_transform = mol_transform
+        self.meta_transform = meta_transform
+        self.cache_feats = cache_feats
+        self.spec_feats = {}
+        self.mol_feats = {}
+        self.meta_feats = {}
+        self.process()
+        self.spec_per_mol = {}
+
+    def process(self):
+
+        entry_df = pd.read_csv(self.tsv_pth, sep="\t")
+        # remove any spectra not included in the simulation challenge
+        entry_df = entry_df[entry_df["simulation_challenge"]]
+        # remove examples in train split the are missing CE information or are not [M+H]+
+        entry_df = entry_df[(entry_df["adduct"]=="[M+H]+") & (~entry_df["collision_energy"].isna())] 
+        # mz checks
+        # mz_max = entry_df["mzs"].apply(lambda l: max(float(x) for x in l.split(",")))
+        # assert (mz_max <= self.spec_transform.mz_to).all()
+        assert (entry_df["precursor_mz"] <= self.spec_transform.mz_to).all()
+        # convert spectrum and CE to usable formats
+        entry_df["spectrum"] = entry_df.apply(lambda row: utils.peaks_to_matchms(row["mzs"], row["intensities"], row["precursor_mz"]), axis=1)
+        entry_df["collision_energy"] = entry_df["collision_energy"].apply(utils.ce_str_to_float)
+        entry_df = entry_df.drop(columns=["mzs","intensities"])
+        # assign id
+        entry_df["spec_id"] = np.arange(entry_df.shape[0])
+        inchikey_map = {ik:idx for idx, ik in enumerate(sorted(entry_df["inchikey"].unique()))}
+        entry_df["mol_id"] = entry_df["inchikey"].map(inchikey_map)
+        entry_df = entry_df.reset_index(drop=True)
+    
+        self.entry_df = entry_df   
+
+    def __len__(self) -> int:
+
+        return self.entry_df.shape[0]
+
+    def _get_spec_feats(self, i):
+
+        entry = self.entry_df.iloc[i]
+        spec_id = entry["spec_id"]
+        if i in self.spec_feats:
+            spec_feats = self.spec_feats[spec_id]
+        else:
+            spec_feats = self.spec_transform(entry["spectrum"])
+            if self.cache_feats:
+                self.spec_feats[i] = spec_feats
+        return spec_feats
+
+    def _get_mol_feats(self, i):
+
+        entry = self.entry_df.iloc[i]
+        mol_id = entry["mol_id"]
+        if mol_id in self.mol_feats:
+            mol_feats = self.mol_feats[mol_id]
+        else:
+            mol_feats = self.mol_transform(entry["smiles"])
+            if self.cache_feats:
+                self.mol_feats[mol_id] = mol_feats
+        return mol_feats
+
+    def _get_meta_feats(self, i):
+
+        entry = self.entry_df.iloc[i]
+        spec_id = entry["spec_id"]
+        if spec_id in self.mol_feats:
+            meta_feats = self.meta_feats[spec_id]
+        else:
+            meta_feats = self.meta_transform({k: entry[k] for k in self.meta_keys})
+            if self.cache_feats:
+                self.meta_feats[spec_id] = meta_feats
+        return meta_feats
+
+    def _get_frag_feats(self, i):
+
+        raise NotImplementedError
+
+    def _get_other_feats(self, i):
+
+        entry = self.entry_df.iloc[i]
+        spec_id = entry["spec_id"]
+        other_feats = {}
+        other_feats["spec_id"] = torch.tensor(spec_id)
+        weight = 1./float(self.spec_per_mol.get(spec_id,1.))
+        other_feats["weight"] = torch.tensor(weight)
+        return other_feats
+
+    def compute_counts(self, index: Optional[np.ndarray]):
+
+        entry_df = self.entry_df.iloc[index]
+        spec_per_mol = entry_df[["mol_id","spec_id"]].drop_duplicates().groupby("mol_id").size().reset_index(name="count")
+        spec_per_mol = spec_per_mol.merge(self.entry_df[["spec_id","mol_id"]], on="mol_id", how="inner")[["spec_id","count"]]
+        self.spec_per_mol = spec_per_mol.set_index("spec_id")["count"].to_dict()
+
+    def __getitem__(self, i) -> dict:
+        item = {}
+        item.update(self._get_spec_feats(i))
+        item.update(self._get_mol_feats(i))
+        item.update(self._get_meta_feats(i))
+        item.update(self._get_other_feats(i))
+        return item
+    
+    def collate_fn(self, data_list):
+
+        keys = list(data_list[0].keys())
+        collate_data = {key: [] for key in keys}
+        for data in data_list:
+            for key in keys:
+                collate_data[key].append(data[key])
+        # handle spectrum
+        self.spec_transform.collate_fn(collate_data)
+        # handle molecule
+        self.mol_transform.collate_fn(collate_data)
+        # handle metadata
+        self.meta_transform.collate_fn(collate_data)
+        # handle other stuff
+        for key in ["spec_id","weight"]:
+            collate_data[key] = torch.stack(collate_data[key],dim=0)
+        return collate_data
+        
 
 # TODO: Datasets for unlabeled data.

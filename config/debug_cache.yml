@@ -1,0 +1,6 @@
+wandb_name: "debug_cache"
+tsv_pth: "data/MassSpecGym_4.tsv"
+model_type: "prec_only"
+ints_transform: "none"
+max_epochs: 2 # needs to be 2 for cache_feats to have an effect
+cache_feats: True

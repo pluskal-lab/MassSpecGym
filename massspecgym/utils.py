@@ -21,7 +21,8 @@ from standardizeUtils.standardizeUtils import (
     standardize_structure_with_pubchem,
     standardize_structure_list_with_pubchem,
 )
-
+import matchms
+import json
 
 def load_massspecgym():
     df = pd.read_csv(hugging_face_download("MassSpecGym.tsv"), sep="\t")
@@ -310,3 +311,24 @@ class MyopicMCES():
         )
         dist = retval[1]
         return dist
+def peaks_to_matchms(mzs_str: str, intensities_str: str, precursor_mz: float) -> matchms.Spectrum:
+
+    
+    mzs = [float(mz) for mz in mzs_str.split(",")]
+    intensities = [float(intensity) for intensity in intensities_str.split(",")]
+    mzs = np.array(mzs)
+    intensities = np.array(intensities)
+    spectrum = matchms.Spectrum(
+        mz=mzs, 
+        intensities=intensities,
+        metadata=dict(precursor_mz=precursor_mz))
+    return spectrum
+
+
+def ce_str_to_float(ce_str: str) -> float:
+
+    ce_str = str(ce_str)
+    try:
+        return float(ce_str)
+    except ValueError:
+        return float(ce_str.split(" ")[0])
