@@ -11,6 +11,7 @@ instrument_types: ["QTOF","QFT","Orbitrap","ITFT"]
 max_collision_energy: 200.
 mz_from: 10.
 mz_to: 1000.
+split_type: "benchmark"
 # input
 metadata_insert_location: "mlp"
 collision_energy_insert_size: 16
@@ -38,8 +39,8 @@ mol_pool_type: mean
 # optimization
 lr: 0.0003
 weight_decay: 0.0000001
-train_sample_weight: True
-eval_sample_weight: True
+train_sample_weight: False #True
+eval_sample_weight: False #True
 # other
 num_workers: 8
 batch_size: 128
@@ -50,3 +51,4 @@ max_epochs: 100
 seed: 420
 enable_checkpointing: False
 cache_feats: False
+mp_sharing_strategy: "file_system"

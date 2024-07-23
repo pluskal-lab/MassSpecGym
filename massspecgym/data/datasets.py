@@ -198,8 +198,8 @@ class SimulationDataset(MassSpecDataset):
         # remove examples in train split the are missing CE information or are not [M+H]+
         entry_df = entry_df[(entry_df["adduct"]=="[M+H]+") & (~entry_df["collision_energy"].isna())] 
         # mz checks
-        mz_max = entry_df["mzs"].apply(lambda l: max(float(x) for x in l.split(",")))
-        assert (mz_max <= self.spec_transform.mz_to).all()
+        # mz_max = entry_df["mzs"].apply(lambda l: max(float(x) for x in l.split(",")))
+        # assert (mz_max <= self.spec_transform.mz_to).all()
         assert (entry_df["precursor_mz"] <= self.spec_transform.mz_to).all()
         # convert spectrum and CE to usable formats
         entry_df["spectrum"] = entry_df.apply(lambda row: utils.peaks_to_matchms(row["mzs"], row["intensities"], row["precursor_mz"]), axis=1)

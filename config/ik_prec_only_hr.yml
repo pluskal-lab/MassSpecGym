@@ -1,0 +1,7 @@
+wandb_name: "ik_prec_only_hr"
+tsv_pth: "data/MassSpecGym_4.tsv"
+split_type: "orbitrap_inchikey"
+mz_bin_res: 0.01
+model_type: "prec_only"
+ints_transform: "none"
+max_epochs: 1

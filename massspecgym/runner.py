@@ -19,18 +19,18 @@ from massspecgym.simulation_utils.misc_utils import deep_update
 
 def load_config(template_fp, custom_fp):
 
-	assert os.path.isfile(template_fp), template_fp
-	if custom_fp:
-		assert os.path.isfile(custom_fp), custom_fp
-	with open(template_fp, "r") as template_file:
-		config_d = yaml.load(template_file, Loader=yaml.FullLoader)
-	# overwrite parts of the config
-	if custom_fp:
-		with open(custom_fp, "r") as custom_file:
-			custom_d = yaml.load(custom_file, Loader=yaml.FullLoader)
-		assert all([k in config_d for k in custom_d]), set(custom_d.keys()) - set(config_d.keys())
-		config_d = deep_update(config_d, custom_d)
-	return config_d
+    assert os.path.isfile(template_fp), template_fp
+    if custom_fp:
+        assert os.path.isfile(custom_fp), custom_fp
+    with open(template_fp, "r") as template_file:
+        config_d = yaml.load(template_file, Loader=yaml.FullLoader)
+    # overwrite parts of the config
+    if custom_fp:
+        with open(custom_fp, "r") as custom_file:
+            custom_d = yaml.load(custom_file, Loader=yaml.FullLoader)
+        assert all([k in config_d for k in custom_d]), set(custom_d.keys()) - set(config_d.keys())
+        config_d = deep_update(config_d, custom_d)
+    return config_d
 
 def get_split_ss(ds, split_type):
 
@@ -79,7 +79,10 @@ def init_run(template_fp, custom_fp, wandb_mode):
 
     config_d = load_config(template_fp,custom_fp)
 
-    pl.seed_everything(config_d["seed"])
+    pl.seed_everything(config_d["seed"], workers=True)
+
+    # set torch multiprocessing strategy
+    torch.multiprocessing.set_sharing_strategy(config_d["mp_sharing_strategy"])
 
     spec_transform = SpecToMzsInts(
         mz_from=config_d["mz_from"],
@@ -124,7 +127,7 @@ def init_run(template_fp, custom_fp, wandb_mode):
     #     batch_size=8
     # )
 
-    train_ds, val_ds, test_ds = get_split_ss(ds,"orbitrap_inchikey")
+    train_ds, val_ds, test_ds = get_split_ss(ds,config_d["split_type"])
 
     dl_config = {
         "num_workers": config_d["num_workers"],
