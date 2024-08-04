@@ -15,7 +15,7 @@ from massspecgym.simulation_utils.spec_utils import batched_bin_func, sparse_cos
 class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
 
     def __init__(self, **kwargs):
-        super().__init__()
+        super().__init__(**kwargs)
         self._setup_model()
         # self._setup_tolerance()
         self._setup_loss_fn()
@@ -27,6 +27,38 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
     def _setup_model(self):
 
         pass
+
+    def configure_optimizers(self):
+
+        if self.hparams.optimizer == "adam":
+            optimizer_cls = th.optim.Adam
+        elif self.hparams.optimizer == "adamw":
+            optimizer_cls = th.optim.AdamW
+        elif self.hparams.optimizer == "sgd":
+            optimizer_cls = th.optim.SGD
+        else:
+            raise ValueError(f"Unknown optimizer {self.optimizer}")
+        optimizer = optimizer_cls(
+            self.parameters(), 
+            lr=self.hparams.lr, 
+            weight_decay=self.hparams.weight_decay
+        )
+        ret = {
+            "optimizer": optimizer,
+        }
+        if self.hparams.lr_schedule:
+            scheduler = build_lr_scheduler(
+                optimizer=optimizer, 
+                decay_rate=self.hparams.lr_decay_rate, 
+                warmup_steps=self.hparams.lr_warmup_steps,
+                decay_steps=self.hparams.lr_decay_steps,
+            )
+            ret["lr_scheduler"] = {
+                "scheduler": scheduler,
+                "frequency": 1,
+                "interval": "step",
+            }
+        return ret
 
     # def _setup_tolerance(self):
 
@@ -50,35 +82,19 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
     def _preproc_spec(self,spec_mzs,spec_ints,spec_batch_idxs):
 
         # transform
+        assert torch.all(
+            torch.isclose(
+                scatter_reduce(spec_ints,spec_batch_idxs,"sum"), 
+                1.
+            )
+        )
         spec_ints = spec_ints * 1000.
-        # max_ints = scatter_reduce(
-		# 	spec_ints,
-		# 	spec_batch_idxs,
-		# 	"amax",
-		# 	default=0.,
-		# 	include_self=False ###
-		# )
-        # sum_ints = scatter_reduce(
-		# 	spec_ints,
-		# 	spec_batch_idxs,
-		# 	"sum",
-		# 	default=0.,
-		# 	include_self=False ###
-		# )
-        # print(max_ints)
-        # print(sum_ints)
-        # ints2 = self.ints_normalize_func(spec_ints,spec_batch_idxs)
         spec_ints = self.ints_transform_func(spec_ints)
         # renormalize
         spec_ints = self.ints_normalize_func(
             spec_ints,
             spec_batch_idxs
         )
-        # ints1 = self.ints_normalize_func(self.ints_untransform_func(spec_ints,spec_batch_idxs),spec_batch_idxs)
-        # print(ints1)
-        # print(ints2)
-        # import pdb; pdb.set_trace()
-        # log
         spec_ints = safelog(spec_ints)
         return spec_mzs, spec_ints, spec_batch_idxs
 
@@ -240,11 +256,11 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
             batch["spec"],
             metric_pref=metric_pref
         )
-        self.evaluate_hit_rate_step(
-            outputs["spec_pred"],
-            batch["spec"],
-            metric_pref=metric_pref
-        )
+        # self.evaluate_hit_rate_step(
+        #     outputs["spec_pred"],
+        #     batch["spec"],
+        #     metric_pref=metric_pref
+        # )
 
     def evaluate_cos_similarity_step(
         self,
@@ -272,42 +288,43 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         Evaulate Hit rate @ {1, 5, 20} (typically reported as Accuracy @ {1, 5, 20}).
         """
         
-        if metric_pref == "train_":
-            reduce_fn = self.train_reduce_fn
-        else:
-            reduce_fn = self.eval_reduce_fn
+        raise NotImplementedError
+        # if metric_pref == "train_":
+        #     reduce_fn = self.train_reduce_fn
+        # else:
+        #     reduce_fn = self.eval_reduce_fn
 
-        cos_sim = self.cos_sim_fn(
-            pred_mzs=pred_mzs,
-            pred_logprobs=pred_logprobs,
-            pred_batch_idxs=pred_batch_idxs,
-            true_mzs=true_mzs,
-            true_logprobs=true_logprobs,
-            true_batch_idxs=true_batch_idxs
-        )
-        wmean_cos_sim, wsum_cos_sim, total_weight = reduce_fn(cos_sim, weight)
-        batch_size = torch.max(true_batch_idxs)+1
+        # cos_sim = self.cos_sim_fn(
+        #     pred_mzs=pred_mzs,
+        #     pred_logprobs=pred_logprobs,
+        #     pred_batch_idxs=pred_batch_idxs,
+        #     true_mzs=true_mzs,
+        #     true_logprobs=true_logprobs,
+        #     true_batch_idxs=true_batch_idxs
+        # )
+        # wmean_cos_sim, wsum_cos_sim, total_weight = reduce_fn(cos_sim, weight)
+        # batch_size = torch.max(true_batch_idxs)+1
 
-        # # little trick to work with automatic batch accumulation
-        # scaled_cos_sim = mean_cos_sim * (batch_size / total_weight)
-        # scaled_cos_sim = mean_cos_sim
+        # # # little trick to work with automatic batch accumulation
+        # # scaled_cos_sim = mean_cos_sim * (batch_size / total_weight)
+        # # scaled_cos_sim = mean_cos_sim
 
-        self.log(
-            metric_pref + "spec_cos_sim_epoch",
-            wmean_cos_sim,
-            batch_size=batch_size,
-            sync_dist=True,
-            prog_bar=False,
-            on_step=False,
-            on_epoch=True,
-        )
+        # self.log(
+        #     metric_pref + "spec_cos_sim_epoch",
+        #     wmean_cos_sim,
+        #     batch_size=batch_size,
+        #     sync_dist=True,
+        #     prog_bar=False,
+        #     on_step=False,
+        #     on_epoch=True,
+        # )
 
-        key = metric_pref + "spec_cos_sim_epoch2"
-        if key in self.metric_d:
-            self.metric_d[key][0].append(wsum_cos_sim)
-            self.metric_d[key][1].append(total_weight)
-        else:
-            self.metric_d[key] = [[wsum_cos_sim],[total_weight]]
+        # key = metric_pref + "spec_cos_sim_epoch2"
+        # if key in self.metric_d:
+        #     self.metric_d[key][0].append(wsum_cos_sim)
+        #     self.metric_d[key][1].append(total_weight)
+        # else:
+        #     self.metric_d[key] = [[wsum_cos_sim],[total_weight]]
 
     def on_train_epoch_end(self):
 

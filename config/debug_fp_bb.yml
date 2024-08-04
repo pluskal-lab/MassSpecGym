@@ -1,7 +1,0 @@
-wandb_name: "debug_fp_bb"
-tsv_pth: "data/MassSpecGym_4.tsv"
-model_type: "fp"
-ints_transform: "sqrt"
-accelerator: "gpu"
-max_epochs: 10
-batch_size: 1024

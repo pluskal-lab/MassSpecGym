@@ -1,0 +1,15 @@
+# wandb
+wandb_name: "old_ik_prec_only"
+# data
+tsv_pth: "data/MassSpecGym.tsv"
+split_type: "all_inchikey"
+# output
+mz_max: 1005.
+mz_bin_res: 0.01
+ints_transform: "none"
+# model
+model_type: "prec_only"
+# optimization
+max_epochs: 1
+# other
+accelerator: "cpu"

@@ -1,6 +1,0 @@
-wandb_name: "debug_gnn"
-tsv_pth: "data/MassSpecGym_4.tsv"
-model_type: "gnn"
-ints_transform: "sqrt"
-accelerator: "gpu"
-max_epochs: 100

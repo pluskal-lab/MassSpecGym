@@ -44,7 +44,7 @@ def get_ints_transform_func(ints_transform):
 
 
 def get_ints_untransform_func(ints_transform):
-	
+
 	if ints_transform == "log10":
 		max_ints = float(np.log10(1000. + 1.))
 		def _untransform_fn(x): return 10**x - 1.
@@ -68,7 +68,7 @@ def get_ints_untransform_func(ints_transform):
 			batch_idxs,
 			"amax",
 			default=0.,
-			include_self=False ###
+			include_self=False
 		)
 		ints = ints / (old_max_ints[batch_idxs] + EPS) * max_ints
 		ints = _untransform_fn(ints)
@@ -76,18 +76,6 @@ def get_ints_untransform_func(ints_transform):
 		assert not torch.isnan(ints).any()
 		return ints
 	return _func
-
-def transform_nce_to_ace(nce:float, mw:float, charge_factor:int = 1) -> float:
-	"""get ace from given nce and mw
-	   Absolute energy (eV) = (settling NCE) x (Isolation center) / (500 m/z) x (charge factor)
-	Args:
-		nce (float): normalized collision energy
-		mw (float): Isolation center mw, most time it is the precursor ion mass
-
-	Returns:
-		float: absolute energy
-	"""
-	return nce  * mw  / 500 *  charge_factor 	
 
 
 def batched_bin_func(

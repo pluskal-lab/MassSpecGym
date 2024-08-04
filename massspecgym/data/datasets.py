@@ -219,6 +219,8 @@ class SimulationDataset(MassSpecDataset):
         self.spec_transform = spec_transform
         self.mol_transform = mol_transform
         self.meta_transform = meta_transform
+        # TODO: I think cache_feats is broken...
+        assert not cache_feats
         self.cache_feats = cache_feats
         self.spec_feats = {}
         self.mol_feats = {}
@@ -231,15 +233,14 @@ class SimulationDataset(MassSpecDataset):
         entry_df = pd.read_csv(self.tsv_pth, sep="\t")
         # remove any spectra not included in the simulation challenge
         entry_df = entry_df[entry_df["simulation_challenge"]]
-        # remove examples in train split the are missing CE information or are not [M+H]+
-        entry_df = entry_df[(entry_df["adduct"]=="[M+H]+") & (~entry_df["collision_energy"].isna())] 
+        # verify all datapoints are not missing CE information and are [M+H]+
+        assert (entry_df["adduct"]=="[M+H]+").all()
+        assert (~entry_df["collision_energy"].isna()).all()
         # mz checks
-        # mz_max = entry_df["mzs"].apply(lambda l: max(float(x) for x in l.split(",")))
-        # assert (mz_max <= self.spec_transform.mz_to).all()
         assert (entry_df["precursor_mz"] <= self.spec_transform.mz_to).all()
-        # convert spectrum and CE to usable formats
+        # TODO: is peaks_to_matchms still required?
+        # convert spectrum to usable format
         entry_df["spectrum"] = entry_df.apply(lambda row: utils.peaks_to_matchms(row["mzs"], row["intensities"], row["precursor_mz"]), axis=1)
-        entry_df["collision_energy"] = entry_df["collision_energy"].apply(utils.ce_str_to_float)
         entry_df = entry_df.drop(columns=["mzs","intensities"])
         # assign id
         entry_df["spec_id"] = np.arange(entry_df.shape[0])

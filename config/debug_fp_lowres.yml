@@ -1,7 +1,0 @@
-wandb_name: "debug_fp_lowres"
-tsv_pth: "data/MassSpecGym_4.tsv"
-model_type: "fp"
-ints_transform: "sqrt"
-mz_bin_res: 1.0
-accelerator: "gpu"
-max_epochs: 10

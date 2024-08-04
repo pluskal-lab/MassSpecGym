@@ -3,7 +3,7 @@ wandb_entity: "adamoyoung"
 wandb_project: "MSG"
 wandb_name: "template"
 # data
-tsv_pth: "data/MassSpecGym_4.tsv"
+tsv_pth: "data/MassSpecGym_old.tsv"
 meta_keys: ["adduct","precursor_mz","instrument_type","collision_energy"]
 fp_types: ["morgan","maccs","rdkit"]
 adducts: ["[M+H]+"]
@@ -17,10 +17,10 @@ metadata_insert_location: "mlp"
 collision_energy_insert_size: 16
 adduct_insert_size: 16
 instrument_type_insert_size: 16
-ints_transform: "none"
 # output
 mz_max: 1005.
 mz_bin_res: 0.1
+ints_transform: "none"
 # model
 model_type: "fp"
 mlp_hidden_size: 1024
@@ -38,16 +38,23 @@ mol_dropout: 0.2
 mol_pool_type: mean
 # optimization
 lr: 0.0003
+lr_schedule: False
+lr_decay_rate: 0.0
+lr_warmup_steps: 1000
+lr_decay_steps: 5000
 weight_decay: 0.0000001
 train_sample_weight: False #True
 eval_sample_weight: False #True
+batch_size: 128
+max_epochs: 100
+drop_last: False
+gradient_clip_val: inf
+gradient_clip_algorithm: norm
+optimizer: "adam"
 # other
 num_workers: 8
-batch_size: 128
-drop_last: False
 accelerator: "cpu"
 log_every_n_steps: 1
-max_epochs: 100
 seed: 420
 enable_checkpointing: False
 cache_feats: False

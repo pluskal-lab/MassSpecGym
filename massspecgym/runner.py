@@ -155,7 +155,9 @@ def init_run(template_fp, custom_fp, wandb_mode):
         max_epochs=config_d["max_epochs"], 
         logger=logger, 
         log_every_n_steps=config_d["log_every_n_steps"],
-        enable_checkpointing=config_d["enable_checkpointing"]
+        enable_checkpointing=config_d["enable_checkpointing"],
+        gradient_clip_val=config_d["gradient_clip_val"],
+        gradient_clip_algorithm=config_d["gradient_clip_algorithm"]
     )
 
     # Train

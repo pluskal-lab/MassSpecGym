@@ -311,6 +311,8 @@ class MyopicMCES():
         )
         dist = retval[1]
         return dist
+
+
 def peaks_to_matchms(mzs_str: str, intensities_str: str, precursor_mz: float) -> matchms.Spectrum:
 
     
@@ -324,11 +326,3 @@ def peaks_to_matchms(mzs_str: str, intensities_str: str, precursor_mz: float) ->
         metadata=dict(precursor_mz=precursor_mz))
     return spectrum
 
-
-def ce_str_to_float(ce_str: str) -> float:
-
-    ce_str = str(ce_str)
-    try:
-        return float(ce_str)
-    except ValueError:
-        return float(ce_str.split(" ")[0])
