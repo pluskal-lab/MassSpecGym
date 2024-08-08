@@ -68,7 +68,7 @@ from massspecgym.models.retrieval.base import RetrievalMassSpecGymModel
 class MyDeepSetsRetrievalModel(RetrievalMassSpecGymModel):
     def __init__(
         self,
-        hidden_channels: int = 512,
+        hidden_channels: int = 128,
         out_channels: int = 4096,  # fingerprint size
         *args,
         **kwargs
@@ -123,25 +123,28 @@ class MyDeepSetsRetrievalModel(RetrievalMassSpecGymModel):
 
 ```python
 # Init hyperparameters
+n_peaks = 60
 fp_size = 4096
+batch_size = 32
 
 # Load dataset
 dataset = RetrievalDataset(
-    spec_transform=SpecTokenizer(n_peaks=60),
+    spec_transform=SpecTokenizer(n_peaks=n_peaks),
     mol_transform=MolFingerprinter(fp_size=fp_size),
 )
 
 # Init data module
 data_module = MassSpecDataModule(
     dataset=dataset,
-    batch_size=64
+    batch_size=batch_size,
+    num_workers=4
 )
 
 # Init model
 model = MyDeepSetsRetrievalModel(out_channels=fp_size)
 
 # Init trainer
-trainer = Trainer(accelerator="cpu", devices=1)
+trainer = Trainer(accelerator="cpu", devices=1, max_epochs=5)
 
 # Train
 trainer.fit(model, datamodule=data_module)
