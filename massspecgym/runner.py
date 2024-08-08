@@ -117,8 +117,7 @@ def init_run(template_fp, custom_fp, wandb_mode):
         meta_keys=config_d["meta_keys"],
         spec_transform=spec_transform,
         mol_transform=mol_transform,
-        meta_transform=meta_transform,
-        cache_feats=config_d["cache_feats"])
+        meta_transform=meta_transform)
 
     # # Init data module
     # data_module = MassSpecDataModule(

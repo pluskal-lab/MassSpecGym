@@ -289,42 +289,6 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         """
         
         raise NotImplementedError
-        # if metric_pref == "train_":
-        #     reduce_fn = self.train_reduce_fn
-        # else:
-        #     reduce_fn = self.eval_reduce_fn
-
-        # cos_sim = self.cos_sim_fn(
-        #     pred_mzs=pred_mzs,
-        #     pred_logprobs=pred_logprobs,
-        #     pred_batch_idxs=pred_batch_idxs,
-        #     true_mzs=true_mzs,
-        #     true_logprobs=true_logprobs,
-        #     true_batch_idxs=true_batch_idxs
-        # )
-        # wmean_cos_sim, wsum_cos_sim, total_weight = reduce_fn(cos_sim, weight)
-        # batch_size = torch.max(true_batch_idxs)+1
-
-        # # # little trick to work with automatic batch accumulation
-        # # scaled_cos_sim = mean_cos_sim * (batch_size / total_weight)
-        # # scaled_cos_sim = mean_cos_sim
-
-        # self.log(
-        #     metric_pref + "spec_cos_sim_epoch",
-        #     wmean_cos_sim,
-        #     batch_size=batch_size,
-        #     sync_dist=True,
-        #     prog_bar=False,
-        #     on_step=False,
-        #     on_epoch=True,
-        # )
-
-        # key = metric_pref + "spec_cos_sim_epoch2"
-        # if key in self.metric_d:
-        #     self.metric_d[key][0].append(wsum_cos_sim)
-        #     self.metric_d[key][1].append(total_weight)
-        # else:
-        #     self.metric_d[key] = [[wsum_cos_sim],[total_weight]]
 
     def on_train_epoch_end(self):
 
