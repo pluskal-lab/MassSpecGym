@@ -10,7 +10,7 @@ import os
 import yaml
 
 from massspecgym.data.datasets import SimulationDataset
-from massspecgym.transforms import SpecToMzsInts, MolToPyG, StandardMeta, MolToFingerprints
+from massspecgym.data.transforms import SpecToMzsInts, MolToPyG, StandardMeta, MolToFingerprints
 from massspecgym.simulation_utils.misc_utils import print_shapes
 from massspecgym.models.simulation.fp import FPSimulationMassSpecGymModel
 from massspecgym.models.simulation.gnn import GNNSimulationMassSpecGymModel

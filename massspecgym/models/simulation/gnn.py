@@ -1,6 +1,6 @@
 import torch
 
-from massspecgym.transforms import MolToPyG, StandardMeta
+from massspecgym.data.transforms import MolToPyG, StandardMeta
 from massspecgym.models.simulation.base import SimulationMassSpecGymModel
 from massspecgym.simulation_utils.model_utils import GNNModel
 

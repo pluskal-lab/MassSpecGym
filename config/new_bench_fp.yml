@@ -25,5 +25,7 @@ weight_decay: 0.0000001
 batch_size: 256
 max_epochs: 20
 optimizer: "adamw"
+gradient_clip_val: 5.0
+gradient_clip_algorithm: norm
 # other
 accelerator: "gpu"

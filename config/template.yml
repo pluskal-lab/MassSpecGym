@@ -48,8 +48,8 @@ eval_sample_weight: False #True
 batch_size: 128
 max_epochs: 100
 drop_last: False
-gradient_clip_val: inf
-gradient_clip_algorithm: norm
+gradient_clip_val: 0.0
+gradient_clip_algorithm:
 optimizer: "adam"
 # other
 num_workers: 8

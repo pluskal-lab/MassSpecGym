@@ -8,7 +8,7 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 import massspecgym.utils as utils
 from massspecgym.data import RetrievalDataset, MassSpecDataset, MassSpecDataModule
-from massspecgym.transforms import MolFingerprinter, SpecBinner, SpecTokenizer
+from massspecgym.data.transforms import MolFingerprinter, SpecBinner, SpecTokenizer
 from massspecgym.models.retrieval import FingerprintFFNRetrieval, FromDictRetrieval
 from massspecgym.models.de_novo import SmilesTransformer
 

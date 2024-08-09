@@ -10,14 +10,23 @@ from massspecgym.simulation_utils.misc_utils import scatter_logl2normalize, scat
     scatter_reduce
 from massspecgym.simulation_utils.spec_utils import batched_bin_func, sparse_cosine_distance, \
     get_ints_transform_func, get_ints_untransform_func, batched_l1_normalize
-
+from massspecgym.simulation_utils.nn_utils import build_lr_scheduler
 
 class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
 
-    def __init__(self, **kwargs):
+    def __init__(
+            self, 
+            optimizer,
+            lr,
+            weight_decay,
+            lr_schedule,
+            ints_transform,
+            mz_max,
+            mz_bin_res,
+            **kwargs):
         super().__init__(**kwargs)
+        self.save_hyperparameters()
         self._setup_model()
-        # self._setup_tolerance()
         self._setup_loss_fn()
         self._setup_spec_fns()
         self._setup_metric_fns()
@@ -31,11 +40,11 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
     def configure_optimizers(self):
 
         if self.hparams.optimizer == "adam":
-            optimizer_cls = th.optim.Adam
+            optimizer_cls = torch.optim.Adam
         elif self.hparams.optimizer == "adamw":
-            optimizer_cls = th.optim.AdamW
+            optimizer_cls = torch.optim.AdamW
         elif self.hparams.optimizer == "sgd":
-            optimizer_cls = th.optim.SGD
+            optimizer_cls = torch.optim.SGD
         else:
             raise ValueError(f"Unknown optimizer {self.optimizer}")
         optimizer = optimizer_cls(
@@ -60,19 +69,6 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
             }
         return ret
 
-    # def _setup_tolerance(self):
-
-    #     # set tolerance
-    #     if self.hparams.loss_tolerance_rel is not None:
-    #         self.tolerance = self.hparams.loss_tolerance_rel
-    #         self.relative = True
-    #         self.tolerance_min_mz = self.hparams.loss_tolerance_min_mz
-    #     else:
-    #         assert self.hparams.loss_tolerance_abs is not None
-    #         self.tolerance = self.hparams.loss_tolerance_abs
-    #         self.relative = False
-    #         self.tolerance_min_mz = None
-
     def _setup_spec_fns(self):
 
         self.ints_transform_func = get_ints_transform_func(self.hparams.ints_transform)
@@ -82,12 +78,6 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
     def _preproc_spec(self,spec_mzs,spec_ints,spec_batch_idxs):
 
         # transform
-        assert torch.all(
-            torch.isclose(
-                scatter_reduce(spec_ints,spec_batch_idxs,"sum"), 
-                1.
-            )
-        )
         spec_ints = spec_ints * 1000.
         spec_ints = self.ints_transform_func(spec_ints)
         # renormalize
@@ -184,7 +174,7 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
 
         return self.model.forward(**kwargs)
 
-    def step(self, batch: dict, metric_pref: str = "") -> dict:
+    def step(self, batch: dict, metric_pref: str = "", stage=None) -> dict:
 
         true_mzs, true_logprobs, true_batch_idxs = self._preproc_spec(
             batch["spec_mzs"],
@@ -234,18 +224,23 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         return out_d
 
     def on_batch_end(
-        self, outputs: T.Any, batch: dict, batch_idx: int, metric_pref: str = ""
+        self, outputs: T.Any, batch: dict, batch_idx: int, metric_pref: str = "", stage=None
     ) -> None:
         """
         Compute evaluation metrics for the retrieval model based on the batch and corresponding predictions.
         This method will be used in the `on_train_batch_end`, `on_validation_batch_end`, since `on_test_batch_end` is
         overriden below.
         """
-        self.evaluate_cos_similarity_step(
-            outputs["spec_pred"],
-            batch["spec"],
-            metric_pref=metric_pref,
-        )
+        pass
+        # self.evaluate_cos_similarity_step(
+        #     pred_mzs=outputs["pred_mzs"],
+        #     pred_logpros=outputs["pred_logprobs"],
+        #     pred_batch_idxs=outputs["pred_batch_idxs"],
+        #     true_mzs=outputs["true_mzs"],
+        #     true_logprobs=outputs["true_logprobs"],
+        #     true_batch_idxs=outputs["true_batch_idxs"],
+        #     metric_pref=metric_pref,
+        # )
 
     def on_test_batch_end(
         self, outputs: T.Any, batch: dict, batch_idx: int
@@ -268,9 +263,7 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         specs: torch.Tensor,
         metric_pref: str = ""
     ) -> None:
-        """
-        Evaulate cosine similarity.
-        """
+        
         raise NotImplementedError
 
     def evaluate_hit_rate_step(
