@@ -28,7 +28,7 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         *args,
         **kwargs
     ):
-        super().__init__(*args, **kwargs)
+        super().__init__()
         self.lr = lr
         self.weight_decay = weight_decay
         self.log_only_loss_at_stages = [
