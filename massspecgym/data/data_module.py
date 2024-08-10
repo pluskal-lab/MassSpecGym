@@ -36,7 +36,7 @@ class MassSpecDataModule(pl.LightningDataModule):
         self.split_pth = split_pth
         self.batch_size = batch_size
         self.num_workers = num_workers
-        self.persistent_workers = persistent_workers
+        self.persistent_workers = persistent_workers if num_workers > 0 else False
 
     def prepare_data(self):
         if self.split_pth is None:
