@@ -32,7 +32,7 @@ class MassSpecDataset(Dataset):
     ):
         """
         Args:
-            mgf_pth (Optional[Path], optional): Path to the .tsv or .mgf file containing the mass spectra.
+            pth (Optional[Path], optional): Path to the .tsv or .mgf file containing the mass spectra.
                 Default is None, in which case the MassSpecGym dataset is downloaded from HuggingFace Hub.
         """
         self.pth = pth
