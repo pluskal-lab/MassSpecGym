@@ -19,7 +19,7 @@ class FourierFeatures(nn.Module):
         x_min (float, optional): The minimum value for generating frequencies. Defaults to 1e-4.
         x_max (float, optional): The maximum value for generating frequencies. Defaults to 1000.
         trainable (bool, optional): If True, the frequencies are treated as trainable parameters. 
-            Defaults to True.
+            Defaults to False.
         funcs (str, optional): Specifies the trigonometric functions to use. Options are 'both', 
             'sin', and 'cos'. Defaults to 'both'.
         sigma (float, optional): Standard deviation used for random frequency initialization 
@@ -27,7 +27,7 @@ class FourierFeatures(nn.Module):
         num_freqs (int, optional): Number of frequency components to generate. Defaults to 512.
     """
 
-    def __init__(self, strategy, x_min=1e-4, x_max=1000, trainable=True, funcs='both', sigma=10, num_freqs=512):
+    def __init__(self, strategy, x_min=1e-4, x_max=1000, trainable=False, funcs='both', sigma=10, num_freqs=512):
         assert funcs in {'both', 'sin', 'cos'}, "funcs must be 'both', 'sin', or 'cos'"
         assert 0 < x_min < 1, "x_min must be a positive fraction"
 
