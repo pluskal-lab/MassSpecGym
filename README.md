@@ -31,7 +31,7 @@ pip install -e .[dev,notebooks]
 For AMD GPUs, you may need to install PyTorch for ROCm:
 
 ```bash
-pip install -U torch --index-url https://download.pytorch.org/whl/rocm6.0
+pip install -U torch==2.3.0 --index-url https://download.pytorch.org/whl/rocm6.0
 ```
 
 📣 Easier installation via `pip` will be available soon!
