@@ -50,7 +50,7 @@ max_epochs: 100
 drop_last: False
 gradient_clip_val: 0.0
 gradient_clip_algorithm:
-optimizer: "adam"
+optimizer_type: "adam"
 # other
 num_workers: 8
 accelerator: "cpu"

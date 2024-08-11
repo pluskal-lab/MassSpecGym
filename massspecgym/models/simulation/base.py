@@ -58,22 +58,29 @@ class CosSimMetric(Metric):
 class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
 
     def __init__(
-            self, 
-            optimizer,
-            lr,
-            weight_decay,
-            lr_schedule,
-            ints_transform,
-            mz_max,
-            mz_bin_res,
-            **kwargs):
-        super().__init__(**kwargs)
-        self.save_hyperparameters()
-        self._setup_model()
-        self._setup_loss_fn()
-        self._setup_spec_fns()
-        self._setup_metric_kwargs()
-        self.metric_d = {}
+        self,
+        optimizer_type,
+        lr_schedule,
+        lr_decay_rate,
+        lr_warmup_steps,
+        lr_decay_steps,
+        ints_transform,
+        mz_max,
+        mz_bin_res,
+        **kwargs
+    ):
+        super().__init__(
+            # include lr and weight_decay
+            **kwargs
+        )
+        self.optimizer_type = optimizer_type
+        self.lr_schedule = lr_schedule
+        self.lr_decay_rate = lr_decay_rate
+        self.lr_warmup_steps = lr_warmup_steps
+        self.lr_decay_steps = lr_decay_steps
+        self.ints_transform = ints_transform
+        self.mz_max = mz_max
+        self.mz_bin_res = mz_bin_res
 
     @abstractmethod
     def _setup_model(self):
@@ -82,28 +89,28 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
 
     def configure_optimizers(self):
 
-        if self.hparams.optimizer == "adam":
+        if self.optimizer_type == "adam":
             optimizer_cls = torch.optim.Adam
-        elif self.hparams.optimizer == "adamw":
+        elif self.optimizer_type == "adamw":
             optimizer_cls = torch.optim.AdamW
-        elif self.hparams.optimizer == "sgd":
+        elif self.optimizer_type == "sgd":
             optimizer_cls = torch.optim.SGD
         else:
             raise ValueError(f"Unknown optimizer {self.optimizer}")
         optimizer = optimizer_cls(
             self.parameters(), 
-            lr=self.hparams.lr, 
-            weight_decay=self.hparams.weight_decay
+            lr=self.lr, 
+            weight_decay=self.weight_decay
         )
         ret = {
             "optimizer": optimizer,
         }
-        if self.hparams.lr_schedule:
+        if self.lr_schedule:
             scheduler = build_lr_scheduler(
                 optimizer=optimizer, 
-                decay_rate=self.hparams.lr_decay_rate, 
-                warmup_steps=self.hparams.lr_warmup_steps,
-                decay_steps=self.hparams.lr_decay_steps,
+                decay_rate=self.lr_decay_rate, 
+                warmup_steps=self.lr_warmup_steps,
+                decay_steps=self.lr_decay_steps,
             )
             ret["lr_scheduler"] = {
                 "scheduler": scheduler,
@@ -114,8 +121,8 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
 
     def _setup_spec_fns(self):
 
-        self.ints_transform_func = get_ints_transform_func(self.hparams.ints_transform)
-        self.ints_untransform_func = get_ints_untransform_func(self.hparams.ints_transform)
+        self.ints_transform_func = get_ints_transform_func(self.ints_transform)
+        self.ints_untransform_func = get_ints_untransform_func(self.ints_transform)
         self.ints_normalize_func = batched_l1_normalize
 
     def _preproc_spec(self,spec_mzs,spec_ints,spec_batch_idxs):
@@ -149,8 +156,8 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
                 pred_mzs=pred_mzs,
                 pred_logprobs=pred_logprobs,
                 pred_batch_idxs=pred_batch_idxs,
-                mz_max=self.hparams.mz_max,
-                mz_bin_res=self.hparams.mz_bin_res
+                mz_max=self.mz_max,
+                mz_bin_res=self.mz_bin_res
             )
             return cos_dist
 
@@ -184,8 +191,8 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
     #             true_mzs=true_mzs,
     #             true_logprobs=true_logprobs,
     #             true_batch_idxs=true_batch_idxs,
-    #             mz_max=self.hparams.mz_max,
-    #             mz_bin_res=self.hparams.mz_bin_res
+    #             mz_max=self.mz_max,
+    #             mz_bin_res=self.mz_bin_res
     #         )
 
     #         return cos_sim
@@ -200,16 +207,16 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
             return logprobs
         cos_sim_metric_kwargs = {
             "transform_fn": deepcopy(transform_fn),
-            "mz_bin_res": self.hparams.mz_bin_res,
-            "mz_max": self.hparams.mz_max
+            "mz_bin_res": self.mz_bin_res,
+            "mz_max": self.mz_max
         }
         self.cos_sim_metric_kwargs = cos_sim_metric_kwargs
 
         transform_fn = lambda x, y: x
         cos_sim_obj_metric_kwargs = {
             "transform_fn": deepcopy(transform_fn),
-            "mz_bin_res": self.hparams.mz_bin_res,
-            "mz_max": self.hparams.mz_max
+            "mz_bin_res": self.mz_bin_res,
+            "mz_max": self.mz_max
         }
         self.cos_sim_obj_metric_kwargs = cos_sim_obj_metric_kwargs
 
