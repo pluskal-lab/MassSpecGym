@@ -32,7 +32,7 @@ class MassSpecDataset(Dataset):
     ):
         """
         Args:
-            mgf_pth (Optional[Path], optional): Path to the .tsv or .mgf file containing the mass spectra.
+            pth (Optional[Path], optional): Path to the .tsv or .mgf file containing the mass spectra.
                 Default is None, in which case the MassSpecGym dataset is downloaded from HuggingFace Hub.
         """
         self.pth = pth
@@ -133,13 +133,16 @@ class RetrievalDataset(MassSpecDataset):
         self.candidates_pth = candidates_pth
         self.mol_label_transform = mol_label_transform
 
-        # Download candidates from HuggigFace Hub
+        # Download candidates from HuggigFace Hub if not a path to exisiting file is passed
         if self.candidates_pth is None:
             self.candidates_pth = utils.hugging_face_download(
                 "molecules/MassSpecGym_retrieval_candidates_mass.json"
             )
         elif isinstance(self.candidates_pth, str):
-            self.candidates_pth = utils.hugging_face_download(candidates_pth)
+            if Path(self.candidates_pth).is_file():
+                self.candidates_pth = Path(self.candidates_pth)
+            else:
+                self.candidates_pth = utils.hugging_face_download(candidates_pth)
 
         # Read candidates_pth from json to dict: SMILES -> respective candidate SMILES
         with open(self.candidates_pth, "r") as file:

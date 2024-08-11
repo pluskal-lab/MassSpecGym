@@ -25,12 +25,12 @@ def test_spec_tokenizer():
         metadata={"precursor_mz": 406.22},
     )
 
-    # Prepend precursor
+    # Prepend precursor token
     tokenizer = SpecTokenizer(n_peaks=60, prec_mz_intensity=1.1)
     spec_t = tokenizer(spec)
     assert spec_t.shape == (61, 2)
 
-    # Do not prepend precursor
+    # Do not prepend precursor token
     tokenizer = SpecTokenizer(n_peaks=60, prec_mz_intensity=None)
     spec_t = tokenizer(spec)
     assert spec_t.shape == (60, 2)
