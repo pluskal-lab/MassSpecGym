@@ -3,7 +3,7 @@ wandb_entity: "adamoyoung"
 wandb_project: "MSG"
 wandb_name: "template"
 # data
-tsv_pth: "data/MassSpecGym_old.tsv"
+pth: "data/MassSpecGym_old.tsv"
 meta_keys: ["adduct","precursor_mz","instrument_type","collision_energy"]
 fp_types: ["morgan","maccs","rdkit"]
 adducts: ["[M+H]+"]

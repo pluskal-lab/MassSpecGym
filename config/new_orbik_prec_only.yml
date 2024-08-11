@@ -1,7 +1,7 @@
 # wandb
 wandb_name: "new_orbik_prec_only"
 # data
-tsv_pth: "data/MassSpecGym.tsv"
+pth: "data/MassSpecGym.tsv"
 split_type: "orbitrap_inchikey"
 instrument_types: ["QTOF","Orbitrap"]
 # output

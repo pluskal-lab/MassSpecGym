@@ -34,33 +34,33 @@ def load_config(template_fp, custom_fp):
 
 def get_split_ss(ds, split_type):
 
-    entry_df = ds.entry_df
-    assert np.all(entry_df.index == np.arange(entry_df.shape[0]))
+    metadata = ds.metadata
+    assert np.all(metadata.index == np.arange(metadata.shape[0]))
     if split_type == "benchmark":
-        train_idxs = entry_df[entry_df["fold"]=="train"].index
-        val_idxs = entry_df[entry_df["fold"]=="val"].index
-        test_idxs = entry_df[entry_df["fold"]=="test"].index
+        train_idxs = metadata[metadata["fold"]=="train"].index
+        val_idxs = metadata[metadata["fold"]=="val"].index
+        test_idxs = metadata[metadata["fold"]=="test"].index
     elif split_type == "all_inchikey":
-        mol_ids = entry_df["mol_id"].drop_duplicates()
+        mol_ids = metadata["inchikey"].drop_duplicates()
         train_ids = mol_ids.sample(frac=0.8, replace=False, random_state=42)
         val_ids = mol_ids.drop(train_ids.index).sample(frac=0.5, replace=False, random_state=69)
         test_ids = mol_ids.drop(train_ids.index).drop(val_ids.index)
-        train_idxs = entry_df[entry_df["mol_id"].isin(train_ids)].index
-        val_idxs = entry_df[entry_df["mol_id"].isin(val_ids)].index
-        test_idxs = entry_df[entry_df["mol_id"].isin(test_ids)].index
+        train_idxs = metadata[metadata["inchikey"].isin(train_ids)].index
+        val_idxs = metadata[metadata["inchikey"].isin(val_ids)].index
+        test_idxs = metadata[metadata["inchikey"].isin(test_ids)].index
     elif split_type == "orbitrap_inchikey":
-        mol_ids = entry_df[entry_df["instrument_type"]=="Orbitrap"]["mol_id"].drop_duplicates()
+        mol_ids = metadata[metadata["instrument_type"]=="Orbitrap"]["inchikey"].drop_duplicates()
         train_ids = mol_ids.sample(frac=0.8, replace=False, random_state=42)
         val_ids = mol_ids.drop(train_ids.index).sample(frac=0.5, replace=False, random_state=69)
         test_ids = mol_ids.drop(train_ids.index).drop(val_ids.index)
-        train_idxs = entry_df[entry_df["mol_id"].isin(train_ids)].index
-        val_idxs = entry_df[entry_df["mol_id"].isin(val_ids)].index
-        test_idxs = entry_df[entry_df["mol_id"].isin(test_ids)].index
+        train_idxs = metadata[metadata["inchikey"].isin(train_ids)].index
+        val_idxs = metadata[metadata["inchikey"].isin(val_ids)].index
+        test_idxs = metadata[metadata["inchikey"].isin(test_ids)].index
     else:
         raise ValueError(f"split_type {split_type} not supported")
-    train_mol_ids = entry_df.loc[train_idxs]["mol_id"].unique()
-    val_mol_ids = entry_df.loc[val_idxs]["mol_id"].unique()
-    test_mol_ids = entry_df.loc[test_idxs]["mol_id"].unique()
+    train_mol_ids = metadata.loc[train_idxs]["inchikey"].unique()
+    val_mol_ids = metadata.loc[val_idxs]["inchikey"].unique()
+    test_mol_ids = metadata.loc[test_idxs]["inchikey"].unique()
     print(">>> Number of Spectra")
     print(len(train_idxs), len(val_idxs), len(test_idxs))
     print(">>> Number of Unique Molecules")
@@ -69,10 +69,6 @@ def get_split_ss(ds, split_type):
     train_ds = Subset(ds, train_idxs)
     val_ds = Subset(ds, val_idxs)
     test_ds = Subset(ds, test_idxs)
-    # compute counts (for weights)
-    all_idxs = np.concatenate([train_idxs,val_idxs,test_idxs],axis=0)
-    all_idxs = np.sort(all_idxs)
-    ds.compute_counts(all_idxs)
     return train_ds, val_ds, test_ds
 
 def init_run(template_fp, custom_fp, wandb_mode):    
@@ -113,11 +109,12 @@ def init_run(template_fp, custom_fp, wandb_mode):
     # print(pl_model)
 
     ds = SimulationDataset(
-        tsv_pth=config_d["tsv_pth"],
+        pth=config_d["pth"],
         meta_keys=config_d["meta_keys"],
         spec_transform=spec_transform,
         mol_transform=mol_transform,
-        meta_transform=meta_transform)
+        meta_transform=meta_transform
+    )
 
     # # Init data module
     # data_module = MassSpecDataModule(

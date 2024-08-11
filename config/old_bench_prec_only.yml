@@ -1,7 +1,7 @@
 # wandb
 wandb_name: "old_bench_prec_only"
 # data
-tsv_pth: "data/MassSpecGym.tsv"
+pth: "data/MassSpecGym.tsv"
 split_type: "benchmark"
 # output
 mz_max: 1005.

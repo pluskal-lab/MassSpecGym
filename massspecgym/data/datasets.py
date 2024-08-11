@@ -39,6 +39,12 @@ class MassSpecDataset(Dataset):
         self.spec_transform = spec_transform
         self.mol_transform = mol_transform
         self.return_mol_freq = return_mol_freq
+        self.return_identifier = return_identifier
+        self.dtype = dtype
+        self.load_data()
+        self.compute_mol_freq()
+
+    def load_data(self):
 
         if self.pth is None:
             self.pth = utils.hugging_face_download("MassSpecGym.tsv")
@@ -60,18 +66,17 @@ class MassSpecDataset(Dataset):
             )
             self.metadata = self.metadata.drop(columns=["mzs", "intensities"])
         elif self.pth.suffix == ".mgf":
-            self.spectra = list(load_from_mgf(str(self.pth)))
+            self.spectra = pd.Series(list(load_from_mgf(str(self.pth))))
             self.metadata = pd.DataFrame([s.metadata for s in self.spectra])
         else:
             raise ValueError(f"{self.pth.suffix} file format not supported.")
-        
+
+    def compute_mol_freq(self):
+
         if self.return_mol_freq:
             if "inchikey" not in self.metadata.columns:
                 self.metadata["inchikey"] = self.metadata["smiles"].apply(utils.smiles_to_inchi_key)
             self.metadata["mol_freq"] = self.metadata.groupby("inchikey")["inchikey"].transform("count")
-
-        self.return_identifier = return_identifier
-        self.dtype = dtype
 
     def __len__(self) -> int:
         return len(self.spectra)
@@ -79,7 +84,7 @@ class MassSpecDataset(Dataset):
     def __getitem__(
         self, i: int, transform_spec: bool = True, transform_mol: bool = True
     ) -> dict:
-        spec = self.spectra[i]
+        spec = self.spectra.iloc[i]
         spec = (
             self.spec_transform(spec)
             if transform_spec and self.spec_transform
@@ -207,87 +212,70 @@ class SimulationDataset(MassSpecDataset):
 
     def __init__(
         self,
-        tsv_pth: Path,
-        meta_keys: T.List[str],
         spec_transform: SpecTransform,
         mol_transform: MolTransform,
-        meta_transform: MetaTransform): 
+        meta_transform: MetaTransform,
+        meta_keys: T.List[str],
+        pth: Optional[Path] = None,
+        return_mol_freq: bool = True,
+        return_identifier: bool = True,
+        dtype: T.Type = torch.float32
+    ): 
         
-        self.tsv_pth = tsv_pth
-        self.meta_keys = meta_keys
-        self.spec_transform = spec_transform
-        self.mol_transform = mol_transform
         self.meta_transform = meta_transform
-        self.process()
-        self.spec_per_mol = {}
+        self.meta_keys = meta_keys
+        super().__init__(
+            spec_transform=spec_transform,
+            mol_transform=mol_transform,
+            pth=pth,
+            return_mol_freq=return_mol_freq,
+            return_identifier=return_identifier,
+            dtype=dtype
+        )
 
-    def process(self):
+    def load_data(self):
 
-        entry_df = pd.read_csv(self.tsv_pth, sep="\t")
+        super().load_data()
+
         # remove any spectra not included in the simulation challenge
-        entry_df = entry_df[entry_df["simulation_challenge"]]
+        sim_mask = self.metadata["simulation_challenge"]
+        sim_metadata = self.metadata[sim_mask].copy(deep=True)
         # verify all datapoints are not missing CE information and are [M+H]+
-        assert (entry_df["adduct"]=="[M+H]+").all()
-        assert (~entry_df["collision_energy"].isna()).all()
+        assert (sim_metadata["adduct"]=="[M+H]+").all()
+        assert (~sim_metadata["collision_energy"].isna()).all()
         # mz checks
-        assert (entry_df["precursor_mz"] <= self.spec_transform.mz_to).all()
-        # TODO: is peaks_to_matchms still required?
-        # convert spectrum to usable format
-        entry_df["spectrum"] = entry_df.apply(lambda row: utils.peaks_to_matchms(row["mzs"], row["intensities"], row["precursor_mz"]), axis=1)
-        entry_df = entry_df.drop(columns=["mzs","intensities"])
-        # assign id
-        entry_df["spec_id"] = np.arange(entry_df.shape[0])
-        inchikey_map = {ik:idx for idx, ik in enumerate(sorted(entry_df["inchikey"].unique()))}
-        entry_df["mol_id"] = entry_df["inchikey"].map(inchikey_map)
-        entry_df = entry_df.reset_index(drop=True)
-    
-        self.entry_df = entry_df   
-
-    def __len__(self) -> int:
-
-        return self.entry_df.shape[0]
+        assert (sim_metadata["precursor_mz"] <= self.spec_transform.mz_to).all()
+        # do the filtering
+        self.spectra = self.spectra[sim_mask]
+        self.metadata = sim_metadata.reset_index(drop=True) 
 
     def _get_spec_feats(self, i):
 
-        entry = self.entry_df.iloc[i]
-        spec_id = entry["spec_id"]
-        spec_feats = self.spec_transform(entry["spectrum"])
+        spectrum = self.spectra.iloc[i]
+        spec_feats = self.spec_transform(spectrum)
         return spec_feats
 
     def _get_mol_feats(self, i):
 
-        entry = self.entry_df.iloc[i]
-        mol_id = entry["mol_id"]
-        mol_feats = self.mol_transform(entry["smiles"])
+        metadata = self.metadata.iloc[i]
+        mol_feats = self.mol_transform(metadata["smiles"])
         return mol_feats
 
     def _get_meta_feats(self, i):
 
-        entry = self.entry_df.iloc[i]
-        spec_id = entry["spec_id"]
-        meta_feats = self.meta_transform({k: entry[k] for k in self.meta_keys})
+        metadata = self.metadata.iloc[i]
+        meta_feats = self.meta_transform({k: metadata[k] for k in self.meta_keys})
         return meta_feats
-
-    def _get_frag_feats(self, i):
-
-        raise NotImplementedError
 
     def _get_other_feats(self, i):
 
-        entry = self.entry_df.iloc[i]
-        spec_id = entry["spec_id"]
+        metadata = self.metadata.iloc[i]
         other_feats = {}
-        other_feats["spec_id"] = torch.tensor(spec_id)
-        weight = 1./float(self.spec_per_mol.get(spec_id,1.))
-        other_feats["weight"] = torch.tensor(weight)
+        if self.return_mol_freq:
+            other_feats["mol_freq"] = torch.tensor(metadata["mol_freq"])
+        if self.return_identifier:
+            other_feats["identifier"] = metadata["identifier"]
         return other_feats
-
-    def compute_counts(self, index: Optional[np.ndarray]):
-
-        entry_df = self.entry_df.iloc[index]
-        spec_per_mol = entry_df[["mol_id","spec_id"]].drop_duplicates().groupby("mol_id").size().reset_index(name="count")
-        spec_per_mol = spec_per_mol.merge(self.entry_df[["spec_id","mol_id"]], on="mol_id", how="inner")[["spec_id","count"]]
-        self.spec_per_mol = spec_per_mol.set_index("spec_id")["count"].to_dict()
 
     def __getitem__(self, i) -> dict:
         item = {}
@@ -297,22 +285,28 @@ class SimulationDataset(MassSpecDataset):
         item.update(self._get_other_feats(i))
         return item
     
-    def collate_fn(self, data_list):
+    def collate_fn(self, data_list: T.List[dict]) -> dict:
 
         keys = list(data_list[0].keys())
-        collate_data = {key: [] for key in keys}
+        collate_data = {}
+        batch_data = {key: [] for key in keys}
         for data in data_list:
             for key in keys:
-                collate_data[key].append(data[key])
+                batch_data[key].append(data[key])
         # handle spectrum
-        self.spec_transform.collate_fn(collate_data)
+        collate_data.update(self.spec_transform.collate_fn(batch_data))
         # handle molecule
-        self.mol_transform.collate_fn(collate_data)
+        collate_data.update(self.mol_transform.collate_fn(batch_data))
         # handle metadata
-        self.meta_transform.collate_fn(collate_data)
+        collate_data.update(self.meta_transform.collate_fn(batch_data))
         # handle other stuff
-        for key in ["spec_id","weight"]:
-            collate_data[key] = torch.stack(collate_data[key],dim=0)
+        if "mol_freq" in batch_data:
+            collate_data["mol_freq"] = torch.stack(batch_data["mol_freq"],dim=0)
+        if "identifier" in batch_data:
+            # it's already a list, just make a copy
+            collate_data["identifier"] = batch_data["identifier"].copy()
+        assert set(collate_data.keys()).issuperset(set(batch_data.keys())), \
+            set(batch_data.keys()) - set(collate_data.keys())
         return collate_data
         
 

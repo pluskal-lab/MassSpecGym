@@ -176,16 +176,16 @@ class SpecToMzsInts(SpecTransform):
         ints = torch.as_tensor(spec.peaks.intensities, dtype=torch.float32)
         return {"spec_mzs": mzs, "spec_ints": ints}
     
-    def collate_fn(self, collate_data_d: dict) -> None:
-        # mutates dict!
+    def collate_fn(self, batch_data_d: dict) -> dict:
 
-        device = collate_data_d["spec_mzs"][0].device
-        counts = torch.tensor([spec_mzs.shape[0] for spec_mzs in collate_data_d["spec_mzs"]],device=device,dtype=torch.int64)
+        device = batch_data_d["spec_mzs"][0].device
+        counts = torch.tensor([spec_mzs.shape[0] for spec_mzs in batch_data_d["spec_mzs"]],device=device,dtype=torch.int64)
         batch_idxs = torch.repeat_interleave(torch.arange(counts.shape[0],device=device),counts,dim=0)
-        collate_data_d["spec_mzs"] = torch.cat(collate_data_d["spec_mzs"],dim=0)
-        collate_data_d["spec_ints"] = torch.cat(collate_data_d["spec_ints"],dim=0)
+        collate_data_d = {}
+        collate_data_d["spec_mzs"] = torch.cat(batch_data_d["spec_mzs"],dim=0)
+        collate_data_d["spec_ints"] = torch.cat(batch_data_d["spec_ints"],dim=0)
         collate_data_d["spec_batch_idxs"] = batch_idxs
-        
+        return collate_data_d
 
 class MolTransform(ABC):
     @abstractmethod
@@ -269,10 +269,11 @@ class MolToPyG(MolTransform):
         }
         return size_d
 
-    def collate_fn(self, collate_data_d: dict) -> None:
-        # mutates dict!
+    def collate_fn(self, batch_data_d: dict) -> dict:
 
-        collate_data_d["mol_pyg"] = Batch.from_data_list(collate_data_d["mol_pyg"])
+        collate_data_d = {}
+        collate_data_d["mol_pyg"] = Batch.from_data_list(batch_data_d["mol_pyg"])
+        return collate_data_d
 
 
 class MolToFingerprints(MolTransform):
@@ -299,10 +300,11 @@ class MolToFingerprints(MolTransform):
         fps = self.from_smiles("CCO")["fps"]
         return {"fps_input_size": fps.shape[0]} 
     
-    def collate_fn(self, collate_data_d: dict) -> None:
-        # mutates dict!
+    def collate_fn(self, batch_data_d: dict) -> dict:
 
-        collate_data_d["fps"] = torch.stack(collate_data_d["fps"],dim=0)
+        collate_data_d = {}
+        collate_data_d["fps"] = torch.stack(batch_data_d["fps"],dim=0)
+        return collate_data_d
 
 
 class MetaTransform(ABC):
@@ -355,9 +357,14 @@ class StandardMeta(MetaTransform):
         }
         return size_d
 
-    def collate_fn(self, collate_data_d: dict) -> None:
-        # mutates dict!
+    @property
+    def collate_keys(self):
 
-        for key in ["adduct","instrument_type","collision_energy","precursor_mz"]:
-            collate_data_d[key] = torch.stack(collate_data_d[key],dim=0)
+        return ["adduct","instrument_type","collision_energy","precursor_mz"]
 
+    def collate_fn(self, batch_data_d: dict) -> dict:
+
+        collate_data_d = {}
+        for key in self.collate_keys:
+            collate_data_d[key] = torch.stack(batch_data_d[key],dim=0)
+        return collate_data_d
