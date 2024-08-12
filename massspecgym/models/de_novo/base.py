@@ -1,7 +1,7 @@
 import typing as T
 from abc import ABC
 
-import pulp
+import torch
 from rdkit import Chem
 from rdkit.DataStructs import TanimotoSimilarity
 from torchmetrics.aggregation import MeanMetric
@@ -112,8 +112,6 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
                 self.mol_2_morgan_fp[mol] = morgan_fp(mol, to_np=False)
             return self.mol_2_morgan_fp[mol]
 
-
-
         # Evaluate top-k metrics
         for top_k in self.top_ks:
             # Get top-k predicted molecules for each ground-truth sample
@@ -139,11 +137,13 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
                             self.mces_cache[(true, pred)] = mce_val
                         dists.append(self.mces_cache[(true, pred)])
                 min_mces_dists.append(min(min(dists), mces_thld))
+            min_mces_dists = torch.tensor(min_mces_dists, device=self.device)
             self._update_metric(
                 stage.to_pref() + f"top_{top_k}_min_mces_dist",
                 MeanMetric,
                 (min_mces_dists,),
                 batch_size=len(min_mces_dists),
+                bootstrap=stage == Stage.TEST
             )
 
             # 2. Evaluate Tanimoto similarity:
@@ -166,11 +166,13 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
                     for pred in preds
                 ]
                 max_tanimoto_sims.append(max(sims))
+            max_tanimoto_sims = torch.tensor(max_tanimoto_sims, device=self.device)
             self._update_metric(
                 stage.to_pref() + f"top_{top_k}_max_tanimoto_sim",
                 MeanMetric,
                 (max_tanimoto_sims,),
                 batch_size=len(max_tanimoto_sims),
+                bootstrap=stage == Stage.TEST
             )
 
             # 3. Evaluate exact match (accuracy):
@@ -184,9 +186,11 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
                 ]
                 for true, preds in zip(mol_true, mols_pred_top_k)
             ]
+            in_top_k = torch.tensor(in_top_k, device=self.device)
             self._update_metric(
                 stage.to_pref() + f"top_{top_k}_accuracy",
                 MeanMetric,
                 (in_top_k,),
-                batch_size=len(in_top_k)
+                batch_size=len(in_top_k),
+                bootstrap=stage == Stage.TEST
             )

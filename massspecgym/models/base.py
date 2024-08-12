@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 import torch
 import pytorch_lightning as pl
 from torchmetrics import Metric, SumMetric
+from massspecgym.utils import ReturnScalarBootStrapper
 
 
 class Stage(Enum):
@@ -25,6 +26,7 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         lr: float = 1e-4,
         weight_decay: float = 0.0,
         log_only_loss_at_stages: T.Sequence[Stage | str] = (),
+        bootstrap_metrics: bool = True,
         *args,
         **kwargs
     ):
@@ -34,6 +36,7 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         self.log_only_loss_at_stages = [
             Stage(s) if isinstance(s, str) else s for s in log_only_loss_at_stages
         ]
+        self.bootstrap_metrics = bootstrap_metrics
 
     @abstractmethod
     def step(
@@ -100,6 +103,8 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         metric_kwargs: T.Optional[dict] = None,
         log: bool = True,
         log_n_samples: bool = False,
+        bootstrap: bool = False,
+        num_bootstraps: int = 100
     ) -> None:
         """
         This method enables updating and logging metrics without instantiating them in advance in
@@ -107,7 +112,10 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         epoch. If the metric does not exist yet, it is instantiated and added as an attribute to the
         model.
         """
-        # Log total number of samples for debugging
+        # Process arguments
+        bootstrap = bootstrap and self.bootstrap_metrics
+
+        # Log total number of samples (useful for debugging)
         if log_n_samples:
             self._update_metric(
                 name=name + "_n_samples",
@@ -122,7 +130,8 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         else:
             if metric_kwargs is None:
                 metric_kwargs = dict()
-            metric = metric_class(**metric_kwargs).to(self.device)
+            metric = metric_class(**metric_kwargs)
+            metric = metric.to(self.device)
             setattr(self, name, metric)
 
         # Update
@@ -138,5 +147,19 @@ class MassSpecGymModel(pl.LightningModule, ABC):
                 on_step=False,
                 on_epoch=True,
                 add_dataloader_idx=False,
-                metric_attribute=name,  # Suggested by a torchmetrics error
+                metric_attribute=name  # Suggested by a torchmetrics error
+            )
+
+        # Bootstrap
+        if bootstrap:
+            def _bootsrapped_metric_class(**metric_kwargs):
+                metric = metric_class(**metric_kwargs)
+                return ReturnScalarBootStrapper(metric, std=True, num_bootstraps=num_bootstraps)
+
+            self._update_metric(
+                name=name + "_std",
+                metric_class=_bootsrapped_metric_class,
+                update_args=update_args,
+                batch_size=batch_size,
+                metric_kwargs=metric_kwargs,
             )

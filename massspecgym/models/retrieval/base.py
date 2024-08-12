@@ -82,6 +82,7 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
                 (scores, labels, indexes),
                 batch_size=batch_ptr.size(0),
                 metric_kwargs=dict(top_k=at_k),
+                bootstrap=stage == Stage.TEST
             )
 
     def evaluate_mces_at_1(
@@ -112,11 +113,13 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
             self.myopic_mces(sm, sm_pred)
             for sm, sm_pred in zip(smiles, smiles_pred_top_1)
         ]
+        mces_dists = torch.tensor(mces_dists, device=scores.device)
         self._update_metric(
             f"{stage.to_pref()}mces_at_1",
             MeanMetric,
             (mces_dists,),
-            batch_size=len(mces_dists)
+            batch_size=len(mces_dists),
+            bootstrap=stage == Stage.TEST
         )
 
 
@@ -141,5 +144,5 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
             CosineSimilarity,
             (y_pred, y_true),
             batch_size=y_true.size(0),
-            metric_kwargs=dict(reduction="mean"),
+            metric_kwargs=dict(reduction="mean")
         )
