@@ -4,6 +4,9 @@ from abc import ABC
 import torch
 from torchmetrics import CosineSimilarity, MeanMetric
 from torchmetrics.retrieval import RetrievalHitRate
+from torchmetrics.functional.retrieval import retrieval_hit_rate
+from torchmetrics.utilities.data import _flexible_bincount
+from torch_geometric.utils import unbatch
 
 from massspecgym.models.base import MassSpecGymModel, Stage
 import massspecgym.utils as utils
@@ -75,13 +78,20 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
         # Evaluate hitrate at different top-k values
         indexes = torch.arange(batch_ptr.size(0), device=batch_ptr.device)
         indexes = torch.repeat_interleave(indexes, batch_ptr)
+        scores = unbatch(scores, indexes)
+        labels = unbatch(labels, indexes)
+
         for at_k in self.at_ks:
+            hit_rates = []
+            for scores_sample, labels_sample in zip(scores, labels):
+                hit_rates.append(retrieval_hit_rate(scores_sample, labels_sample, top_k=at_k))
+            hit_rates = torch.tensor(hit_rates, device=batch_ptr.device)
+
             self._update_metric(
                 stage.to_pref() + f"hit_rate@{at_k}",
-                RetrievalHitRate,
-                (scores, labels, indexes),
+                MeanMetric,
+                (hit_rates,),
                 batch_size=batch_ptr.size(0),
-                metric_kwargs=dict(top_k=at_k),
                 bootstrap=stage == Stage.TEST
             )
 
