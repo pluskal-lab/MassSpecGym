@@ -9,6 +9,7 @@ import matplotlib.ticker as ticker
 import pandas as pd
 import typing as T
 import pulp
+import torch
 from pathlib import Path
 from myopic_mces.myopic_mces import MCES
 from rdkit.Chem import AllChem as Chem
@@ -19,6 +20,8 @@ from standardizeUtils.standardizeUtils import (
     standardize_structure_with_pubchem,
     standardize_structure_list_with_pubchem,
 )
+from torchmetrics.wrappers import BootStrapper
+from torchmetrics.metric import Metric
 
 
 def load_massspecgym():
@@ -290,3 +293,68 @@ class MyopicMCES():
         )
         dist = retval[1]
         return dist
+
+
+class ReturnScalarBootStrapper(BootStrapper):
+    def __init__(
+        self,
+        base_metric: Metric,
+        num_bootstraps: int = 10,
+        mean: bool = False,
+        std: bool = False,
+        quantile: T.Optional[T.Union[float, torch.Tensor]] = None,
+        raw: bool = False,
+        sampling_strategy: str = "poisson",
+        **kwargs: T.Any
+    ) -> None:
+        """Wrapper for BootStrapper that returns a scalar value in compute instead of a dictionary."""
+
+        if mean + std + bool(quantile) + raw != 1:
+            raise ValueError("Exactly one of mean, std, quantile or raw should be True.")
+
+        if std:
+            self.compute_key = "std"
+        else:
+            raise NotImplementedError("Currently only std is implemented.")
+
+        super().__init__(
+            base_metric=base_metric,
+            num_bootstraps=num_bootstraps,
+            mean=mean,
+            std=std,
+            quantile=quantile,
+            raw=raw,
+            sampling_strategy=sampling_strategy,
+            **kwargs
+        )
+
+    def compute(self):
+        return super().compute()[self.compute_key]
+
+
+def batch_ptr_to_batch_idx(batch_ptr: torch.Tensor) -> torch.Tensor:
+    """
+    Convert a tensor of batch pointers to a tensor of batch indexes.
+    
+    For example [1, 3, 2] -> [0, 1, 1, 1, 2, 2]
+
+    Args:
+        batch_ptr (Tensor): Tensor of batch pointers.
+    """
+    indexes = torch.arange(batch_ptr.size(0), device=batch_ptr.device)
+    indexes = torch.repeat_interleave(indexes, batch_ptr)
+    return indexes
+
+
+def unbatch_list(batch_list: list, batch_idx: torch.Tensor) -> list:
+    """
+    Unbatch a list of items using the batch indexes (i.e., number of samples per batch).
+    
+    Args:
+        batch_list (list): List of items to unbatch.
+        batch_idx (Tensor): Tensor of batch indexes.
+    """
+    return [
+        [batch_list[j] for j in range(len(batch_list)) if batch_idx[j] == i]
+        for i in range(batch_idx[-1] + 1)
+    ]
