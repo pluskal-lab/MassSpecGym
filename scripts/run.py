@@ -1,4 +1,5 @@
 import argparse
+import datetime
 from pathlib import Path
 
 from rdkit import RDLogger
@@ -10,8 +11,9 @@ import massspecgym.utils as utils
 from massspecgym.data import RetrievalDataset, MassSpecDataset, MassSpecDataModule
 from massspecgym.data.transforms import MolFingerprinter, SpecBinner, SpecTokenizer
 from massspecgym.models.base import Stage
-from massspecgym.models.retrieval import FingerprintFFNRetrieval, FromDictRetrieval
+from massspecgym.models.retrieval import FingerprintFFNRetrieval, FromDictRetrieval, RandomRetrieval
 from massspecgym.models.de_novo import SmilesTransformer
+from massspecgym.definitions import MASSSPECGYM_TEST_RESULTS_DIR
 
 
 # Suppress RDKit warnings and errors
@@ -67,11 +69,12 @@ parser.add_argument('--weight_decay', type=float, default=0.0)
 # Task and model
 parser.add_argument('--task', type=str, choices=['retrieval', 'de_novo', 'simulation'], required=True)
 parser.add_argument('--model', type=str, required=True)
-
-# - De novo
-
 parser.add_argument('--log_only_loss_at_stages', default=(),
     type=lambda stages: [Stage(s) for s in stages.strip().replace(' ', '').split(',')])
+parser.add_argument('--df_test_pth', type=Path, default=None)
+parser.add_argument('--checkpoint_pth', type=Path, default=None)
+
+# - De novo
 
 # 1. SmilesTransformer
 parser.add_argument('--input_dim', type=int, default=2)
@@ -97,8 +100,16 @@ parser.add_argument('--dct_path', type=str, default=None)
 
 
 def main(args):
-
+    # Seed everything
     pl.seed_everything(args.seed)
+
+    # Get current time
+    now = datetime.datetime.now()
+    now_formatted = now.strftime("%Y-%m-%d_%H-%M-%S")
+
+    # Process args
+    if args.df_test_pth is None and args.devices == 1:
+        args.df_test_pth = MASSSPECGYM_TEST_RESULTS_DIR / f"{args.task}/{args.run_name}_{now_formatted}.pkl"
 
     # Init paths to data files
     if args.debug:
@@ -134,7 +145,8 @@ def main(args):
     common_kwargs = dict(
         lr=args.lr,
         weight_decay=args.weight_decay,
-        log_only_loss_at_stages=args.log_only_loss_at_stages
+        log_only_loss_at_stages=args.log_only_loss_at_stages,
+        df_test_path=args.df_test_pth,
     )
     if args.task == 'retrieval':
         if args.model == 'fingerprint_ffn':
@@ -149,6 +161,10 @@ def main(args):
         elif args.model == 'from_dict':
             model = FromDictRetrieval(
                 dct_path=args.dct_path,
+                **common_kwargs
+            )
+        elif args.model == 'random':
+            model = RandomRetrieval(
                 **common_kwargs
             )
         else:
@@ -172,6 +188,10 @@ def main(args):
             raise NotImplementedError(f"Model {args.model} not implemented.")
     else:
         raise NotImplementedError(f"Task {args.task} not implemented.")
+
+    # If checkpoint path is provided, load the model from the checkpoint instead
+    if args.checkpoint_pth is not None:
+        model = type(model).load_from_checkpoint(args.checkpoint_pth)
 
     # Init logger
     if args.no_wandb:
