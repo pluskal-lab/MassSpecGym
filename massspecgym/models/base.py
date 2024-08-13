@@ -1,6 +1,8 @@
 import typing as T
+import collections
 from enum import Enum
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 import torch
 import pytorch_lightning as pl
@@ -27,6 +29,7 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         weight_decay: float = 0.0,
         log_only_loss_at_stages: T.Sequence[Stage | str] = (),
         bootstrap_metrics: bool = True,
+        df_test_path: T.Optional[str | Path] = None,
         *args,
         **kwargs
     ):
@@ -37,6 +40,11 @@ class MassSpecGymModel(pl.LightningModule, ABC):
             Stage(s) if isinstance(s, str) else s for s in log_only_loss_at_stages
         ]
         self.bootstrap_metrics = bootstrap_metrics
+
+        # Init dictionary to store dataframe columns where rows correspond to samples
+        # (for constructing test dataframe with predictions and metrics for each sample)
+        self.df_test_path = Path(df_test_path) if df_test_path is not None else None
+        self.df_test = collections.defaultdict(list)
 
     @abstractmethod
     def step(
@@ -163,3 +171,9 @@ class MassSpecGymModel(pl.LightningModule, ABC):
                 batch_size=batch_size,
                 metric_kwargs=metric_kwargs,
             )
+
+    def _update_df_test(self, dct: dict) -> None:
+        for col, vals in dct.items():
+            if isinstance(vals, torch.Tensor):
+                vals = vals.tolist()
+            self.df_test[col].extend(vals)
