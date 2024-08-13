@@ -2,6 +2,7 @@ import typing as T
 from abc import ABC
 
 import torch
+import pandas as pd
 from rdkit import Chem
 from rdkit.DataStructs import TanimotoSimilarity
 from torchmetrics.aggregation import MeanMetric
@@ -46,18 +47,21 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
         if stage in self.log_only_loss_at_stages:
             return
         
-        self.evaluate_de_novo_step(
+        metric_vals = self.evaluate_de_novo_step(
             outputs["mols_pred"],  # (bs, k) list of generated rdkit molecules or SMILES strings
             batch["mol"],  # (bs) list of ground truth SMILES strings
             stage=stage
         )
+
+        if stage == Stage.TEST and self.df_test_path is not None:
+            self._update_df_test(metric_vals)
 
     def evaluate_de_novo_step(
         self,
         mols_pred: list[list[T.Optional[Chem.Mol | str]]],
         mol_true: list[str],
         stage: Stage,
-    ) -> None:
+    ) -> dict[str, torch.Tensor]:
         """
         # TODO: refactor to compute only for max(k) and then use the result to obtain the rest by
         subsetting.
@@ -69,6 +73,9 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
                 strings with possible Nones if no molecule was generated
             mol_true (list[str]): (bs) list of ground-truth SMILES strings
         """
+        # Initialize return dictionary to store metric values per sample
+        metric_vals = {}
+
         # Get SMILES and RDKit molecule objects for all predictions
         if self.mol_pred_kind == "smiles":
             smiles_pred_valid, mols_pred_valid = [], []
@@ -118,7 +125,7 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
             smiles_pred_top_k = [smiles_pred_sample[:top_k] for smiles_pred_sample in smiles_pred]
             mols_pred_top_k = [mols_pred_sample[:top_k] for mols_pred_sample in mols_pred]
 
-            # 1. Evaluate minimum common edge subgraph:
+            # 1. Evaluate minimum common edge subgraph:  
             # Calculate MCES distance between top-k predicted molecules and ground truth and
             # report the minimum distance. The minimum distances for each sample in the batch are
             # averaged across the epoch.
@@ -138,13 +145,17 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
                         dists.append(self.mces_cache[(true, pred)])
                 min_mces_dists.append(min(min(dists), mces_thld))
             min_mces_dists = torch.tensor(min_mces_dists, device=self.device)
+
+            # Log
+            metric_name = stage.to_pref() + f"top_{top_k}_mces_dist"
             self._update_metric(
-                stage.to_pref() + f"top_{top_k}_min_mces_dist",
+                metric_name,
                 MeanMetric,
                 (min_mces_dists,),
                 batch_size=len(min_mces_dists),
                 bootstrap=stage == Stage.TEST
             )
+            metric_vals[metric_name] = min_mces_dists
 
             # 2. Evaluate Tanimoto similarity:
             # Calculate Tanimoto similarity between top-k predicted molecules and ground truth and
@@ -167,13 +178,17 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
                 ]
                 max_tanimoto_sims.append(max(sims))
             max_tanimoto_sims = torch.tensor(max_tanimoto_sims, device=self.device)
+
+            # Log
+            metric_name = stage.to_pref() + f"top_{top_k}_max_tanimoto_sim"
             self._update_metric(
-                stage.to_pref() + f"top_{top_k}_max_tanimoto_sim",
+                metric_name,
                 MeanMetric,
                 (max_tanimoto_sims,),
                 batch_size=len(max_tanimoto_sims),
                 bootstrap=stage == Stage.TEST
             )
+            metric_vals[metric_name] = max_tanimoto_sims
 
             # 3. Evaluate exact match (accuracy):
             # Calculate if the ground truth molecule is in the top-k predicted molecules and report
@@ -187,10 +202,40 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
                 for true, preds in zip(mol_true, mols_pred_top_k)
             ]
             in_top_k = torch.tensor(in_top_k, device=self.device)
+
+            # Log
+            metric_name = stage.to_pref() + f"top_{top_k}_accuracy"
             self._update_metric(
-                stage.to_pref() + f"top_{top_k}_accuracy",
+                metric_name,
                 MeanMetric,
                 (in_top_k,),
                 batch_size=len(in_top_k),
                 bootstrap=stage == Stage.TEST
             )
+            metric_vals[metric_name] = in_top_k
+
+        return metric_vals
+
+
+    def test_step(
+        self,
+        batch: dict,
+        batch_idx: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        outputs = super().test_step(batch, batch_idx)
+        
+        # Get generated (i.e., predicted) SMILES
+        if self.df_test_path is not None:
+            self._update_df_test({
+                'identifier': batch['identifier'],
+                'mols_pred': outputs['mols_pred']
+            })
+
+        return outputs
+
+    def on_test_epoch_end(self):
+        # Save test data frame to disk
+        if self.df_test_path is not None:
+            df_test = pd.DataFrame(self.df_test)
+            self.df_test_path.parent.mkdir(parents=True, exist_ok=True)
+            df_test.to_pickle(self.df_test_path)
