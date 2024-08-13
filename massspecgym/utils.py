@@ -29,6 +29,21 @@ def load_massspecgym():
     return df
 
 
+def load_unlabeled_mols(col_name: str = "smiles") -> pd.Series:
+    """
+    Load a list of unlabeled molecules.
+
+    Args:
+        col_name (str, optional): Name of the column to return. Should be one of ["smiles", "selfies"].
+    """
+    return pd.read_csv(
+        hugging_face_download(
+            "molecules/MassSpecGym_molecules_MCES2_disjoint_with_test_fold_4M.tsv"
+        ),
+        sep="\t"
+    )[col_name]
+
+
 def pad_spectrum(
     spec: np.ndarray, max_n_peaks: int, pad_value: float = 0.0
 ) -> np.ndarray:
