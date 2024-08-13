@@ -34,8 +34,9 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         **kwargs
     ):
         super().__init__()
-        self.lr = lr
-        self.weight_decay = weight_decay
+        self.save_hyperparameters()
+
+        # Setup metring logging
         self.log_only_loss_at_stages = [
             Stage(s) if isinstance(s, str) else s for s in log_only_loss_at_stages
         ]
@@ -92,7 +93,7 @@ class MassSpecGymModel(pl.LightningModule, ABC):
 
     def configure_optimizers(self):
         return torch.optim.Adam(
-            self.parameters(), lr=self.lr, weight_decay=self.weight_decay
+            self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay
         )
 
     def get_checkpoint_monitors(self) -> list[dict]:
