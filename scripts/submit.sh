@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# Submit a job to a SLURM cluster to train on 1 node.
+# Submit a single-node job to a SLURM cluster.
 
 # Usage example:
-# Train for 4 hours on 8 GPUs:
-# ./submit.sh train.sh 4:00 8
+# Run for 4 hours on 8 GPUs:
+# ./submit.sh run.sh 12:00 8
 
 # 1st argument: submission script name
 if [ -z "$1" ]
@@ -33,7 +33,8 @@ fi
 # Set the queue variable based on the value of gpus
 if [ "$gpus" -eq 1 ]
 then
-  queue="small-g"
+  # queue="small-g"
+  queue="standard-g"
 else
   queue="standard-g"
 fi
