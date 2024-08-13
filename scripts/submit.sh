@@ -1,13 +1,12 @@
 #!/bin/bash
 
-# Submit a job to a SLURM cluster to train on 8 GPUs on 1 node.
+# Submit a job to a SLURM cluster to train on 1 node.
 
 # Usage example:
-# Train for 4 hours:
-# ./submit.sh train.sh 4:00
+# Train for 4 hours on 8 GPUs:
+# ./submit.sh train.sh 4:00 8
 
-# Get the name of the file and time limit as positional arguments
-# Expected format for time: HH:MM
+# 1st argument: submission script name
 if [ -z "$1" ]
 then
   echo "Error: No submission script name provided."
@@ -16,11 +15,27 @@ else
   script_name="$1"
 fi
 
+# 2nd argument: time limit in hours
 if [ -z "$2" ]
 then
   time="48:00:00"
 else
   time="${2}:00"
+fi
+
+# 3rd argument: number of GPUs
+if [ -z "$3" ]
+then
+  gpus="8"
+else
+  gpus="${3}"
+fi
+# Set the queue variable based on the value of gpus
+if [ "$gpus" -eq 1 ]
+then
+  queue="small-g"
+else
+  queue="standard-g"
 fi
 
 # Init logging dir and common file
@@ -35,10 +50,10 @@ job_key=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 10 ; echo '')
 # Submit and capture the job ID
 job_id=$(sbatch \
   --account="${PROJECTID}" \
-  --partition=standard-g \
+  --partition="${queue}" \
   --nodes=1 \
-  --gpus-per-node=8 \
-  --ntasks-per-node=8 \
+  --gpus-per-node="${gpus}" \
+  --ntasks-per-node="${gpus}" \
   --time="${time}" \
   --output="${outdir}/${job_key}"_stdout.txt \
   --error="${outdir}/${job_key}"_errout.txt \
