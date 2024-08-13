@@ -1,4 +1,5 @@
 import argparse
+import datetime
 from pathlib import Path
 
 from rdkit import RDLogger
@@ -12,6 +13,7 @@ from massspecgym.data.transforms import MolFingerprinter, SpecBinner, SpecTokeni
 from massspecgym.models.base import Stage
 from massspecgym.models.retrieval import FingerprintFFNRetrieval, FromDictRetrieval
 from massspecgym.models.de_novo import SmilesTransformer
+from massspecgym.definitions import MASSSPECGYM_TEST_RESULTS_DIR
 
 
 # Suppress RDKit warnings and errors
@@ -100,6 +102,9 @@ def main(args):
 
     pl.seed_everything(args.seed)
 
+    now = datetime.datetime.now()
+    now_formatted = now.strftime("%Y-%m-%d_%H-%M-%S")
+
     # Init paths to data files
     if args.debug:
         args.dataset_pth = "../data/debug/example_5_spectra.mgf"
@@ -134,7 +139,8 @@ def main(args):
     common_kwargs = dict(
         lr=args.lr,
         weight_decay=args.weight_decay,
-        log_only_loss_at_stages=args.log_only_loss_at_stages
+        log_only_loss_at_stages=args.log_only_loss_at_stages,
+        df_test_path=MASSSPECGYM_TEST_RESULTS_DIR / f"{args.task}/{args.run_name}_{now_formatted}.pkl",
     )
     if args.task == 'retrieval':
         if args.model == 'fingerprint_ffn':
