@@ -137,7 +137,7 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
         mces_dists = torch.tensor(mces_dists, device=scores.device)
 
         # Log
-        metric_name = f"{stage.to_pref()}mces_at_1"
+        metric_name = f"{stage.to_pref()}mces@1"
         self._update_metric(
             metric_name,
             MeanMetric,
