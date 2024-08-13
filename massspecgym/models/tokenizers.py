@@ -108,12 +108,9 @@ class SelfiesTokenizer(SpecialSymbolsBaseTokenizer):
             for selfies_string in selfies_strings
         ]
 
-    def _decode_wordlevel_str_to_selfies(
-        self, text: str, skip_special_tokens: bool = True
-    ) -> str:
+    def _decode_wordlevel_str_to_selfies(self, text: str) -> str:
         """Converts a WordLevel string back to a SELFIES string."""
-        text = text.replace(" ", "")
-        return text
+        return text.replace(" ", "")
 
 
 class SmilesBPETokenizer(SpecialSymbolsBaseTokenizer):
