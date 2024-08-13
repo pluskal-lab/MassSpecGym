@@ -4,7 +4,8 @@ from rdkit.DataStructs import TanimotoSimilarity
 from rdkit.Chem import AllChem
 from tokenizers import Tokenizer
 from typing import List
-from massspecgym.utils import SelfiesTokenizer, SmilesBPETokenizer, tanimoto_morgan_similarity
+from massspecgym.models.tokenizers import SelfiesTokenizer, SmilesBPETokenizer
+from massspecgym.utils import tanimoto_morgan_similarity
 
 
 def assert_smiles_equal(smiles1: str, smiles2: str):
