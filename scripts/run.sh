@@ -16,19 +16,21 @@ export SLURM_GPUS_PER_NODE=8
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 
 # Train SmilesTransformer on de novo
-# srun --export=ALL --preserve-env python3 run.py \
-#     --job_key="${job_key}" \
-#     --run_name=rebuttal_smiles_transformer_train \
-#     --task=de_novo \
-#     --model=smiles_transformer \
-#     --log_only_loss_at_stages="train,val" \
-#     --batch_size=128 \
-#     --lr=0.0003 \
-#     --k_predictions=10 \
-#     --d_model=256 \
-#     --nhead=4 \
-#     --num_encoder_layers=6 \
-#     --dataset_pth="../data/MassSpecGym_with_test/MassSpecGym_with_test.tsv"
+srun --export=ALL --preserve-env python3 run.py \
+    --devices=1 \
+    --job_key="${job_key}" \
+    --run_name=debug_rebuttal_smiles_transformer_train \
+    --task=de_novo \
+    --model=smiles_transformer \
+    --log_only_loss_at_stages="train,val" \
+    --batch_size=128 \
+    --lr=0.0003 \
+    --k_predictions=10 \
+    --d_model=256 \
+    --nhead=4 \
+    --num_encoder_layers=6 \
+    --smiles_tokenizer="selfies" \
+    --dataset_pth="../data/MassSpecGym_with_test/MassSpecGym_with_test.tsv"
 
 # Train DeepSets on retrieval
 # srun --export=ALL --preserve-env python3 run.py \
@@ -63,20 +65,20 @@ export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 #     --candidates_pth="../data/MassSpecGym_with_test/MassSpecGym_retrieval_candidates_mass_with_test.json"
 
 # Test DeepSets from checkpoint on retrieval
-srun --export=ALL --preserve-env python3 run.py \
-    --job_key="${job_key}" \
-    --run_name=rebuttal_deepsets_test_mass \
-    --devices=1 \
-    --test_only \
-    --task=retrieval \
-    --model=deepsets \
-    --dataset_pth="../data/MassSpecGym_with_test/MassSpecGym_with_test.tsv" \
-    --candidates_pth="../data/MassSpecGym_with_test/MassSpecGym_retrieval_candidates_mass_with_test.json" \
-    --checkpoint_pth="./MassSpecGymRetrieval/iVJ15YLWQN/step=006067-val_loss=0.589.ckpt"
-    # mass
-    # --checkpoint_pth="./MassSpecGymRetrieval/iVJ15YLWQN/step=006067-val_loss=0.589.ckpt"
-    # formula
-    # TODO
+# srun --export=ALL --preserve-env python3 run.py \
+#     --job_key="${job_key}" \
+#     --run_name=rebuttal_deepsets_test_mass \
+#     --devices=1 \
+#     --test_only \
+#     --task=retrieval \
+#     --model=deepsets \
+#     --dataset_pth="../data/MassSpecGym_with_test/MassSpecGym_with_test.tsv" \
+#     --candidates_pth="../data/MassSpecGym_with_test/MassSpecGym_retrieval_candidates_mass_with_test.json" \
+#     --checkpoint_pth="./MassSpecGymRetrieval/iVJ15YLWQN/step=006067-val_loss=0.589.ckpt"
+#     # mass
+#     # --checkpoint_pth="./MassSpecGymRetrieval/iVJ15YLWQN/step=006067-val_loss=0.589.ckpt"
+#     # formula
+#     # TODO
 
 # Test FingerprintFFN from checkpoint on retrieval
 # srun --export=ALL --preserve-env python3 run.py \
