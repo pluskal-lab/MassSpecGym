@@ -210,9 +210,15 @@ def main(args):
         raise NotImplementedError(f"Task {args.task} not implemented.")
 
     # If checkpoint path is provided, load the model from the checkpoint instead
+    # and override the parameters not related to the model architecture and training
+    # TODO Extend to pass arguments to be overridden as an argument to the script
+    # For example: --override_args="df_test_path,lr,hidden_channels"
     if args.checkpoint_pth is not None:
-        model = type(model).load_from_checkpoint(args.checkpoint_pth)
-        print(model.hparams)
+        model = type(model).load_from_checkpoint(
+            args.checkpoint_pth,
+            log_only_loss_at_stages=args.log_only_loss_at_stages,
+            df_test_path=args.df_test_pth
+        )
 
     # Init logger
     if args.no_wandb:
