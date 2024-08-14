@@ -360,8 +360,6 @@ class RetrievalSimulationDataset(SimulationDataset):
             candidates_mask.append(smiles in self.candidates)
         candidates_mask = np.array(candidates_mask)
         assert candidates_mask.all()
-        # no_c_metadata = self.metadata[~candidates_mask]
-        # import pdb; pdb.set_trace()
 
     def __getitem__(self, i):
 

@@ -290,17 +290,14 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         pred_mzs = out_d["pred_mzs"]
         pred_logprobs = out_d["pred_logprobs"]
         pred_batch_idxs = out_d["pred_batch_idxs"]
-        try:
-            loss = self.loss_fn(
-                true_mzs=true_mzs,
-                true_logprobs=true_logprobs,
-                true_batch_idxs=true_batch_idxs,
-                pred_mzs=pred_mzs,
-                pred_logprobs=pred_logprobs,
-                pred_batch_idxs=pred_batch_idxs
-            )
-        except RuntimeError as e:
-            import pdb; pdb.set_trace()
+        loss = self.loss_fn(
+            true_mzs=true_mzs,
+            true_logprobs=true_logprobs,
+            true_batch_idxs=true_batch_idxs,
+            pred_mzs=pred_mzs,
+            pred_logprobs=pred_logprobs,
+            pred_batch_idxs=pred_batch_idxs
+        )
         mean_loss = torch.mean(loss)
         batch_size = torch.max(pred_batch_idxs)+1
 
