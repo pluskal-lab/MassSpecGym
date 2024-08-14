@@ -23,13 +23,13 @@ def assert_smiles_batch_equal(smiles_batch1: List[str], smiles_batch2: List[str]
 @pytest.fixture(scope="module")
 def selfies_tokenizer():
     """Fixture for SelfiesTokenizer that ensures it's initialized once per module."""
-    return SelfiesTokenizer(max_length=10)
+    return SelfiesTokenizer(max_len=10)
 
 
 @pytest.fixture(scope="module")
 def bpe_tokenizer():
     """Fixture for SmilesBPETokenizer that ensures it's initialized once per module."""
-    return SmilesBPETokenizer(max_length=10)
+    return SmilesBPETokenizer(max_len=10)
 
 
 def test_selfies_encode_decode(selfies_tokenizer: Tokenizer):
@@ -61,7 +61,7 @@ def test_selfies_padding_truncation(selfies_tokenizer: Tokenizer):
     """Test padding and truncation with SelfiesTokenizer."""
     long_smiles = "C1CC(C=C1)C(=O)OCC2C(C(C(C(O2)OC3=C(C=C(C=C3)O)COC(=O)C4(C=CCCC4=O)O)OC(=O)C5CCC=C5)O)O"  # Longer SMILES string
     encoded = selfies_tokenizer.encode(long_smiles)
-    assert len(encoded.ids) == 10  # Ensure it is truncated to max_length
+    assert len(encoded.ids) == 10  # Ensure it is truncated to max_len
 
     selfies_tokenizer.enable_padding(length=15)  # Increase padding length
     encoded = selfies_tokenizer.encode(long_smiles)
@@ -97,7 +97,7 @@ def test_bpe_padding_truncation(bpe_tokenizer: Tokenizer):
     """Test padding and truncation with SmilesBPETokenizer."""
     long_smiles = "C1CC(C=C1)C(=O)OCC2C(C(C(C(O2)OC3=C(C=C(C=C3)O)COC(=O)C4(C=CCCC4=O)O)OC(=O)C5CCC=C5)O)O"  # Longer SMILES string
     encoded = bpe_tokenizer.encode(long_smiles)
-    assert len(encoded.ids) == 10  # Ensure it is truncated to max_length
+    assert len(encoded.ids) == 10  # Ensure it is truncated to max_len
 
     bpe_tokenizer.enable_padding(length=15)  # Increase padding length
     encoded = bpe_tokenizer.encode(long_smiles)

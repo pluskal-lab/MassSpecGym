@@ -6,6 +6,7 @@ from rdkit import Chem
 from tokenizers import Tokenizer
 from massspecgym.models.base import Stage
 from massspecgym.models.de_novo.base import DeNovoMassSpecGymModel
+from massspecgym.definitions import PAD_TOKEN, SOS_TOKEN, EOS_TOKEN
 
 
 class SmilesTransformer(DeNovoMassSpecGymModel):
@@ -17,9 +18,9 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
         num_encoder_layers: int,
         num_decoder_layers: int,
         smiles_tokenizer: Tokenizer,
-        start_token: str = "<s>",
-        end_token: str = "</s>",
-        pad_token: str = "<pad>",
+        start_token: str = SOS_TOKEN,
+        end_token: str = EOS_TOKEN,
+        pad_token: str = PAD_TOKEN,
         dropout: float = 0.1,
         max_smiles_len: int = 100,
         k_predictions: int = 1,
@@ -133,11 +134,6 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
             )
 
             decoded_smiles = [seq.tolist() for seq in decoded_smiles]
-            decoded_smiles = [
-                (seq[:seq.index(self.end_token_id) + 1] if self.end_token_id in seq else seq)
-                for seq
-                in decoded_smiles
-            ]
             decoded_smiles_str.append(self.smiles_tokenizer.decode_batch(decoded_smiles))
 
         # Transpose from (k, batch_size) to (batch_size, k)
