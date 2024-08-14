@@ -107,9 +107,9 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
 
         # Generate SMILES strings
         if stage in self.log_only_loss_at_stages:
-            mols_pred = self.decode_smiles(batch["spec"])
-        else:
             mols_pred = None
+        else:
+            mols_pred = self.decode_smiles(batch["spec"])
 
         return dict(loss=loss, mols_pred=mols_pred)
 
