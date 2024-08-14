@@ -1,0 +1,32 @@
+# wandb
+wandb_name: "debug"
+# data
+pth: "data/MassSpecGym.tsv"
+split_type: "benchmark"
+instrument_types: ["QTOF","Orbitrap"]
+subsample_frac: 0.1
+# output
+mz_max: 1005.
+mz_bin_res: 0.01
+ints_transform: "sqrt"
+# model
+model_type: "fp"
+mlp_hidden_size: 1024
+mlp_dropout: 0.1
+mlp_num_layers: 4
+mlp_use_residuals: True
+ff_prec_mz_offset: 50
+ff_bidirectional: True
+ff_output_map_size: 256
+# optimization
+lr: 0.0004006
+lr_schedule: True
+lr_decay_rate: 0.7224
+weight_decay: 0.0000001
+batch_size: 4 #256
+max_epochs: 0 #20
+optimizer_type: "adamw"
+gradient_clip_val: 5.0
+gradient_clip_algorithm: norm
+# other
+accelerator: "gpu"

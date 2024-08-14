@@ -300,7 +300,7 @@ class MolToFingerprints(MolTransform):
         fps = self.from_smiles("CCO")["fps"]
         return {"fps_input_size": fps.shape[0]} 
     
-    def collate_fn(self, batch_data_d: dict) -> dict:
+    def collate_fn(self, batch_data_d: dict, prefix="") -> dict:
 
         collate_data_d = {}
         collate_data_d["fps"] = torch.stack(batch_data_d["fps"],dim=0)

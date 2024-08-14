@@ -33,7 +33,6 @@ class GNNSimulationMassSpecGymModel(SimulationMassSpecGymModel):
         **kwargs
     ):
         
-        super().__init__(**kwargs)
         self.fp_types = fp_types
         self.adducts = adducts
         self.instrument_types = instrument_types
@@ -55,10 +54,7 @@ class GNNSimulationMassSpecGymModel(SimulationMassSpecGymModel):
         self.ff_prec_mz_offset = ff_prec_mz_offset
         self.ff_bidirectional = ff_bidirectional
         self.ff_output_map_size = ff_output_map_size
-        self._setup_model()
-        self._setup_loss_fn()
-        self._setup_spec_fns()
-        self._setup_metric_kwargs()
+        super().__init__(**kwargs)
 
     def _get_input_sizes(self):
 

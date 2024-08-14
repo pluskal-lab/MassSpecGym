@@ -9,7 +9,7 @@ import numpy as np
 import os
 import yaml
 
-from massspecgym.data.datasets import SimulationDataset
+from massspecgym.data.datasets import SimulationDataset, RetrievalSimulationDataset
 from massspecgym.data.transforms import SpecToMzsInts, MolToPyG, StandardMeta, MolToFingerprints
 from massspecgym.simulation_utils.misc_utils import print_shapes
 from massspecgym.models.simulation.fp import FPSimulationMassSpecGymModel
@@ -32,7 +32,7 @@ def load_config(template_fp, custom_fp):
         config_d = deep_update(config_d, custom_d)
     return config_d
 
-def get_split_ss(ds, split_type):
+def get_split_ss(ds, split_type, subsample_frac=None):
 
     metadata = ds.metadata
     assert np.all(metadata.index == np.arange(metadata.shape[0]))
@@ -58,6 +58,23 @@ def get_split_ss(ds, split_type):
         test_idxs = metadata[metadata["inchikey"].isin(test_ids)].index
     else:
         raise ValueError(f"split_type {split_type} not supported")
+    if subsample_frac is not None:
+        assert isinstance(subsample_frac, float)
+        train_idxs = np.random.choice(
+            train_idxs, 
+            size=int(subsample_frac*len(train_idxs)),
+            replace=False
+        )
+        val_idxs = np.random.choice(
+            val_idxs, 
+            size=int(subsample_frac*len(val_idxs)),
+            replace=False
+        )
+        test_idxs = np.random.choice(
+            test_idxs, 
+            size=int(subsample_frac*len(test_idxs)),
+            replace=False
+        )
     train_mol_ids = metadata.loc[train_idxs]["inchikey"].unique()
     val_mol_ids = metadata.loc[val_idxs]["inchikey"].unique()
     test_mol_ids = metadata.loc[test_idxs]["inchikey"].unique()
@@ -123,17 +140,44 @@ def init_run(template_fp, custom_fp, wandb_mode):
     #     batch_size=8
     # )
 
-    train_ds, val_ds, test_ds = get_split_ss(ds,config_d["split_type"])
+    train_ds, val_ds, test_ds = get_split_ss(
+        ds,
+        config_d["split_type"],
+        subsample_frac=config_d["subsample_frac"]
+    )
 
     dl_config = {
         "num_workers": config_d["num_workers"],
         "batch_size": config_d["batch_size"],
         "drop_last": config_d["drop_last"],
+        "pin_memory": config_d["pin_memory"] and config_d["accelerator"] != "cpu",
+        "persistent_workers": config_d["persistent_workers"] and config_d["accelerator"] != "cpu",
         "collate_fn": ds.collate_fn
     }
 
     train_dl = DataLoader(train_ds, shuffle=True, **dl_config)
     val_dl = DataLoader(val_ds, shuffle=False, **dl_config)
+    test_dl = DataLoader(test_ds, shuffle=False, **dl_config)
+    
+    if config_d["do_retrieval"]:
+        # TODO: refactor with test_dl later
+        # we don't need to create separate datasets, can just overwrite...
+        ret_ds = RetrievalSimulationDataset(
+            pth=config_d["pth"],
+            meta_keys=config_d["meta_keys"],
+            spec_transform=spec_transform,
+            mol_transform=mol_transform,
+            meta_transform=meta_transform,
+            candidates_pth=config_d["candidates_pth"]
+        )
+        ret_dl_config = dl_config.copy()
+        ret_dl_config["collate_fn"] = ret_ds.collate_fn
+        _, _, test_ret_ds = get_split_ss(
+            ret_ds,
+            config_d["split_type"],
+            subsample_frac=config_d["subsample_frac"]
+        )
+        test_dl = DataLoader(test_ret_ds, shuffle=False, **ret_dl_config)
 
     logger = pl.loggers.WandbLogger(
         entity=config_d["wandb_entity"],
@@ -161,4 +205,10 @@ def init_run(template_fp, custom_fp, wandb_mode):
         pl_model, 
         train_dataloaders=train_dl, 
         val_dataloaders=val_dl
+    )
+
+    # Test
+    trainer.test(
+        pl_model,
+        dataloaders=test_dl
     )

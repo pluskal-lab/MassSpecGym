@@ -4,6 +4,7 @@ wandb_project: "MSG"
 wandb_name: "template"
 # data
 pth: "data/MassSpecGym_old.tsv"
+candidates_pth: "data/MassSpecGym_retrieval_candidates_mass_with_test.json"
 meta_keys: ["adduct","precursor_mz","instrument_type","collision_energy"]
 fp_types: ["morgan","maccs","rdkit"]
 adducts: ["[M+H]+"]
@@ -12,6 +13,7 @@ max_collision_energy: 200.
 mz_from: 10.
 mz_to: 1000.
 split_type: "benchmark"
+subsample_frac: 
 # input
 metadata_insert_location: "mlp"
 collision_energy_insert_size: 16
@@ -59,3 +61,7 @@ seed: 420
 enable_checkpointing: False
 cache_feats: False
 mp_sharing_strategy: "file_system"
+do_retrieval: True
+at_ks: [1, 5, 20]
+pin_memory: True
+persistent_workers: True

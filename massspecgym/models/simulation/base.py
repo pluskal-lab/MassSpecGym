@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 from torchmetrics import Metric
+from torchmetrics.retrieval import RetrievalHitRate
 
 from massspecgym.models.base import MassSpecGymModel, Stage
 from massspecgym.simulation_utils.misc_utils import scatter_logl2normalize, scatter_logsumexp, safelog, \
@@ -25,19 +26,18 @@ class CosSimMetric(Metric):
         self.add_state("cos_sims", default=torch.tensor(0.), dist_reduce_fx="sum")
         self.add_state("count", default=torch.tensor(0.), dist_reduce_fx="sum")
 
-    def update(
-            self, 
-            pred_mzs,
-            pred_logprobs,
-            pred_batch_idxs,
-            true_mzs,
-            true_logprobs,
-            true_batch_idxs
-        ):
+    def forward(
+        self, 
+        pred_mzs,
+        pred_logprobs,
+        pred_batch_idxs,
+        true_mzs,
+        true_logprobs,
+        true_batch_idxs
+    ):
 
         true_logprobs = self.transform_fn(true_logprobs, true_batch_idxs)
         pred_logprobs = self.transform_fn(pred_logprobs, pred_batch_idxs)
-        batch_size = torch.max(true_batch_idxs)+1
         cos_sims = 1.-sparse_cosine_distance(
             pred_mzs=pred_mzs,
             pred_logprobs=pred_logprobs,
@@ -48,8 +48,28 @@ class CosSimMetric(Metric):
             mz_max=self.mz_max,
             mz_bin_res=self.mz_bin_res
         )
+        return cos_sims
+
+    def update(
+        self, 
+        pred_mzs,
+        pred_logprobs,
+        pred_batch_idxs,
+        true_mzs,
+        true_logprobs,
+        true_batch_idxs
+    ):
+
+        cos_sims = self.forward(
+            pred_mzs,
+            pred_logprobs,
+            pred_batch_idxs,
+            true_mzs,
+            true_logprobs,
+            true_batch_idxs
+        )
         self.cos_sims += torch.sum(cos_sims)
-        self.count += batch_size
+        self.count += torch.max(true_batch_idxs)+1
         
     def compute(self):
 
@@ -67,12 +87,10 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         ints_transform,
         mz_max,
         mz_bin_res,
+        do_retrieval,
+        at_ks,
         **kwargs
     ):
-        super().__init__(
-            # include lr and weight_decay
-            **kwargs
-        )
         self.optimizer_type = optimizer_type
         self.lr_schedule = lr_schedule
         self.lr_decay_rate = lr_decay_rate
@@ -81,6 +99,19 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         self.ints_transform = ints_transform
         self.mz_max = mz_max
         self.mz_bin_res = mz_bin_res
+        # for retrieval
+        self.do_retrieval = do_retrieval
+        self.at_ks = at_ks
+        # call super class
+        super().__init__(
+            # include lr and weight_decay
+            **kwargs
+        )
+        # call setup functions
+        self._setup_model()
+        self._setup_loss_fn()
+        self._setup_spec_fns()
+        self._setup_metric_kwargs()
 
     @abstractmethod
     def _setup_model(self):
@@ -163,42 +194,6 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
 
         self.loss_fn = _loss_fn
 
-    # def get_cos_sim_fn(self, untransform: bool):
-
-    #     def _cos_sim_fn(
-    #         pred_mzs,
-    #         pred_logprobs,
-    #         pred_batch_idxs,
-    #         true_mzs,
-    #         true_logprobs,
-    #         true_batch_idxs):
-
-    #         if untransform:
-    #             # untransform
-    #             true_logprobs = safelog(self.ints_normalize_func(
-    #                 self.ints_untransform_func(torch.exp(true_logprobs), true_batch_idxs), 
-    #                 true_batch_idxs
-    #             ))
-    #             pred_logprobs = safelog(self.ints_normalize_func(
-    #                 self.ints_untransform_func(torch.exp(pred_logprobs), pred_batch_idxs), 
-    #                 pred_batch_idxs
-    #             ))
-
-    #         cos_sim = 1.-sparse_cosine_distance(
-    #             pred_mzs=pred_mzs,
-    #             pred_logprobs=pred_logprobs,
-    #             pred_batch_idxs=pred_batch_idxs,
-    #             true_mzs=true_mzs,
-    #             true_logprobs=true_logprobs,
-    #             true_batch_idxs=true_batch_idxs,
-    #             mz_max=self.mz_max,
-    #             mz_bin_res=self.mz_bin_res
-    #         )
-
-    #         return cos_sim
-        
-    #     return _cos_sim_fn
-
     def _setup_metric_kwargs(self):
 
         def transform_fn(logprobs, batch_idxs):
@@ -219,12 +214,69 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
             "mz_max": self.mz_max
         }
         self.cos_sim_obj_metric_kwargs = cos_sim_obj_metric_kwargs
+        # initialize cos_sim for retrieval
+        self.retrieval_score_metric = CosSimMetric(**self.cos_sim_metric_kwargs)
 
     def forward(self, **kwargs) -> dict:
 
         return self.model.forward(**kwargs)
 
-    def step(self, batch: dict, stage: Stage = Stage.NONE) -> dict:
+    def get_retrieval_outputs(
+        self, 
+        true_mzs,
+        true_logprobs,
+        true_batch_idxs,
+        candidates_data,
+        **kwargs
+    ) -> dict:
+
+        input_data = {}
+        for k in candidates_data:
+            input_data[k] = candidates_data[k]
+        c_ptr = input_data["batch_ptr"]
+        for k in ["precursor_mz", "adduct", "instrument_type", "collision_energy"]:
+            if k in kwargs:
+                assert not k in input_data, k
+                input_data[k] = torch.repeat_interleave(kwargs[k],c_ptr)
+        output_data = self.forward(**input_data)
+        c_offset = torch.cumsum(c_ptr, dim=0)
+        c_offset = torch.cat([
+            torch.zeros((1,),dtype=c_offset.dtype,device=c_offset.device),
+            c_offset
+        ], dim=0)
+        c_total = torch.sum(c_ptr)
+        c_true_mzs, c_true_logprobs, c_true_batch_idxs = [], [], []
+        for idx in range(c_ptr.shape[0]):
+            mask = true_batch_idxs==idx
+            ptr = c_ptr[idx]
+            c_true_mzs.append(true_mzs[mask].repeat(ptr))
+            c_true_logprobs.append(true_logprobs[mask].repeat(ptr))
+            c_true_batch_idxs.append(torch.repeat_interleave(torch.arange(ptr,device=c_ptr.device),mask.sum()) + c_offset[idx])
+        c_true_mzs = torch.cat(c_true_mzs, dim=0)
+        c_true_logprobs = torch.cat(c_true_logprobs, dim=0)
+        c_true_batch_idxs = torch.cat(c_true_batch_idxs, dim=0)
+        retrieval_score_metric = CosSimMetric(**self.cos_sim_metric_kwargs)
+        c_scores = retrieval_score_metric.forward(
+            true_mzs=c_true_mzs,
+            true_logprobs=c_true_logprobs,
+            true_batch_idxs=c_true_batch_idxs,
+            pred_mzs=output_data["pred_mzs"],
+            pred_logprobs=output_data["pred_logprobs"],
+            pred_batch_idxs=output_data["pred_batch_idxs"]
+        )
+        assert c_scores.shape[0] == c_total, (c_scores.shape, c_total)
+        # prepare dictionary
+        ret_out_d = {}
+        ret_out_d["retrieval_scores"] = c_scores
+        ret_out_d["retrieval_labels"] = input_data["labels"]
+        ret_out_d["retrieval_batch_ptr"] = c_ptr
+        return ret_out_d
+
+    def step(
+        self, 
+        batch: dict, 
+        stage: Stage = Stage.NONE
+    ) -> dict:
 
         true_mzs, true_logprobs, true_batch_idxs = self._preproc_spec(
             batch["spec_mzs"],
@@ -232,7 +284,7 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
             batch["spec_batch_idxs"]
         )
 
-        out_d = self.model.forward(
+        out_d = self.forward(
             **batch
         )
         pred_mzs = out_d["pred_mzs"]
@@ -250,7 +302,6 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         batch_size = torch.max(pred_batch_idxs)+1
 
         # Log loss
-        # TODO: not sure if this batch_size param messes up running total
         self.log(
             stage.to_pref() + "loss_step",
             mean_loss,
@@ -268,7 +319,19 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
             "pred_batch_idxs": pred_batch_idxs,
             "true_mzs": true_mzs,
             "true_logprobs": true_logprobs,
-            "true_batch_idxs": true_batch_idxs}
+            "true_batch_idxs": true_batch_idxs
+        }
+
+        if stage == Stage.TEST and self.do_retrieval:
+            # retrieval
+            assert "candidates_data" in batch, batch.keys()
+            ret_out_d = self.get_retrieval_outputs(
+                true_mzs=true_mzs,
+                true_logprobs=true_logprobs,
+                true_batch_idxs=true_batch_idxs,
+                **batch
+            )
+            out_d.update(ret_out_d)
 
         return out_d
 
@@ -304,11 +367,13 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
             true_batch_idxs=outputs["true_batch_idxs"],
             stage=stage
         )
-        # self.evaluate_hit_rate_step(
-        #     outputs["spec_pred"],
-        #     batch["spec"],
-        #     metric_pref=metric_pref
-        # )
+        if self.do_retrieval:
+            self.evaluate_retrieval_step(
+                scores=outputs["retrieval_scores"],
+                labels=outputs["retrieval_labels"],
+                batch_ptr=outputs["retrieval_batch_ptr"],
+                stage=stage
+            )
 
     def evaluate_cos_similarity_step(
         self,
@@ -351,19 +416,34 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
             log_n_samples=False
         )
 
-    def evaluate_hit_rate_step(
+    def evaluate_retrieval_step(
         self,
-        pred_mzs: torch.Tensor,
-        pred_logprobs: torch.Tensor,
-        pred_batch_idxs: torch.Tensor,
-        true_mzs: torch.Tensor,
-        true_logprobs: torch.Tensor,
-        true_batch_idxs: torch.Tensor,
-        stage: Stage
+        scores: torch.Tensor,
+        labels: torch.Tensor,
+        batch_ptr: torch.Tensor,
+        stage: Stage,
     ) -> None:
         """
-        Evaulate Hit rate @ {1, 5, 20} (typically reported as Accuracy @ {1, 5, 20}).
+        Main evaluation method for the retrieval models. The retrieval step is evaluated by 
+        computing the hit rate at different top-k values.
+
+        Args:
+            scores (torch.Tensor): Concatenated scores for all candidates for all samples in the 
+                batch
+            labels (torch.Tensor): Concatenated True/False labels for all candidates for all samples
+                 in the batch
+            batch_ptr (torch.Tensor): Number of each sample's candidates in the concatenated tensors
         """
-        
-        raise NotImplementedError
+        assert stage == Stage.TEST, stage
+        # Evaluate hitrate at different top-k values
+        indexes = torch.arange(batch_ptr.size(0), device=batch_ptr.device)
+        indexes = torch.repeat_interleave(indexes, batch_ptr)
+        for at_k in self.at_ks:
+            self._update_metric(
+                stage.to_pref() + f"hit_rate@{at_k}",
+                RetrievalHitRate,
+                (scores, labels, indexes),
+                batch_size=batch_ptr.size(0),
+                metric_kwargs=dict(top_k=at_k),
+            )
 
