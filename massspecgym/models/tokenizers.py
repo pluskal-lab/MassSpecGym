@@ -8,7 +8,7 @@ import massspecgym.utils as utils
 from massspecgym.definitions import PAD_TOKEN, SOS_TOKEN, EOS_TOKEN, UNK_TOKEN
 
 
-class SpecialSymbolsBaseTokenizer(BaseTokenizer):
+class SpecialTokensBaseTokenizer(BaseTokenizer):
     def __init__(
         self,
         tokenizer: Tokenizer,
@@ -55,7 +55,7 @@ class SpecialSymbolsBaseTokenizer(BaseTokenizer):
         )
 
 
-class SelfiesTokenizer(SpecialSymbolsBaseTokenizer):
+class SelfiesTokenizer(SpecialTokensBaseTokenizer):
     def __init__(
             self,
             selfies_train: T.Optional[T.Union[str, T.List[str]]] = None,
@@ -134,7 +134,7 @@ class SelfiesTokenizer(SpecialSymbolsBaseTokenizer):
         return text.replace(" ", "")
 
 
-class SmilesBPETokenizer(SpecialSymbolsBaseTokenizer):
+class SmilesBPETokenizer(SpecialTokensBaseTokenizer):
     def __init__(self, smiles_pth: T.Optional[str] = None, **kwargs):
         """
         Initialize the BPE tokenizer for SMILES strings, with optional training data.
@@ -149,6 +149,7 @@ class SmilesBPETokenizer(SpecialSymbolsBaseTokenizer):
         else:
             smiles = utils.load_unlabeled_mols("smiles").tolist()
             smiles += utils.load_train_mols().tolist()
+
             print(f"Training tokenizer on {len(smiles)} SMILES strings.")
             tokenizer.train_from_iterator(smiles)
 

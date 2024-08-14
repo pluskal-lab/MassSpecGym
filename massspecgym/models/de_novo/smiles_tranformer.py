@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import typing as T
-from tokenizers import Tokenizer
+from massspecgym.models.tokenizers import SpecialTokensBaseTokenizer
 from massspecgym.models.base import Stage
 from massspecgym.models.de_novo.base import DeNovoMassSpecGymModel
 from massspecgym.definitions import PAD_TOKEN, SOS_TOKEN, EOS_TOKEN
@@ -16,7 +16,7 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
         nhead: int,
         num_encoder_layers: int,
         num_decoder_layers: int,
-        smiles_tokenizer: Tokenizer,
+        smiles_tokenizer: SpecialTokensBaseTokenizer,
         start_token: str = SOS_TOKEN,
         end_token: str = EOS_TOKEN,
         pad_token: str = PAD_TOKEN,
