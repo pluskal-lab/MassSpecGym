@@ -104,17 +104,14 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
         )
 
         loss = self.criterion(smiles_pred.view(-1, self.vocab_size), smiles[1:, :].contiguous().view(-1))
-        return dict(loss=loss, mols_pred=None)
 
-    def validation_step(self, batch: dict, batch_idx: torch.Tensor) -> tuple:
-        outputs = self.step(batch)
-        decoded_smiles = self.decode_smiles(batch["spec"])
-        return dict(loss=outputs["loss"], mols_pred=decoded_smiles)
-    
-    def test_step(self, batch: dict, batch_idx: torch.Tensor) -> tuple:
-        outputs = self.step(batch)
-        decoded_smiles = self.decode_smiles(batch["spec"])
-        return dict(loss=outputs["loss"], mols_pred=decoded_smiles)
+        # Generate SMILES strings
+        if stage in self.log_only_loss_at_stages:
+            mols_pred = self.decode_smiles(batch["spec"])
+        else:
+            mols_pred = None
+
+        return dict(loss=loss, mols_pred=mols_pred)
 
     def generate_src_padding_mask(self, spec):
         return spec.sum(-1) == 0
