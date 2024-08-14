@@ -14,7 +14,7 @@ class SpecialTokensBaseTokenizer(BaseTokenizer):
         tokenizer: Tokenizer,
         max_len: T.Optional[int] = None,
     ):
-        """Initialize the base tokenizer with special tokens and optional padding."""
+        """Initialize the base tokenizer with special tokens performing padding and truncation."""
         super().__init__(tokenizer)
 
         # Save essential attributes
