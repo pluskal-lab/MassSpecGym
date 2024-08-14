@@ -1,0 +1,14 @@
+# wandb
+wandb_name: "debug_ret_prec_only"
+# data
+pth: "data/MassSpecGym_small.tsv"
+split_type: "benchmark"
+instrument_types: ["QTOF","Orbitrap"]
+# output
+mz_max: 1005.
+mz_bin_res: 0.01
+ints_transform: "none"
+# model
+model_type: "prec_only"
+# optimization
+max_epochs: 0

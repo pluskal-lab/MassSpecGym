@@ -62,6 +62,7 @@ enable_checkpointing: False
 cache_feats: False
 mp_sharing_strategy: "file_system"
 do_retrieval: True
+retrieval_batch_size: 4
 at_ks: [1, 5, 20]
 pin_memory: True
 persistent_workers: True

@@ -171,6 +171,7 @@ def init_run(template_fp, custom_fp, wandb_mode):
             candidates_pth=config_d["candidates_pth"]
         )
         ret_dl_config = dl_config.copy()
+        ret_dl_config["batch_size"] = config_d["retrieval_batch_size"]
         ret_dl_config["collate_fn"] = ret_ds.collate_fn
         _, _, test_ret_ds = get_split_ss(
             ret_ds,

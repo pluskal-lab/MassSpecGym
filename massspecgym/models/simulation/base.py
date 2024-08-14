@@ -26,7 +26,7 @@ class CosSimMetric(Metric):
         self.add_state("cos_sims", default=torch.tensor(0.), dist_reduce_fx="sum")
         self.add_state("count", default=torch.tensor(0.), dist_reduce_fx="sum")
 
-    def forward(
+    def calculate(
         self, 
         pred_mzs,
         pred_logprobs,
@@ -60,7 +60,7 @@ class CosSimMetric(Metric):
         true_batch_idxs
     ):
 
-        cos_sims = self.forward(
+        cos_sims = self.calculate(
             pred_mzs,
             pred_logprobs,
             pred_batch_idxs,
@@ -214,8 +214,6 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
             "mz_max": self.mz_max
         }
         self.cos_sim_obj_metric_kwargs = cos_sim_obj_metric_kwargs
-        # initialize cos_sim for retrieval
-        self.retrieval_score_metric = CosSimMetric(**self.cos_sim_metric_kwargs)
 
     def forward(self, **kwargs) -> dict:
 
@@ -255,8 +253,9 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         c_true_mzs = torch.cat(c_true_mzs, dim=0)
         c_true_logprobs = torch.cat(c_true_logprobs, dim=0)
         c_true_batch_idxs = torch.cat(c_true_batch_idxs, dim=0)
+        assert output_data["pred_batch_idxs"].max() == c_true_batch_idxs.max()
         retrieval_score_metric = CosSimMetric(**self.cos_sim_metric_kwargs)
-        c_scores = retrieval_score_metric.forward(
+        c_scores = retrieval_score_metric.calculate(
             true_mzs=c_true_mzs,
             true_logprobs=c_true_logprobs,
             true_batch_idxs=c_true_batch_idxs,
@@ -264,11 +263,12 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
             pred_logprobs=output_data["pred_logprobs"],
             pred_batch_idxs=output_data["pred_batch_idxs"]
         )
-        assert c_scores.shape[0] == c_total, (c_scores.shape, c_total)
+        c_labels = input_data["labels"]
+        assert c_scores.shape[0] == c_labels.shape[0] == c_total, (c_scores.shape, c_labels.shape, c_total)
         # prepare dictionary
         ret_out_d = {}
         ret_out_d["retrieval_scores"] = c_scores
-        ret_out_d["retrieval_labels"] = input_data["labels"]
+        ret_out_d["retrieval_labels"] = c_labels
         ret_out_d["retrieval_batch_ptr"] = c_ptr
         return ret_out_d
 
