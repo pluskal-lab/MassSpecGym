@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import typing as T
-from tokenizers import Tokenizer
+from massspecgym.models.tokenizers import SpecialTokensBaseTokenizer
 from massspecgym.models.base import Stage
 from massspecgym.models.de_novo.base import DeNovoMassSpecGymModel
 from massspecgym.definitions import PAD_TOKEN, SOS_TOKEN, EOS_TOKEN
@@ -16,7 +16,7 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
         nhead: int,
         num_encoder_layers: int,
         num_decoder_layers: int,
-        smiles_tokenizer: Tokenizer,
+        smiles_tokenizer: SpecialTokensBaseTokenizer,
         start_token: str = SOS_TOKEN,
         end_token: str = EOS_TOKEN,
         pad_token: str = PAD_TOKEN,
@@ -104,17 +104,14 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
         )
 
         loss = self.criterion(smiles_pred.view(-1, self.vocab_size), smiles[1:, :].contiguous().view(-1))
-        return dict(loss=loss, mols_pred=None)
 
-    def validation_step(self, batch: dict, batch_idx: torch.Tensor) -> tuple:
-        outputs = self.step(batch)
-        decoded_smiles = self.decode_smiles(batch["spec"])
-        return dict(loss=outputs["loss"], mols_pred=decoded_smiles)
-    
-    def test_step(self, batch: dict, batch_idx: torch.Tensor) -> tuple:
-        outputs = self.step(batch)
-        decoded_smiles = self.decode_smiles(batch["spec"])
-        return dict(loss=outputs["loss"], mols_pred=decoded_smiles)
+        # Generate SMILES strings
+        if stage in self.log_only_loss_at_stages:
+            mols_pred = None
+        else:
+            mols_pred = self.decode_smiles(batch["spec"])
+
+        return dict(loss=loss, mols_pred=mols_pred)
 
     def generate_src_padding_mask(self, spec):
         return spec.sum(-1) == 0
