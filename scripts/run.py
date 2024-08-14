@@ -126,7 +126,7 @@ def main(args):
 
     # Load dataset
     if args.task == 'retrieval':
-        if args.model == 'fingerprints_ffn':
+        if args.model == 'fingerprint_ffn':
             spec_transform = SpecBinner(max_mz=args.max_mz, bin_width=args.bin_width)
         else:
             spec_transform = SpecTokenizer(n_peaks=args.n_peaks)
@@ -212,6 +212,7 @@ def main(args):
     # If checkpoint path is provided, load the model from the checkpoint instead
     if args.checkpoint_pth is not None:
         model = type(model).load_from_checkpoint(args.checkpoint_pth)
+        print(model.hparams)
 
     # Init logger
     if args.no_wandb:
