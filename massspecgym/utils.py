@@ -10,6 +10,8 @@ import pandas as pd
 import typing as T
 import pulp
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from pathlib import Path
 from myopic_mces.myopic_mces import MCES
 from rdkit.Chem import AllChem as Chem
@@ -378,3 +380,11 @@ def unbatch_list(batch_list: list, batch_idx: torch.Tensor) -> list:
         [batch_list[j] for j in range(len(batch_list)) if batch_idx[j] == i]
         for i in range(batch_idx[-1] + 1)
     ]
+
+
+class CosSimLoss(nn.Module):
+    def __init__(self):
+        super(CosSimLoss, self).__init__()
+
+    def forward(self, inputs, targets):
+        return 1 - F.cosine_similarity(inputs, targets).mean()

@@ -11,7 +11,9 @@ import massspecgym.utils as utils
 from massspecgym.data import RetrievalDataset, MassSpecDataset, MassSpecDataModule
 from massspecgym.data.transforms import MolFingerprinter, SpecBinner, SpecTokenizer
 from massspecgym.models.base import Stage
-from massspecgym.models.retrieval import FingerprintFFNRetrieval, FromDictRetrieval, RandomRetrieval
+from massspecgym.models.retrieval import (
+    FingerprintFFNRetrieval, FromDictRetrieval, RandomRetrieval, DeepSetsRetrieval
+)
 from massspecgym.models.de_novo import SmilesTransformer
 from massspecgym.definitions import MASSSPECGYM_TEST_RESULTS_DIR
 
@@ -95,7 +97,12 @@ parser.add_argument('--hidden_channels', type=int, default=512)
 parser.add_argument('--num_layers', type=int, default=2)
 # parser.add_argument('--dropout', type=float, default=0.0)
 
-# 2. FromDict (for evaluating given fingerprints)
+# 2. DeepSets
+# parser.add_argument('--hidden_channels', type=int, default=512)
+parser.add_argument('--num_layers_per_mlp', type=int, default=2)
+# parser.add_argument('--dropout', type=float, default=0.0)
+
+# 3. FromDict (for evaluating given fingerprints)
 parser.add_argument('--dct_path', type=str, default=None)
 
 
@@ -119,9 +126,13 @@ def main(args):
 
     # Load dataset
     if args.task == 'retrieval':
+        if args.model == 'fingerprints_ffn':
+            spec_transform = SpecBinner(max_mz=args.max_mz, bin_width=args.bin_width)
+        else:
+            spec_transform = SpecTokenizer(n_peaks=args.n_peaks)
         dataset = RetrievalDataset(
             pth=args.dataset_pth,
-            spec_transform=SpecBinner(max_mz=args.max_mz, bin_width=args.bin_width),
+            spec_transform=spec_transform,
             mol_transform=MolFingerprinter(fp_size=args.fp_size),
             candidates_pth=args.candidates_pth,
         )
@@ -155,6 +166,15 @@ def main(args):
                 hidden_channels=args.hidden_channels,
                 out_channels=args.fp_size,
                 num_layers=args.num_layers,
+                dropout=args.dropout,
+                **common_kwargs
+            )
+        elif args.model == 'deepsets':
+            model = DeepSetsRetrieval(
+                in_channels=2,
+                hidden_channels=args.hidden_channels,
+                out_channels=args.fp_size,
+                num_layers_per_mlp=args.num_layers_per_mlp,
                 dropout=args.dropout,
                 **common_kwargs
             )
