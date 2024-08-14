@@ -24,11 +24,19 @@ from torchmetrics.wrappers import BootStrapper
 from torchmetrics.metric import Metric
 
 
-def load_massspecgym():
+def load_massspecgym(fold: T.Optional[str] = None) -> pd.DataFrame:
+    """
+    Load the MassSpecGym dataset.
+
+    Args:
+        fold (str, optional): Fold name to load. If None, the entire dataset is loaded.
+    """
     df = pd.read_csv(hugging_face_download("MassSpecGym.tsv"), sep="\t")
     df = df.set_index("identifier")
     df['mzs'] = df['mzs'].apply(parse_spec_array)
     df['intensities'] = df['intensities'].apply(parse_spec_array)
+    if fold is not None:
+        df = df[df['fold'] == fold]
     return df
 
 
@@ -45,6 +53,16 @@ def load_unlabeled_mols(col_name: str = "smiles") -> pd.Series:
         ),
         sep="\t"
     )[col_name]
+
+
+def load_train_mols(col_name: str = "smiles") -> pd.Series:
+    """
+    Load a list of training molecules.
+
+    Args:
+        col_name (str, optional): Name of the column to return. Should be one of ["smiles", "selfies"].
+    """
+    return load_massspecgym("train")[col_name]
 
 
 def pad_spectrum(
