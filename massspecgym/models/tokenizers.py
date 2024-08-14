@@ -147,7 +147,8 @@ class SmilesBPETokenizer(SpecialSymbolsBaseTokenizer):
         if smiles_pth:
             tokenizer.train(smiles_pth)
         else:
-            smiles = utils.load_unlabeled_mols("smiles")
+            smiles = utils.load_unlabeled_mols("smiles").tolist()
+            smiles += utils.load_train_mols().tolist()
             print(f"Training tokenizer on {len(smiles)} SMILES strings.")
             tokenizer.train_from_iterator(smiles)
 
