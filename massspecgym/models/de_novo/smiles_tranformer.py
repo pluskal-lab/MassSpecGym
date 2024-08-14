@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import typing as T
-from rdkit import Chem
 from tokenizers import Tokenizer
 from massspecgym.models.base import Stage
 from massspecgym.models.de_novo.base import DeNovoMassSpecGymModel
@@ -22,7 +21,7 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
         end_token: str = EOS_TOKEN,
         pad_token: str = PAD_TOKEN,
         dropout: float = 0.1,
-        max_smiles_len: int = 100,
+        max_smiles_len: int = 200,
         k_predictions: int = 1,
         temperature: T.Optional[float] = 1.0,
         pre_norm=False,
