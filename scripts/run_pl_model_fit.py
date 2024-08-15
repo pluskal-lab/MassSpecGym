@@ -27,6 +27,17 @@ if __name__ == "__main__":
         default="online",
         choices=["online","offline","disabled"]
     )
+    parser.add_argument(
+        "-s",
+        "--checkpoint_dp",
+        type=str,
+        required=True,
+    )
     args = parser.parse_args()
 
-    init_run(args.template_fp, args.custom_fp, args.wandb_mode)
+    init_run(
+        args.template_fp, 
+        args.custom_fp,
+        args.checkpoint_dp,
+        args.wandb_mode
+    )

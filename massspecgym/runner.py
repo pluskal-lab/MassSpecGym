@@ -5,6 +5,7 @@ from tqdm.notebook import tqdm
 from pprint import pprint
 from torch.utils.data import Subset
 import pytorch_lightning as pl
+from pytorch_lightning.callbacks import ModelCheckpoint
 import numpy as np
 import os
 import yaml
@@ -88,7 +89,7 @@ def get_split_ss(ds, split_type, subsample_frac=None):
     test_ds = Subset(ds, test_idxs)
     return train_ds, val_ds, test_ds
 
-def init_run(template_fp, custom_fp, wandb_mode):    
+def init_run(template_fp, custom_fp, checkpoint_dp, wandb_mode):    
 
     config_d = load_config(template_fp,custom_fp)
 
@@ -190,15 +191,25 @@ def init_run(template_fp, custom_fp, wandb_mode):
     )
     # logger = None
 
+    # checkpointing
+    checkpoint_callback = ModelCheckpoint(
+        dirpath=checkpoint_dp,
+        save_top_k=1,
+        monitor="val_cos_sim",
+        mode="max",
+        filename=f"{{epoch:03d}}",
+        save_last=False
+    )
+
     # Init trainer
     trainer = pl.Trainer(
         accelerator=config_d["accelerator"], 
         max_epochs=config_d["max_epochs"], 
         logger=logger, 
         log_every_n_steps=config_d["log_every_n_steps"],
-        enable_checkpointing=config_d["enable_checkpointing"],
         gradient_clip_val=config_d["gradient_clip_val"],
-        gradient_clip_algorithm=config_d["gradient_clip_algorithm"]
+        gradient_clip_algorithm=config_d["gradient_clip_algorithm"],
+        callbacks=[checkpoint_callback]
     )
 
     # Train
@@ -211,5 +222,6 @@ def init_run(template_fp, custom_fp, wandb_mode):
     # Test
     trainer.test(
         pl_model,
-        dataloaders=test_dl
+        dataloaders=test_dl,
+        ckpt_path="best"
     )

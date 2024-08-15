@@ -58,7 +58,6 @@ num_workers: 8
 accelerator: "cpu"
 log_every_n_steps: 1
 seed: 420
-enable_checkpointing: False
 cache_feats: False
 mp_sharing_strategy: "file_system"
 do_retrieval: True
