@@ -4,6 +4,7 @@ wandb_name: "debug_ret_prec_only"
 pth: "data/MassSpecGym_small.tsv"
 split_type: "benchmark"
 instrument_types: ["QTOF","Orbitrap"]
+subsample_frac: 0.1
 # output
 mz_max: 1005.
 mz_bin_res: 0.01

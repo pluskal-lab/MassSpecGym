@@ -7,6 +7,7 @@ import torch.nn as nn
 import pytorch_lightning as pl
 from torchmetrics import Metric
 from torchmetrics.retrieval import RetrievalHitRate
+from torchmetrics.functional.retrieval.hit_rate import retrieval_hit_rate
 
 from massspecgym.models.base import MassSpecGymModel, Stage
 from massspecgym.simulation_utils.misc_utils import scatter_logl2normalize, scatter_logsumexp, safelog, \
@@ -436,14 +437,15 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         """
         assert stage == Stage.TEST, stage
         # Evaluate hitrate at different top-k values
-        indexes = torch.arange(batch_ptr.size(0), device=batch_ptr.device)
-        indexes = torch.repeat_interleave(indexes, batch_ptr)
+        indices = torch.arange(batch_ptr.size(0), device=batch_ptr.device)
+        indices = torch.repeat_interleave(indices, batch_ptr)
+        # add tiny amount of random noise, to break ties
+        scores = scores + 1e-5*torch.randn_like(scores)
         for at_k in self.at_ks:
             self._update_metric(
                 stage.to_pref() + f"hit_rate@{at_k}",
                 RetrievalHitRate,
-                (scores, labels, indexes),
+                (scores, labels, indices),
                 batch_size=batch_ptr.size(0),
                 metric_kwargs=dict(top_k=at_k),
             )
-
