@@ -373,8 +373,8 @@ class RetrievalSimulationDataset(SimulationDataset):
             raise ValueError(f'No candidates for the query molecule {smiles}.')
         candidates_smiles = self.candidates[smiles]
 
-        # Save the original SMILES representations of the canidates (for evaluation)
-        item["candidates_smiles"] = candidates_smiles
+        # # Save the original SMILES representations of the canidates (for evaluation)
+        # item["candidates_smiles"] = candidates_smiles
 
         # Create neg/pos label mask by matching the query molecule with the candidates
         item_label = self.mol_label_transform(smiles)
@@ -385,17 +385,26 @@ class RetrievalSimulationDataset(SimulationDataset):
             raise ValueError(
                 f'Query molecule {smiles} not found in the candidates list.'
             )
+        # item["candidates_labels"] = torch.tensor(candidates_labels)
+
+        candidates_mol_feats, candidates_mask = [], []
+        for c in candidates_smiles:
+            try:
+                candidates_mol_feats.append(self.mol_transform(c))
+                candidates_mask.append(True)
+            except IndexError as e:
+                print(f"> error processing candidate {c} for query {smiles}")
+                candidates_mol_feats.append(None)
+                candidates_mask.append(False)
+        
+        candidates_smiles = [candidates_smiles[i] for i in range(len(candidates_smiles)) if candidates_mask[i]]
+        candidates_labels = [candidates_labels[i] for i in range(len(candidates_labels)) if candidates_mask[i]]
+        candidates_mol_feats = [candidates_mol_feats[i] for i in range(len(candidates_mol_feats)) if candidates_mask[i]]
+
+        # filter based on mask
+        item["candidates_smiles"] = candidates_smiles
         item["candidates_labels"] = torch.tensor(candidates_labels)
-
-        item["candidates_mol_feats"] = [self.mol_transform(c) for c in candidates_smiles]
-
-        # candidates_meta_feats = {}
-        # for key in self.meta_keys:
-        #     candidates_meta_feats[key] = deepcopy(item[key])
-        # item[f"candidates_meta_feats"] = candidates_meta_feats
-
-        # TODO: could put metadata information here...
-        # TODO: could put true spectrum duplication in here...
+        item["candidates_mol_feats"] = candidates_mol_feats
 
         return item
 
