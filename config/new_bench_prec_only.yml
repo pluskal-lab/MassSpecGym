@@ -12,3 +12,5 @@ ints_transform: "none"
 model_type: "prec_only"
 # optimization
 max_epochs: 1
+# other
+accelerator: "gpu"

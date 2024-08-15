@@ -2,9 +2,11 @@
 wandb_name: "debug_ret_prec_only"
 # data
 pth: "data/MassSpecGym_small.tsv"
+# candidates_pth: "data/MassSpecGym_retrieval_candidates_mass_with_test.json"
+candidates_pth: "data/MassSpecGym_retrieval_candidates_formula_with_test.json"
 split_type: "benchmark"
 instrument_types: ["QTOF","Orbitrap"]
-subsample_frac: 0.1
+# subsample_frac: 0.1
 # output
 mz_max: 1005.
 mz_bin_res: 0.01
@@ -13,3 +15,6 @@ ints_transform: "none"
 model_type: "prec_only"
 # optimization
 max_epochs: 0
+# other
+accelerator: "gpu"
+retrieval_batch_size: 8

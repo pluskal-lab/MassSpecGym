@@ -30,7 +30,6 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         log_only_loss_at_stages: T.Sequence[Stage | str] = (),
         bootstrap_metrics: bool = True,
         df_test_path: T.Optional[str | Path] = None,
-        *args,
         **kwargs
     ):
         super().__init__()
@@ -40,7 +39,6 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         self.log_only_loss_at_stages = [
             Stage(s) if isinstance(s, str) else s for s in log_only_loss_at_stages
         ]
-        self.bootstrap_metrics = bootstrap_metrics
 
         # Init dictionary to store dataframe columns where rows correspond to samples
         # (for constructing test dataframe with predictions and metrics for each sample)
@@ -123,7 +121,7 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         model.
         """
         # Process arguments
-        bootstrap = bootstrap and self.bootstrap_metrics
+        bootstrap = bootstrap and self.hparams.bootstrap_metrics
 
         # Log total number of samples (useful for debugging)
         if log_n_samples:

@@ -1,8 +1,9 @@
 # wandb
-wandb_name: "old_orbik_fp"
+wandb_name: "old_ik_retmass_fp"
 # data
 pth: "data/MassSpecGym.tsv"
-split_type: "orbitrap_inchikey"
+candidates_pth: "data/MassSpecGym_retrieval_candidates_mass_with_test.json"
+split_type: "all_inchikey"
 # output
 mz_max: 1005.
 mz_bin_res: 0.01

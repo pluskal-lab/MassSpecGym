@@ -1,9 +1,9 @@
 # wandb
-wandb_name: "new_ik_prec_only"
+wandb_name: "old_bench_retform_preconly"
 # data
 pth: "data/MassSpecGym.tsv"
-split_type: "all_inchikey"
-instrument_types: ["QTOF","Orbitrap"]
+candidates_pth: "data/MassSpecGym_retrieval_candidates_formula_with_test.json"
+split_type: "benchmark"
 # output
 mz_max: 1005.
 mz_bin_res: 0.01

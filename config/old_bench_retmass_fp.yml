@@ -1,7 +1,8 @@
 # wandb
-wandb_name: "old_bench_fp"
+wandb_name: "old_bench_retmass_fp"
 # data
 pth: "data/MassSpecGym.tsv"
+candidates_pth: "data/MassSpecGym_retrieval_candidates_mass_with_test.json"
 split_type: "benchmark"
 # output
 mz_max: 1005.

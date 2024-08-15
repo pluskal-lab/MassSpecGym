@@ -75,13 +75,13 @@ def get_split_ss(ds, split_type, subsample_frac=None):
             size=int(subsample_frac*len(test_idxs)),
             replace=False
         )
-    train_mol_ids = metadata.loc[train_idxs]["inchikey"].unique()
-    val_mol_ids = metadata.loc[val_idxs]["inchikey"].unique()
-    test_mol_ids = metadata.loc[test_idxs]["inchikey"].unique()
-    print(">>> Number of Spectra")
-    print(len(train_idxs), len(val_idxs), len(test_idxs))
-    print(">>> Number of Unique Molecules")
-    print(len(train_mol_ids), len(val_mol_ids), len(test_mol_ids))
+    # train_mol_ids = metadata.loc[train_idxs]["inchikey"].unique()
+    # val_mol_ids = metadata.loc[val_idxs]["inchikey"].unique()
+    # test_mol_ids = metadata.loc[test_idxs]["inchikey"].unique()
+    # print(">>> Number of Spectra")
+    # print(len(train_idxs), len(val_idxs), len(test_idxs))
+    # print(">>> Number of Unique Molecules")
+    # print(len(train_mol_ids), len(val_mol_ids), len(test_mol_ids))
     # get subsets
     train_ds = Subset(ds, train_idxs)
     val_ds = Subset(ds, val_idxs)

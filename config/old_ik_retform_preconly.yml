@@ -1,7 +1,8 @@
 # wandb
-wandb_name: "old_ik_prec_only"
+wandb_name: "old_ik_retform_preconly"
 # data
 pth: "data/MassSpecGym.tsv"
+candidates_pth: "data/MassSpecGym_retrieval_candidates_formula_with_test.json"
 split_type: "all_inchikey"
 # output
 mz_max: 1005.
@@ -12,4 +13,4 @@ model_type: "prec_only"
 # optimization
 max_epochs: 1
 # other
-accelerator: "cpu"
+accelerator: "gpu"

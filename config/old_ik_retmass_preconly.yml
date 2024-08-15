@@ -1,8 +1,9 @@
 # wandb
-wandb_name: "old_bench_prec_only"
+wandb_name: "old_ik_retmass_preconly"
 # data
 pth: "data/MassSpecGym.tsv"
-split_type: "benchmark"
+candidates_pth: "data/MassSpecGym_retrieval_candidates_mass_with_test.json"
+split_type: "all_inchikey"
 # output
 mz_max: 1005.
 mz_bin_res: 0.01
@@ -12,4 +13,4 @@ model_type: "prec_only"
 # optimization
 max_epochs: 1
 # other
-accelerator: "cpu"
+accelerator: "gpu"
