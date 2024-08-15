@@ -9,27 +9,60 @@ import matplotlib.ticker as ticker
 import pandas as pd
 import typing as T
 import pulp
+import torch
 from pathlib import Path
 from myopic_mces.myopic_mces import MCES
 from rdkit.Chem import AllChem as Chem
 from rdkit.Chem import DataStructs, Draw
 from rdkit.Chem.Descriptors import ExactMolWt
 from huggingface_hub import hf_hub_download
-from tokenizers import ByteLevelBPETokenizer
-from tokenizers.processors import TemplateProcessing
 from standardizeUtils.standardizeUtils import (
     standardize_structure_with_pubchem,
     standardize_structure_list_with_pubchem,
 )
-import matchms
-import json
+from torchmetrics.wrappers import BootStrapper
+from torchmetrics.metric import Metric
 
-def load_massspecgym():
+
+def load_massspecgym(fold: T.Optional[str] = None) -> pd.DataFrame:
+    """
+    Load the MassSpecGym dataset.
+
+    Args:
+        fold (str, optional): Fold name to load. If None, the entire dataset is loaded.
+    """
     df = pd.read_csv(hugging_face_download("MassSpecGym.tsv"), sep="\t")
     df = df.set_index("identifier")
     df['mzs'] = df['mzs'].apply(parse_spec_array)
     df['intensities'] = df['intensities'].apply(parse_spec_array)
+    if fold is not None:
+        df = df[df['fold'] == fold]
     return df
+
+
+def load_unlabeled_mols(col_name: str = "smiles") -> pd.Series:
+    """
+    Load a list of unlabeled molecules.
+
+    Args:
+        col_name (str, optional): Name of the column to return. Should be one of ["smiles", "selfies"].
+    """
+    return pd.read_csv(
+        hugging_face_download(
+            "molecules/MassSpecGym_molecules_MCES2_disjoint_with_test_fold_4M.tsv"
+        ),
+        sep="\t"
+    )[col_name]
+
+
+def load_train_mols(col_name: str = "smiles") -> pd.Series:
+    """
+    Load a list of training molecules.
+
+    Args:
+        col_name (str, optional): Name of the column to return. Should be one of ["smiles", "selfies"].
+    """
+    return load_massspecgym("train")[col_name]
 
 
 def pad_spectrum(
@@ -76,7 +109,18 @@ def morgan_fp(mol: Chem.Mol, fp_size=2048, radius=2, to_np=True):
     return fp
 
 
-def tanimoto_morgan_similarity(mol1: Chem.Mol, mol2: Chem.Mol) -> float:
+def tanimoto_morgan_similarity(mol1: T.Union[Chem.Mol, str], mol2: T.Union[Chem.Mol, str]) -> float:
+    """
+    Compute Tanimoto similarity between two molecules using Morgan fingerprints.
+
+    Args:
+        mol1 (T.Union[Chem.Mol, str]): First molecule as RDKit molecule or SMILES string.
+        mol2 (T.Union[Chem.Mol, str]): Second molecule as RDKit molecule or SMILES string.
+    """
+    if isinstance(mol1, str):
+        mol1 = Chem.MolFromSmiles(mol1)
+    if isinstance(mol2, str):
+        mol2 = Chem.MolFromSmiles(mol2)
     return DataStructs.TanimotoSimilarity(morgan_fp(mol1, to_np=False), morgan_fp(mol2, to_np=False))
 
 
@@ -141,35 +185,6 @@ def init_plotting(figsize=(6, 2), font_scale=1.0, style="whitegrid"):
     sns.set_style(style)
     sns.set_context("paper", font_scale=font_scale)
     sns.set_palette(["#009473", "#D94F70", "#5A5B9F", "#F0C05A", "#7BC4C4", "#FF6F61"])
-
-
-def get_smiles_bpe_tokenizer() -> ByteLevelBPETokenizer:
-    """
-    Return a Byte-level BPE tokenizer trained on the SMILES strings from the
-    `MassSpecGym_test_fold_MCES2_disjoint_molecules_4M.tsv` dataset.
-    TODO: refactor to a well-organized class.
-    """
-    # Initialize the tokenizer
-    special_tokens = ["<pad>", "<s>", "</s>", "<unk>"]
-    smiles_tokenizer = ByteLevelBPETokenizer()
-    smiles = pd.read_csv(hugging_face_download(
-        "molecules/MassSpecGym_test_fold_MCES2_disjoint_molecules_4M.tsv"
-    ), sep="\t")["smiles"]
-    smiles_tokenizer.train_from_iterator(smiles, special_tokens=special_tokens)
-
-    # Enable padding
-    smiles_tokenizer.enable_padding(direction='right', pad_token="<pad>")
-
-    # Add template processing to include start and end of sequence tokens
-    smiles_tokenizer.post_processor = TemplateProcessing(
-        single="<s> $A </s>",
-        pair="<s> $A </s> <s> $B </s>",
-        special_tokens=[
-            ("<s>", smiles_tokenizer.token_to_id("<s>")),
-            ("</s>", smiles_tokenizer.token_to_id("</s>")),
-        ],
-    )
-    return smiles_tokenizer
 
 
 def parse_spec_array(arr: str) -> np.ndarray:
@@ -313,16 +328,66 @@ class MyopicMCES():
         return dist
 
 
-def peaks_to_matchms(mzs_str: str, intensities_str: str, precursor_mz: float) -> matchms.Spectrum:
+class ReturnScalarBootStrapper(BootStrapper):
+    def __init__(
+        self,
+        base_metric: Metric,
+        num_bootstraps: int = 10,
+        mean: bool = False,
+        std: bool = False,
+        quantile: T.Optional[T.Union[float, torch.Tensor]] = None,
+        raw: bool = False,
+        sampling_strategy: str = "poisson",
+        **kwargs: T.Any
+    ) -> None:
+        """Wrapper for BootStrapper that returns a scalar value in compute instead of a dictionary."""
 
+        if mean + std + bool(quantile) + raw != 1:
+            raise ValueError("Exactly one of mean, std, quantile or raw should be True.")
+
+        if std:
+            self.compute_key = "std"
+        else:
+            raise NotImplementedError("Currently only std is implemented.")
+
+        super().__init__(
+            base_metric=base_metric,
+            num_bootstraps=num_bootstraps,
+            mean=mean,
+            std=std,
+            quantile=quantile,
+            raw=raw,
+            sampling_strategy=sampling_strategy,
+            **kwargs
+        )
+
+    def compute(self):
+        return super().compute()[self.compute_key]
+
+
+def batch_ptr_to_batch_idx(batch_ptr: torch.Tensor) -> torch.Tensor:
+    """
+    Convert a tensor of batch pointers to a tensor of batch indexes.
     
-    mzs = [float(mz) for mz in mzs_str.split(",")]
-    intensities = [float(intensity) for intensity in intensities_str.split(",")]
-    mzs = np.array(mzs)
-    intensities = np.array(intensities)
-    spectrum = matchms.Spectrum(
-        mz=mzs, 
-        intensities=intensities,
-        metadata=dict(precursor_mz=precursor_mz))
-    return spectrum
+    For example [1, 3, 2] -> [0, 1, 1, 1, 2, 2]
 
+    Args:
+        batch_ptr (Tensor): Tensor of batch pointers.
+    """
+    indexes = torch.arange(batch_ptr.size(0), device=batch_ptr.device)
+    indexes = torch.repeat_interleave(indexes, batch_ptr)
+    return indexes
+
+
+def unbatch_list(batch_list: list, batch_idx: torch.Tensor) -> list:
+    """
+    Unbatch a list of items using the batch indexes (i.e., number of samples per batch).
+    
+    Args:
+        batch_list (list): List of items to unbatch.
+        batch_idx (Tensor): Tensor of batch indexes.
+    """
+    return [
+        [batch_list[j] for j in range(len(batch_list)) if batch_idx[j] == i]
+        for i in range(batch_idx[-1] + 1)
+    ]

@@ -1,10 +1,13 @@
 import typing as T
+import collections
 from enum import Enum
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 import torch
 import pytorch_lightning as pl
 from torchmetrics import Metric, SumMetric
+from massspecgym.utils import ReturnScalarBootStrapper
 
 
 class Stage(Enum):
@@ -25,16 +28,24 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         lr: float = 1e-4,
         weight_decay: float = 0.0,
         log_only_loss_at_stages: T.Sequence[Stage | str] = (),
+        bootstrap_metrics: bool = True,
+        df_test_path: T.Optional[str | Path] = None,
         *args,
         **kwargs
     ):
-        #super().__init__(*args, **kwargs)
         super().__init__()
-        self.lr = lr
-        self.weight_decay = weight_decay
+        self.save_hyperparameters()
+
+        # Setup metring logging
         self.log_only_loss_at_stages = [
             Stage(s) if isinstance(s, str) else s for s in log_only_loss_at_stages
         ]
+        self.bootstrap_metrics = bootstrap_metrics
+
+        # Init dictionary to store dataframe columns where rows correspond to samples
+        # (for constructing test dataframe with predictions and metrics for each sample)
+        self.df_test_path = Path(df_test_path) if df_test_path is not None else None
+        self.df_test = collections.defaultdict(list)
 
     @abstractmethod
     def step(
@@ -83,7 +94,7 @@ class MassSpecGymModel(pl.LightningModule, ABC):
     def configure_optimizers(self):
         # use Adam as default
         return torch.optim.Adam(
-            self.parameters(), lr=self.lr, weight_decay=self.weight_decay
+            self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay
         )
 
     def get_checkpoint_monitors(self) -> list[dict]:
@@ -102,6 +113,8 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         metric_kwargs: T.Optional[dict] = None,
         log: bool = True,
         log_n_samples: bool = False,
+        bootstrap: bool = False,
+        num_bootstraps: int = 100
     ) -> None:
         """
         This method enables updating and logging metrics without instantiating them in advance in
@@ -109,7 +122,10 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         epoch. If the metric does not exist yet, it is instantiated and added as an attribute to the
         model.
         """
-        # Log total number of samples for debugging
+        # Process arguments
+        bootstrap = bootstrap and self.bootstrap_metrics
+
+        # Log total number of samples (useful for debugging)
         if log_n_samples:
             self._update_metric(
                 name=name + "_n_samples",
@@ -124,7 +140,8 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         else:
             if metric_kwargs is None:
                 metric_kwargs = dict()
-            metric = metric_class(**metric_kwargs).to(self.device)
+            metric = metric_class(**metric_kwargs)
+            metric = metric.to(self.device)
             setattr(self, name, metric)
 
         # Update
@@ -140,5 +157,25 @@ class MassSpecGymModel(pl.LightningModule, ABC):
                 on_step=False,
                 on_epoch=True,
                 add_dataloader_idx=False,
-                metric_attribute=name,  # Suggested by a torchmetrics error
+                metric_attribute=name  # Suggested by a torchmetrics error
             )
+
+        # Bootstrap
+        if bootstrap:
+            def _bootsrapped_metric_class(**metric_kwargs):
+                metric = metric_class(**metric_kwargs)
+                return ReturnScalarBootStrapper(metric, std=True, num_bootstraps=num_bootstraps)
+
+            self._update_metric(
+                name=name + "_std",
+                metric_class=_bootsrapped_metric_class,
+                update_args=update_args,
+                batch_size=batch_size,
+                metric_kwargs=metric_kwargs,
+            )
+
+    def _update_df_test(self, dct: dict) -> None:
+        for col, vals in dct.items():
+            if isinstance(vals, torch.Tensor):
+                vals = vals.tolist()
+            self.df_test[col].extend(vals)
