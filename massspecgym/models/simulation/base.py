@@ -13,29 +13,19 @@ from massspecgym.simulation_utils.nn_utils import build_lr_scheduler
 from massspecgym.utils import batch_ptr_to_batch_idx
 from torch_geometric.utils import unbatch
 
-class CosSimMetric(Metric):
+def get_cos_sim_fn(transform_fn, mz_max, mz_bin_res):
 
-    def __init__(self, transform_fn, mz_bin_res, mz_max, **kwargs):
+    def cos_sim_fn(
+        true_mzs: torch.Tensor, 
+        true_logprobs: torch.Tensor,
+        true_batch_idxs: torch.Tensor,
+        pred_mzs: torch.Tensor,
+        pred_logprobs: torch.Tensor,
+        pred_batch_idxs: torch.Tensor
+    ) -> torch.Tensor:
 
-        super().__init__(**kwargs)
-        self.transform_fn = transform_fn
-        self.mz_max = mz_max
-        self.mz_bin_res = mz_bin_res
-        self.add_state("cos_sims", default=torch.tensor(0.), dist_reduce_fx="sum")
-        self.add_state("count", default=torch.tensor(0.), dist_reduce_fx="sum")
-
-    def calculate(
-        self, 
-        pred_mzs,
-        pred_logprobs,
-        pred_batch_idxs,
-        true_mzs,
-        true_logprobs,
-        true_batch_idxs
-    ):
-
-        true_logprobs = self.transform_fn(true_logprobs, true_batch_idxs)
-        pred_logprobs = self.transform_fn(pred_logprobs, pred_batch_idxs)
+        true_logprobs = transform_fn(true_logprobs, true_batch_idxs)
+        pred_logprobs = transform_fn(pred_logprobs, pred_batch_idxs)
         cos_sims = 1.-sparse_cosine_distance(
             pred_mzs=pred_mzs,
             pred_logprobs=pred_logprobs,
@@ -43,35 +33,12 @@ class CosSimMetric(Metric):
             true_mzs=true_mzs,
             true_logprobs=true_logprobs,
             true_batch_idxs=true_batch_idxs,
-            mz_max=self.mz_max,
-            mz_bin_res=self.mz_bin_res
+            mz_max=mz_max,
+            mz_bin_res=mz_bin_res
         )
         return cos_sims
 
-    def update(
-        self, 
-        pred_mzs,
-        pred_logprobs,
-        pred_batch_idxs,
-        true_mzs,
-        true_logprobs,
-        true_batch_idxs
-    ):
-
-        cos_sims = self.calculate(
-            pred_mzs,
-            pred_logprobs,
-            pred_batch_idxs,
-            true_mzs,
-            true_logprobs,
-            true_batch_idxs
-        )
-        self.cos_sims += torch.sum(cos_sims)
-        self.count += torch.max(true_batch_idxs)+1
-        
-    def compute(self):
-
-        return self.cos_sims.float() / self.count.float()
+    return cos_sim_fn
 
 class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
 
@@ -82,7 +49,7 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         self._setup_model()
         self._setup_loss_fn()
         self._setup_spec_fns()
-        self._setup_metric_kwargs()
+        self._setup_metric_fns()
 
     @abstractmethod
     def _setup_model(self):
@@ -165,26 +132,24 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
 
         self.loss_fn = _loss_fn
 
-    def _setup_metric_kwargs(self):
+    def _setup_metric_fns(self):
 
         def transform_fn(logprobs, batch_idxs):
             logprobs = self.ints_untransform_func(torch.exp(logprobs), batch_idxs)
             logprobs = safelog(self.ints_normalize_func(logprobs, batch_idxs))
             return logprobs
-        cos_sim_metric_kwargs = {
-            "transform_fn": deepcopy(transform_fn),
-            "mz_bin_res": self.hparams.mz_bin_res,
-            "mz_max": self.hparams.mz_max
-        }
-        self.cos_sim_metric_kwargs = cos_sim_metric_kwargs
+        self.cos_sim_fn = get_cos_sim_fn(
+            deepcopy(transform_fn), 
+            self.hparams.mz_max, 
+            self.hparams.mz_bin_res
+        )
 
         transform_fn = lambda x, y: x
-        cos_sim_obj_metric_kwargs = {
-            "transform_fn": deepcopy(transform_fn),
-            "mz_bin_res": self.hparams.mz_bin_res,
-            "mz_max": self.hparams.mz_max
-        }
-        self.cos_sim_obj_metric_kwargs = cos_sim_obj_metric_kwargs
+        self.cos_sim_obj_fn = get_cos_sim_fn(
+            deepcopy(transform_fn), 
+            self.hparams.mz_max,
+            self.hparams.mz_bin_res
+        )
 
     def forward(self, **kwargs) -> dict:
 
@@ -226,8 +191,7 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         c_true_logprobs = torch.cat(c_true_logprobs, dim=0)
         c_true_batch_idxs = torch.cat(c_true_batch_idxs, dim=0)
         assert output_data["pred_batch_idxs"].max() == c_true_batch_idxs.max()
-        retrieval_score_metric = CosSimMetric(**self.cos_sim_metric_kwargs)
-        c_scores = retrieval_score_metric.calculate(
+        c_scores = self.cos_sim_fn(
             true_mzs=c_true_mzs,
             true_logprobs=c_true_logprobs,
             true_batch_idxs=c_true_batch_idxs,
@@ -306,18 +270,18 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
 
         batch_size = torch.max(outputs["true_batch_idxs"])+1
         
-        if stage not in self.log_only_loss_at_stages:
+        # Log loss
+        self.log(
+            stage.to_pref() + "loss_step",
+            outputs["loss"],
+            batch_size=batch_size,
+            sync_dist=True,
+            prog_bar=True,
+            on_step=True,
+            on_epoch=False
+        )
 
-            # Log loss
-            self.log(
-                stage.to_pref() + "loss_step",
-                outputs["loss"],
-                batch_size=batch_size,
-                sync_dist=True,
-                prog_bar=True,
-                on_step=True,
-                on_epoch=False
-            )
+        if stage not in self.log_only_loss_at_stages:
 
             self.evaluate_cos_similarity_step(
                 pred_mzs=outputs["pred_mzs"],
@@ -366,20 +330,27 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
     ) -> None:
         
         batch_size = torch.max(true_batch_idxs).item()+1
-        update_args = (
-            pred_mzs,
-            pred_logprobs,
-            pred_batch_idxs,
-            true_mzs,
-            true_logprobs,
-            true_batch_idxs
+        cos_sim = self.cos_sim_fn(
+            true_mzs=true_mzs,
+            true_logprobs=true_logprobs,
+            true_batch_idxs=true_batch_idxs,
+            pred_mzs=pred_mzs,
+            pred_logprobs=pred_logprobs,
+            pred_batch_idxs=pred_batch_idxs,
+        )
+        cos_sim_obj = self.cos_sim_obj_fn(
+            true_mzs=true_mzs,
+            true_logprobs=true_logprobs,
+            true_batch_idxs=true_batch_idxs,
+            pred_mzs=pred_mzs,
+            pred_logprobs=pred_logprobs,
+            pred_batch_idxs=pred_batch_idxs,
         )
         self._update_metric(
             name=stage.to_pref() + "cos_sim",
-            metric_class=CosSimMetric,
-            update_args=update_args,
+            metric_class=MeanMetric,
+            update_args=(cos_sim,),
             batch_size=batch_size,
-            metric_kwargs=self.cos_sim_metric_kwargs,
             prog_bar=True,
             log=True,
             log_n_samples=False,
@@ -387,10 +358,9 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         )
         self._update_metric(
             name=stage.to_pref() + "cos_sim_obj",
-            metric_class=CosSimMetric,
-            update_args=update_args,
+            metric_class=MeanMetric,
+            update_args=(cos_sim_obj,),
             batch_size=batch_size,
-            metric_kwargs=self.cos_sim_obj_metric_kwargs,
             prog_bar=True,
             log=True,
             log_n_samples=False,

@@ -1,9 +1,12 @@
 # wandb
-wandb_name: "debug"
+wandb_name: "debug_ret_fp"
 # data
 pth: "data/MassSpecGym_small.tsv"
+candidates_pth: "data/MassSpecGym_retrieval_candidates_mass_with_test.json"
+# candidates_pth: "data/MassSpecGym_retrieval_candidates_formula_with_test.json"
 split_type: "benchmark"
 instrument_types: ["QTOF","Orbitrap"]
+subsample_frac: 0.1
 # output
 mz_max: 1005.
 mz_bin_res: 0.01
@@ -29,4 +32,3 @@ gradient_clip_val: 5.0
 gradient_clip_algorithm: norm
 # other
 accelerator: "gpu"
-do_retrieval: False

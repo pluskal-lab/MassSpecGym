@@ -1,8 +1,8 @@
 # wandb
-wandb_name: "new_bench_prec_only"
+wandb_name: "new_ik_preconly"
 # data
 pth: "data/MassSpecGym.tsv"
-split_type: "benchmark"
+split_type: "all_inchikey"
 instrument_types: ["QTOF","Orbitrap"]
 # output
 mz_max: 1005.

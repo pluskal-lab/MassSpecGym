@@ -1,5 +1,5 @@
 # wandb
-wandb_name: "debug_ret_prec_only"
+wandb_name: "debug_ret_preconly"
 # data
 pth: "data/MassSpecGym_small.tsv"
 # candidates_pth: "data/MassSpecGym_retrieval_candidates_mass_with_test.json"
@@ -17,4 +17,3 @@ model_type: "prec_only"
 max_epochs: 0
 # other
 accelerator: "gpu"
-retrieval_batch_size: 8

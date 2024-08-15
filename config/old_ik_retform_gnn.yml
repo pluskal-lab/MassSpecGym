@@ -1,14 +1,15 @@
 # wandb
-wandb_name: "old_ik_fp"
+wandb_name: "old_ik_retform_gnn"
 # data
 pth: "data/MassSpecGym.tsv"
+candidates_pth: "data/MassSpecGym_retrieval_candidates_formula_with_test.json"
 split_type: "all_inchikey"
 # output
 mz_max: 1005.
 mz_bin_res: 0.01
 ints_transform: "sqrt"
 # model
-model_type: "fp"
+model_type: "gnn"
 # optimization
 max_epochs: 20
 # other
