@@ -116,7 +116,7 @@ class MassSpecDataset(Dataset):
 
         # TODO: this should be refactored
         for k, v in item.items():
-            if isinstance(v, np.ndarray):
+            if not isinstance(v, str):
                 item[k] = torch.as_tensor(v, dtype=self.dtype)
 
         return item
