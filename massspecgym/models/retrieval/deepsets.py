@@ -7,6 +7,7 @@ from torch_geometric.nn import MLP
 
 from massspecgym.models.base import Stage
 from massspecgym.models.retrieval.base import RetrievalMassSpecGymModel
+from massspecgym.models.layers import FourierFeatures
 from massspecgym.utils import CosSimLoss
 
 
@@ -19,9 +20,26 @@ class DeepSetsRetrieval(RetrievalMassSpecGymModel):
         num_layers_per_mlp: int = 2,
         dropout: float = 0.0,
         norm: T.Optional[str] = None,
+        fourier_features: bool = True,
+        fourier_features_mz_channels: T.Optional[int] = None,
+        fourier_features_kwargs: T.Optional[dict] = None,
         **kwargs
     ):
         super().__init__(**kwargs)
+
+        self.fourier_features = fourier_features
+        if fourier_features:
+            if fourier_features_kwargs is None:
+                fourier_features_kwargs = {}
+            self.ff = FourierFeatures(**fourier_features_kwargs)
+
+            if fourier_features_mz_channels is None:
+                fourier_features_mz_channels = int(0.8 * hidden_channels)
+            else:
+                assert fourier_features_mz_channels < hidden_channels
+            self.ff_proj_mz = nn.Linear(self.ff.num_features, fourier_features_mz_channels)
+            self.ff_proj_i = nn.Linear(1, hidden_channels - fourier_features_mz_channels)
+            in_channels = hidden_channels
 
         self.phi = MLP(
             in_channels=in_channels,
@@ -44,6 +62,13 @@ class DeepSetsRetrieval(RetrievalMassSpecGymModel):
         self.loss_fn = CosSimLoss()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.fourier_features:
+            x_mz = x[:, :, 0].unsqueeze(-1)
+            x_mz = self.ff(x_mz)
+            x_mz = self.ff_proj_mz(x_mz)
+            x_i = x[:, :, 1].unsqueeze(-1)
+            x_i = self.ff_proj_i(x_i)
+            x = torch.cat((x_mz, x_i), dim=-1)
         x = self.phi(x)
         x = x.sum(dim=-2)  # sum over peaks
         x = self.rho(x)
