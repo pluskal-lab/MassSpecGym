@@ -1,3 +1,5 @@
+import typing as T
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -5,14 +7,7 @@ from torch_geometric.nn import MLP
 
 from massspecgym.models.base import Stage
 from massspecgym.models.retrieval.base import RetrievalMassSpecGymModel
-
-
-class CosSimLoss(nn.Module):
-    def __init__(self):
-        super(CosSimLoss, self).__init__()
-
-    def forward(self, inputs, targets):
-        return 1 - F.cosine_similarity(inputs, targets).mean()
+from massspecgym.utils import CosSimLoss
 
 
 class FingerprintFFNRetrieval(RetrievalMassSpecGymModel):
@@ -23,6 +18,7 @@ class FingerprintFFNRetrieval(RetrievalMassSpecGymModel):
         out_channels: int = 4096,  # fingerprint size
         num_layers: int = 2,
         dropout: float = 0.0,
+        norm: T.Optional[str] = None,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -32,13 +28,15 @@ class FingerprintFFNRetrieval(RetrievalMassSpecGymModel):
             hidden_channels=hidden_channels,
             out_channels=out_channels,
             num_layers=num_layers,
-            dropout=dropout
+            dropout=dropout,
+            norm=norm
         )
 
         self.loss_fn = CosSimLoss()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.ffn(x)
+        x = F.sigmoid(x)  # predict proper fingerprint
         return x
 
     def step(

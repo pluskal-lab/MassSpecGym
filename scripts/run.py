@@ -1,5 +1,6 @@
 import argparse
 import datetime
+import typing as T
 from pathlib import Path
 
 from rdkit import RDLogger
@@ -11,8 +12,11 @@ import massspecgym.utils as utils
 from massspecgym.data import RetrievalDataset, MassSpecDataset, MassSpecDataModule
 from massspecgym.data.transforms import MolFingerprinter, SpecBinner, SpecTokenizer
 from massspecgym.models.base import Stage
-from massspecgym.models.retrieval import FingerprintFFNRetrieval, FromDictRetrieval, RandomRetrieval
+from massspecgym.models.retrieval import (
+    FingerprintFFNRetrieval, FromDictRetrieval, RandomRetrieval, DeepSetsRetrieval
+)
 from massspecgym.models.de_novo import SmilesTransformer
+from massspecgym.models.tokenizers import SmilesBPETokenizer, SelfiesTokenizer
 from massspecgym.definitions import MASSSPECGYM_TEST_RESULTS_DIR
 
 
@@ -85,8 +89,8 @@ parser.add_argument('--num_decoder_layers', type=int, default=4)
 parser.add_argument('--dropout', type=float, default=0.1)
 parser.add_argument('--k_predictions', type=int, default=1)
 parser.add_argument('--pre_norm', type=bool, default=False)
-parser.add_argument('--max_smiles_len', type=int, default=100)
 parser.add_argument('--temperature', type=float, default=1)
+parser.add_argument('--smiles_tokenizer', choices=['smiles_bpe', 'selfies'], default='selfies')
 
 # - Retrieval
 
@@ -95,7 +99,12 @@ parser.add_argument('--hidden_channels', type=int, default=512)
 parser.add_argument('--num_layers', type=int, default=2)
 # parser.add_argument('--dropout', type=float, default=0.0)
 
-# 2. FromDict (for evaluating given fingerprints)
+# 2. DeepSets
+# parser.add_argument('--hidden_channels', type=int, default=512)
+parser.add_argument('--num_layers_per_mlp', type=int, default=2)
+# parser.add_argument('--dropout', type=float, default=0.0)
+
+# 3. FromDict (for evaluating given fingerprints)
 parser.add_argument('--dct_path', type=str, default=None)
 
 
@@ -119,9 +128,13 @@ def main(args):
 
     # Load dataset
     if args.task == 'retrieval':
+        if args.model == 'fingerprint_ffn':
+            spec_transform = SpecBinner(max_mz=args.max_mz, bin_width=args.bin_width)
+        else:
+            spec_transform = SpecTokenizer(n_peaks=args.n_peaks)
         dataset = RetrievalDataset(
             pth=args.dataset_pth,
-            spec_transform=SpecBinner(max_mz=args.max_mz, bin_width=args.bin_width),
+            spec_transform=spec_transform,
             mol_transform=MolFingerprinter(fp_size=args.fp_size),
             candidates_pth=args.candidates_pth,
         )
@@ -158,6 +171,15 @@ def main(args):
                 dropout=args.dropout,
                 **common_kwargs
             )
+        elif args.model == 'deepsets':
+            model = DeepSetsRetrieval(
+                in_channels=2,
+                hidden_channels=args.hidden_channels,
+                out_channels=args.fp_size,
+                num_layers_per_mlp=args.num_layers_per_mlp,
+                dropout=args.dropout,
+                **common_kwargs
+            )
         elif args.model == 'from_dict':
             model = FromDictRetrieval(
                 dct_path=args.dct_path,
@@ -171,6 +193,14 @@ def main(args):
             raise NotImplementedError(f"Model {args.model} not implemented.")
     elif args.task == 'de_novo':
         if args.model == 'smiles_transformer':
+            if args.smiles_tokenizer == 'smiles_bpe':
+                max_smiles_len = 200
+                smiles_tokenizer = SmilesBPETokenizer(max_len=max_smiles_len)
+            elif args.smiles_tokenizer == 'selfies':
+                max_smiles_len = 150
+                smiles_tokenizer = SelfiesTokenizer(max_len=max_smiles_len)
+            else:
+                raise NotImplementedError(f"Tokenizer {args.smiles_tokenizer} not implemented")
             model = SmilesTransformer(
                 input_dim=args.input_dim,
                 d_model=args.d_model,
@@ -178,10 +208,10 @@ def main(args):
                 num_encoder_layers=args.num_encoder_layers,
                 num_decoder_layers=args.num_decoder_layers,
                 dropout=args.dropout,
-                smiles_tokenizer=utils.get_smiles_bpe_tokenizer(),
+                smiles_tokenizer=smiles_tokenizer,
                 k_predictions=args.k_predictions,
                 pre_norm=args.pre_norm,
-                max_smiles_len=args.max_smiles_len,
+                max_smiles_len=max_smiles_len,
                 **common_kwargs
             )
         else:
@@ -190,8 +220,15 @@ def main(args):
         raise NotImplementedError(f"Task {args.task} not implemented.")
 
     # If checkpoint path is provided, load the model from the checkpoint instead
+    # and override the parameters not related to the model architecture and training
+    # TODO Extend to pass arguments to be overridden as an argument to the script
+    # For example: --override_args="df_test_path,lr,hidden_channels"
     if args.checkpoint_pth is not None:
-        model = type(model).load_from_checkpoint(args.checkpoint_pth)
+        model = type(model).load_from_checkpoint(
+            args.checkpoint_pth,
+            log_only_loss_at_stages=args.log_only_loss_at_stages,
+            df_test_path=args.df_test_pth
+        )
 
     # Init logger
     if args.no_wandb:
