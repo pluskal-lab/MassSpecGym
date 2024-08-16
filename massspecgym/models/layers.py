@@ -30,7 +30,7 @@ class FourierFeatures(nn.Module):
 
     def __init__(
         self,
-        strategy,
+        strategy='dreams',
         x_min=1e-4,
         x_max=1000,
         trainable=False,
