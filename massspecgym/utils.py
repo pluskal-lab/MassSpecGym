@@ -10,6 +10,8 @@ import pandas as pd
 import typing as T
 import pulp
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from itertools import groupby
 from pathlib import Path
 from myopic_mces.myopic_mces import MCES
@@ -405,6 +407,14 @@ def unbatch_list(batch_list: list, batch_idx: torch.Tensor) -> list:
     ]
 
 
+class CosSimLoss(nn.Module):
+    def __init__(self):
+        super(CosSimLoss, self).__init__()
+
+    def forward(self, inputs, targets):
+        return 1 - F.cosine_similarity(inputs, targets).mean()
+
+      
 def parse_sirius_ms(spectra_file: str) -> T.Tuple[dict, T.List[T.Tuple[str, np.ndarray]]]:
     """
     Parses spectra from the SIRIUS .ms file.

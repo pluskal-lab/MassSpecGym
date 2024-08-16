@@ -186,6 +186,7 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
         max_top_k: int = 10,
         enforce_connectivity: bool = True,
         cache_results: bool = True,
+        **kwargs
     ):
         """
 
@@ -208,7 +209,7 @@ class RandomDeNovo(DeNovoMassSpecGymModel):
                               When set to True, for each unique formula the set of random molecules is cached to avoid
                               recomputation.
         """
-        super(RandomDeNovo, self).__init__()
+        super(RandomDeNovo, self).__init__(**kwargs)
         self.formula_known = formula_known
         self.count_of_valid_valence_assignments = count_of_valid_valence_assignments
         self.estimate_chem_element_stats = estimate_chem_element_stats
