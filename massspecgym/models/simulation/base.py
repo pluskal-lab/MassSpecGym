@@ -8,7 +8,8 @@ from torchmetrics.functional.retrieval.hit_rate import retrieval_hit_rate
 from massspecgym.models.base import MassSpecGymModel, Stage
 from massspecgym.simulation_utils.misc_utils import safelog
 from massspecgym.simulation_utils.spec_utils import sparse_cosine_distance, \
-    get_ints_transform_func, get_ints_untransform_func, batched_l1_normalize
+    get_ints_transform_func, get_ints_untransform_func, batched_l1_normalize, \
+    sparse_jensen_shannon_similarity
 from massspecgym.simulation_utils.nn_utils import build_lr_scheduler
 from massspecgym.utils import batch_ptr_to_batch_idx
 from torch_geometric.utils import unbatch
@@ -38,7 +39,34 @@ def get_cos_sim_fn(transform_fn, mz_max, mz_bin_res):
         )
         return cos_sims
 
-    return cos_sim_fn
+    return deepcopy(cos_sim_fn)
+
+def get_js_sim_fn(transform_fn, mz_max, mz_bin_res):
+
+    def js_sim_fn(
+        true_mzs: torch.Tensor, 
+        true_logprobs: torch.Tensor,
+        true_batch_idxs: torch.Tensor,
+        pred_mzs: torch.Tensor,
+        pred_logprobs: torch.Tensor,
+        pred_batch_idxs: torch.Tensor
+    ) -> torch.Tensor:
+
+        true_logprobs = transform_fn(true_logprobs, true_batch_idxs)
+        pred_logprobs = transform_fn(pred_logprobs, pred_batch_idxs)
+        js_sims = sparse_jensen_shannon_similarity(
+            pred_mzs=pred_mzs,
+            pred_logprobs=pred_logprobs,
+            pred_batch_idxs=pred_batch_idxs,
+            true_mzs=true_mzs,
+            true_logprobs=true_logprobs,
+            true_batch_idxs=true_batch_idxs,
+            mz_max=mz_max,
+            mz_bin_res=mz_bin_res
+        )
+        return js_sims
+
+    return deepcopy(js_sim_fn)
 
 class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
 
@@ -134,19 +162,36 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
 
     def _setup_metric_fns(self):
 
-        def transform_fn(logprobs, batch_idxs):
-            logprobs = self.ints_untransform_func(torch.exp(logprobs), batch_idxs)
-            logprobs = safelog(self.ints_normalize_func(logprobs, batch_idxs))
+        # untransformed
+        def no_transform_fn(logprobs, batch_idxs):
+            probs = self.ints_untransform_func(torch.exp(logprobs), batch_idxs)
+            logprobs = safelog(self.ints_normalize_func(probs, batch_idxs))
             return logprobs
         self.cos_sim_fn = get_cos_sim_fn(
-            deepcopy(transform_fn), 
+            deepcopy(no_transform_fn), 
             self.hparams.mz_max, 
             self.hparams.mz_bin_res
         )
-
-        transform_fn = lambda x, y: x
+        self.js_sim_fn = get_js_sim_fn(
+            deepcopy(no_transform_fn), 
+            self.hparams.mz_max, 
+            self.hparams.mz_bin_res
+        )
+        # sqrt transform
+        def sqrt_transform_fn(logprobs, batch_idxs):
+            probs = self.ints_untransform_func(torch.exp(logprobs), batch_idxs)
+            probs = probs**0.5
+            logprobs = safelog(self.ints_normalize_func(probs, batch_idxs))
+            return logprobs
+        self.cos_sim_sqrt_fn = get_cos_sim_fn(
+            deepcopy(sqrt_transform_fn), 
+            self.hparams.mz_max,
+            self.hparams.mz_bin_res
+        )
+        # obj transform
+        obj_transform_fn = lambda x, y: x
         self.cos_sim_obj_fn = get_cos_sim_fn(
-            deepcopy(transform_fn), 
+            deepcopy(obj_transform_fn), 
             self.hparams.mz_max,
             self.hparams.mz_bin_res
         )
@@ -283,7 +328,7 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
 
         if stage not in self.log_only_loss_at_stages:
 
-            self.evaluate_cos_similarity_step(
+            self.evaluate_similarity_step(
                 pred_mzs=outputs["pred_mzs"],
                 pred_logprobs=outputs["pred_logprobs"],
                 pred_batch_idxs=outputs["pred_batch_idxs"],
@@ -318,7 +363,7 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
             if self.df_test_path is not None:
                 self._update_df_test(metric_vals)
 
-    def evaluate_cos_similarity_step(
+    def evaluate_similarity_step(
         self,
         pred_mzs: torch.Tensor,
         pred_logprobs: torch.Tensor,
@@ -330,42 +375,27 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
     ) -> None:
         
         batch_size = torch.max(true_batch_idxs).item()+1
-        cos_sim = self.cos_sim_fn(
-            true_mzs=true_mzs,
-            true_logprobs=true_logprobs,
-            true_batch_idxs=true_batch_idxs,
-            pred_mzs=pred_mzs,
-            pred_logprobs=pred_logprobs,
-            pred_batch_idxs=pred_batch_idxs,
-        )
-        cos_sim_obj = self.cos_sim_obj_fn(
-            true_mzs=true_mzs,
-            true_logprobs=true_logprobs,
-            true_batch_idxs=true_batch_idxs,
-            pred_mzs=pred_mzs,
-            pred_logprobs=pred_logprobs,
-            pred_batch_idxs=pred_batch_idxs,
-        )
-        self._update_metric(
-            name=stage.to_pref() + "cos_sim",
-            metric_class=MeanMetric,
-            update_args=(cos_sim,),
-            batch_size=batch_size,
-            prog_bar=True,
-            log=True,
-            log_n_samples=False,
-            bootstrap=(stage == Stage.TEST)
-        )
-        self._update_metric(
-            name=stage.to_pref() + "cos_sim_obj",
-            metric_class=MeanMetric,
-            update_args=(cos_sim_obj,),
-            batch_size=batch_size,
-            prog_bar=True,
-            log=True,
-            log_n_samples=False,
-            bootstrap=(stage == Stage.TEST)
-        )
+        assert "cos_sim" in self.hparams.sim_metrics, self.hparams.sim_metrics
+        for metric_name in self.hparams.sim_metrics:
+            metric_fn = getattr(self, metric_name+"_fn")
+            metric = metric_fn(
+                true_mzs=true_mzs,
+                true_logprobs=true_logprobs,
+                true_batch_idxs=true_batch_idxs,
+                pred_mzs=pred_mzs,
+                pred_logprobs=pred_logprobs,
+                pred_batch_idxs=pred_batch_idxs
+            )
+            self._update_metric(
+                name=stage.to_pref() + metric_name,
+                metric_class=MeanMetric,
+                update_args=(metric,),
+                batch_size=batch_size,
+                prog_bar=True,
+                log=True,
+                log_n_samples=False,
+                bootstrap=(stage == Stage.TEST)
+            )
 
     def evaluate_retrieval_step(
         self,

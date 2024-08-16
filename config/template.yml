@@ -65,3 +65,8 @@ retrieval_batch_size: 8
 at_ks: [1, 5, 20]
 pin_memory: True
 persistent_workers: True
+sim_metrics:
+  - cos_sim
+  - js_sim
+  - cos_sim_sqrt
+  - cos_sim_obj

@@ -1,0 +1,16 @@
+# wandb
+wandb_name: "old_bench_fp"
+# data
+pth: "data/MassSpecGym.tsv"
+split_type: "benchmark"
+# output
+mz_max: 1005.
+mz_bin_res: 0.01
+ints_transform: "sqrt"
+# model
+model_type: "fp"
+# optimization
+max_epochs: 20
+# other
+accelerator: "gpu"
+do_retrieval: False

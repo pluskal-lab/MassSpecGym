@@ -80,15 +80,16 @@ def get_ints_untransform_func(ints_transform):
 
 
 def batched_bin_func(
-        mzs:torch.Tensor,
-        ints:torch.Tensor,
-        batch_idxs:torch.Tensor,
-        mz_max:float,
-        mz_bin_res:float,
-        agg:str,
-        sparse:bool=False,
-        remove_prec_peaks:bool=False,
-        prec_mzs:torch.Tensor=None) -> torch.Tensor:
+    mzs:torch.Tensor,
+    ints:torch.Tensor,
+    batch_idxs:torch.Tensor,
+    mz_max:float,
+    mz_bin_res:float,
+    agg:str,
+    sparse:bool=False,
+    remove_prec_peaks:bool=False,
+    prec_mzs:torch.Tensor=None
+) -> torch.Tensor:
     """method to get binned spectra for batch
 
     Args:
@@ -165,15 +166,16 @@ def batched_bin_func(
         return bin_spec
 
 def sparse_cosine_distance(
-        true_mzs: torch.Tensor, 
-        true_logprobs: torch.Tensor,
-        true_batch_idxs: torch.Tensor,
-        pred_mzs: torch.Tensor,
-        pred_logprobs: torch.Tensor,
-        pred_batch_idxs: torch.Tensor,
-        mz_max: float,
-        mz_bin_res: float,
-        log_distance: bool=False) -> torch.Tensor:
+    true_mzs: torch.Tensor, 
+    true_logprobs: torch.Tensor,
+    true_batch_idxs: torch.Tensor,
+    pred_mzs: torch.Tensor,
+    pred_logprobs: torch.Tensor,
+    pred_batch_idxs: torch.Tensor,
+    mz_max: float,
+    mz_bin_res: float,
+    log_distance: bool=False
+) -> torch.Tensor:
 
     # sparse bin
     true_bin_idxs, true_bin_logprobs, true_bin_batch_idxs = batched_bin_func(
@@ -239,3 +241,93 @@ def batched_l1_normalize(ints, batch_idxs):
         batch_idxs
     )
     return ints
+
+
+def js_sim_helper(
+    true_bin_idxs,
+    true_bin_ints,
+    true_bin_batch_idxs,
+    pred_bin_idxs,
+    pred_bin_ints,
+    pred_bin_batch_idxs
+):
+    
+    batch_size = torch.max(true_bin_batch_idxs)+1
+    # l1 normalize
+    true_bin_ints = scatter_l1normalize(
+        true_bin_ints,
+        true_bin_batch_idxs
+    )
+    pred_bin_ints = scatter_l1normalize(
+        pred_bin_ints,
+        pred_bin_batch_idxs
+    )
+    # union distribution
+    union_bin_idxs, union_bin_idxs_rev = torch.unique(torch.cat([true_bin_idxs,pred_bin_idxs],dim=0),return_inverse=True)
+    union_bin_ints = scatter_reduce(
+        src=0.5*torch.cat([true_bin_ints,pred_bin_ints],dim=0),
+        index=union_bin_idxs_rev,
+        reduce="sum",
+        dim_size=union_bin_idxs.shape[0]
+    )
+    # kl1
+    kl1_union_bin_ints = union_bin_ints[union_bin_idxs_rev[:true_bin_idxs.shape[0]]]
+    kl1 = scatter_reduce(
+        true_bin_ints * (safelog(true_bin_ints) - safelog(kl1_union_bin_ints)),
+        true_bin_batch_idxs,
+        reduce="sum",
+        dim_size=batch_size
+    )
+    # kl2
+    kl2_union_bin_ints = union_bin_ints[union_bin_idxs_rev[true_bin_idxs.shape[0]:]]
+    kl2 = scatter_reduce(
+        pred_bin_ints * (safelog(pred_bin_ints) - safelog(kl2_union_bin_ints)),
+        pred_bin_batch_idxs,
+        reduce="sum",
+        dim_size=batch_size
+    )
+    # jss
+    jss = 1.-0.5*(kl1+kl2)
+    return jss
+
+def sparse_jensen_shannon_similarity(
+    true_mzs: torch.Tensor, 
+    true_logprobs: torch.Tensor,
+    true_batch_idxs: torch.Tensor,
+    pred_mzs: torch.Tensor,
+    pred_logprobs: torch.Tensor,
+    pred_batch_idxs: torch.Tensor,
+    mz_max: float,
+    mz_bin_res: float
+) -> torch.Tensor:
+    
+    # sparse bin
+    true_bin_idxs, true_bin_logprobs, true_bin_batch_idxs = batched_bin_func(
+        true_mzs,
+        true_logprobs,
+        true_batch_idxs,
+        mz_max=mz_max,
+        mz_bin_res=mz_bin_res,
+        agg="lse",
+        sparse=True
+    )
+    pred_bin_idxs, pred_bin_logprobs, pred_bin_batch_idxs = batched_bin_func(
+        pred_mzs,
+        pred_logprobs,
+        pred_batch_idxs,
+        mz_max=mz_max,
+        mz_bin_res=mz_bin_res,
+        agg="lse",
+        sparse=True
+    )
+
+    jss = js_sim_helper(
+        true_bin_idxs,
+        true_bin_logprobs.exp(),
+        true_bin_batch_idxs,
+        pred_bin_idxs,
+        pred_bin_logprobs.exp(),
+        pred_bin_batch_idxs
+    )
+
+    return jss
