@@ -1,7 +1,8 @@
+import pytest
 import numpy as np
 import torch
 import matchms
-from massspecgym.data.transforms import SpecTokenizer, SpecBinner
+from massspecgym.data.transforms import SpecTokenizer, SpecBinner, MolToFormulaVector
 
 
 def test_spec_tokenizer():
@@ -68,3 +69,36 @@ def test_spec_binner():
         spec_t,
         torch.tensor([0.2, 0.3, 1.2, 0.1, 0.2, 0.0, 0.0, 0.0, 0.0, 0.0]).double(),
     )
+
+
+def test_resiniferatoxin_formula_vector():
+    transform = MolToFormulaVector()
+    # Resiniferatoxin (C37H40O9)
+    smiles = "C[C@@H]1C[C@]2([C@H]3[C@H]4[C@]1([C@@H]5C=C(C(=O)[C@]5(CC(=C4)COC(=O)Cc6ccc(c(c6)OC)O)O)C)O[C@](O3)(O2)Cc7ccccc7)C(=C)C"
+    vector = transform.from_smiles(smiles)
+    
+    expected_vector = np.zeros(118, dtype=np.float32)
+    expected_vector[transform.element_index["C"]] = 37
+    expected_vector[transform.element_index["H"]] = 40
+    expected_vector[transform.element_index["O"]] = 9
+    
+    assert np.array_equal(vector, expected_vector), "Ethanol vector does not match expected output"
+
+def test_water_formula_vector():
+    transform = MolToFormulaVector()
+    # Water (H2O)
+    smiles = "O"
+    vector = transform.from_smiles(smiles)
+    
+    expected_vector = np.zeros(118, dtype=np.float32)
+    expected_vector[transform.element_index["H"]] = 2
+    expected_vector[transform.element_index["O"]] = 1
+    
+    assert np.array_equal(vector, expected_vector), "Water vector does not match expected output"
+
+# Test case for molecule with an invalid SMILES
+def test_invalid_element():
+    transform = MolToFormulaVector()
+    smiles = "JkO"  # A hypothetical compound
+    with pytest.raises(ValueError, match="Invalid SMILES string: JkO"):
+        transform.from_smiles(smiles)
