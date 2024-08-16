@@ -192,6 +192,17 @@ def parse_spec_array(arr: str) -> np.ndarray:
     return np.array(list(map(float, arr.split(","))))
 
 
+def spec_array_to_str(arr: np.ndarray) -> str:
+    return ",".join(map(str, arr))
+
+
+def compute_mass(smiles: str) -> float:
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        raise ValueError("Invalid SMILES string.")
+    return ExactMolWt(mol)
+
+
 def plot_spectrum(spec, hue=None, xlim=None, ylim=None, mirror_spec=None, highl_idx=None,
                   figsize=(6, 2), colors=None, save_pth=None):
 
