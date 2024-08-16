@@ -14,3 +14,4 @@ model_type: "fp"
 max_epochs: 100
 # other
 accelerator: "gpu"
+save_ckpt: True

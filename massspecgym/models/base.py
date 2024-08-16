@@ -7,6 +7,7 @@ from pathlib import Path
 import torch
 import pytorch_lightning as pl
 from torchmetrics import Metric, SumMetric
+import pandas as pd
 from massspecgym.utils import ReturnScalarBootStrapper
 
 
@@ -177,3 +178,10 @@ class MassSpecGymModel(pl.LightningModule, ABC):
             if isinstance(vals, torch.Tensor):
                 vals = vals.tolist()
             self.df_test[col].extend(vals)
+
+    def _save_df_test(self) -> None:
+        # Save test data frame to disk
+        if self.df_test_path is not None:
+            df_test = pd.DataFrame(self.df_test)
+            self.df_test_path.parent.mkdir(parents=True, exist_ok=True)
+            df_test.to_pickle(self.df_test_path)

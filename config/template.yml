@@ -70,3 +70,5 @@ sim_metrics:
   - js_sim
   - cos_sim_sqrt
   - cos_sim_obj
+save_df_test: True
+save_ckpt: False

@@ -9,6 +9,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 import numpy as np
 import os
 import yaml
+import wandb
 
 from massspecgym.data.datasets import SimulationDataset, RetrievalSimulationDataset
 from massspecgym.data.transforms import SpecToMzsInts, MolToPyG, StandardMeta, MolToFingerprints
@@ -116,6 +117,31 @@ def init_run(template_fp, custom_fp, checkpoint_dp, wandb_mode):
         max_collision_energy=config_d["max_collision_energy"]
     )
 
+    # wandb
+    wandb.init(
+        project=config_d["wandb_project"],
+        entity=config_d["wandb_entity"],
+        name=config_d["wandb_name"],
+        mode=wandb_mode,
+        dir=checkpoint_dp,
+    )
+    logger = pl.loggers.WandbLogger(
+        entity=config_d["wandb_entity"],
+        project=config_d["wandb_project"],
+        name=config_d["wandb_name"],
+        mode=wandb_mode,
+        tags=[],
+        log_model=False,
+    )
+
+    # set up df_test_path
+    save_df_test = config_d.pop("save_df_test")
+    if save_df_test:
+        df_test_path = os.path.join(wandb.run.dir, "df_test.pkl")
+    else:
+        df_test_path = None
+    config_d["df_test_path"] = df_test_path
+
     if config_d["model_type"] == "fp":
         pl_model = FPSimulationMassSpecGymModel(**config_d)
     elif config_d["model_type"] == "prec_only":
@@ -133,13 +159,6 @@ def init_run(template_fp, custom_fp, checkpoint_dp, wandb_mode):
         mol_transform=mol_transform,
         meta_transform=meta_transform
     )
-
-    # # Init data module
-    # data_module = MassSpecDataModule(
-    #     dataset=ds,
-    #     split_pth=split_pth,
-    #     batch_size=8
-    # )
 
     train_ds, val_ds, test_ds = get_split_ss(
         ds,
@@ -161,7 +180,6 @@ def init_run(template_fp, custom_fp, checkpoint_dp, wandb_mode):
     test_dl = DataLoader(test_ds, shuffle=False, **dl_config)
     
     if config_d["do_retrieval"]:
-        # TODO: refactor with test_dl later
         # we don't need to create separate datasets, can just overwrite...
         ret_ds = RetrievalSimulationDataset(
             pth=config_d["pth"],
@@ -180,16 +198,6 @@ def init_run(template_fp, custom_fp, checkpoint_dp, wandb_mode):
             subsample_frac=config_d["subsample_frac"]
         )
         test_dl = DataLoader(test_ret_ds, shuffle=False, **ret_dl_config)
-
-    logger = pl.loggers.WandbLogger(
-        entity=config_d["wandb_entity"],
-        project=config_d["wandb_project"],
-        name=config_d["wandb_name"],
-        mode=wandb_mode,
-        tags=[],
-        log_model=False,
-    )
-    # logger = None
 
     # checkpointing
     checkpoint_callback = ModelCheckpoint(
@@ -219,9 +227,18 @@ def init_run(template_fp, custom_fp, checkpoint_dp, wandb_mode):
         val_dataloaders=val_dl
     )
 
+    if config_d["save_ckpt"]:
+        wandb.save(
+            trainer.checkpoint_callback.best_model_path,
+            base_path=checkpoint_dp
+        )
+
     # Test
     trainer.test(
         pl_model,
         dataloaders=test_dl,
         ckpt_path="best"
     )
+
+
+

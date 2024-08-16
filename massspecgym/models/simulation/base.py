@@ -282,7 +282,8 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         mean_loss = torch.mean(loss)
 
         out_d = {
-            "loss": mean_loss, 
+            "loss": mean_loss,
+            "losses": loss, 
             "pred_mzs": pred_mzs, 
             "pred_logprobs": pred_logprobs, 
             "pred_batch_idxs": pred_batch_idxs,
@@ -315,6 +316,9 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
 
         batch_size = torch.max(outputs["true_batch_idxs"])+1
         
+        metric_vals = {}
+        metric_vals["losses"] = outputs["losses"]
+
         # Log loss
         self.log(
             stage.to_pref() + "loss_step",
@@ -328,7 +332,7 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
 
         if stage not in self.log_only_loss_at_stages:
 
-            self.evaluate_similarity_step(
+            metric_vals.update(self.evaluate_similarity_step(
                 pred_mzs=outputs["pred_mzs"],
                 pred_logprobs=outputs["pred_logprobs"],
                 pred_batch_idxs=outputs["pred_batch_idxs"],
@@ -336,7 +340,10 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
                 true_logprobs=outputs["true_logprobs"],
                 true_batch_idxs=outputs["true_batch_idxs"],
                 stage=stage
-            )
+            ))
+
+            if stage == stage.TEST and self.df_test_path is not None:
+                self._update_df_test(metric_vals)
 
     def on_test_batch_end(
         self, outputs: T.Any, batch: dict, batch_idx: int
@@ -372,8 +379,10 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         true_logprobs: torch.Tensor,
         true_batch_idxs: torch.Tensor,
         stage: Stage
-    ) -> None:
+    ) -> dict:
         
+        metric_vals = {}
+
         batch_size = torch.max(true_batch_idxs).item()+1
         assert "cos_sim" in self.hparams.sim_metrics, self.hparams.sim_metrics
         for metric_name in self.hparams.sim_metrics:
@@ -396,6 +405,9 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
                 log_n_samples=False,
                 bootstrap=(stage == Stage.TEST)
             )
+            metric_vals[metric_name] = metric
+
+        return metric_vals
 
     def evaluate_retrieval_step(
         self,
@@ -403,7 +415,7 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         labels: torch.Tensor,
         batch_ptr: torch.Tensor,
         stage: Stage,
-    ) -> None:
+    ) -> dict:
         """
         Main evaluation method for the retrieval models. The retrieval step is evaluated by 
         computing the hit rate at different top-k values.
@@ -443,3 +455,6 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
             metric_vals[metric_name] = hit_rates
 
         return metric_vals
+    
+    def on_test_epoch_end(self):
+        self._save_df_test()
