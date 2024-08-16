@@ -1,0 +1,17 @@
+# wandb
+wandb_name: "old_bench_preconly_0,001"
+# data
+pth: "data/MassSpecGym.tsv"
+candidates_pth: "data/MassSpecGym_retrieval_candidates_formula_with_test.json"
+split_type: "benchmark"
+# output
+mz_max: 1005.
+mz_bin_res: 0.001
+ints_transform: "none"
+# model
+model_type: "prec_only"
+# optimization
+max_epochs: 1
+# other
+accelerator: "gpu"
+do_retrieval: False

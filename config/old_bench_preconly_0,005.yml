@@ -1,12 +1,12 @@
 # wandb
-wandb_name: "new_bench_preconly"
+wandb_name: "old_bench_preconly_0,005"
 # data
 pth: "data/MassSpecGym.tsv"
+candidates_pth: "data/MassSpecGym_retrieval_candidates_formula_with_test.json"
 split_type: "benchmark"
-instrument_types: ["QTOF","Orbitrap"]
 # output
 mz_max: 1005.
-mz_bin_res: 0.01
+mz_bin_res: 0.005
 ints_transform: "none"
 # model
 model_type: "prec_only"
@@ -14,3 +14,4 @@ model_type: "prec_only"
 max_epochs: 1
 # other
 accelerator: "gpu"
+do_retrieval: False
