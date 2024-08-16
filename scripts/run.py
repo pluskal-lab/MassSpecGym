@@ -10,7 +10,9 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 import massspecgym.utils as utils
 from massspecgym.data import RetrievalDataset, MassSpecDataset, MassSpecDataModule
-from massspecgym.data.transforms import MolFingerprinter, SpecBinner, SpecTokenizer
+from massspecgym.data.transforms import (
+    MolFingerprinter, SpecBinner, SpecTokenizer, MolToFormulaVector
+)
 from massspecgym.models.base import Stage
 from massspecgym.models.retrieval import (
     FingerprintFFNRetrieval, FromDictRetrieval, RandomRetrieval, DeepSetsRetrieval
@@ -45,6 +47,7 @@ parser.add_argument('--candidates_pth', type=str, default=None)
 parser.add_argument('--dataset_pth', type=str, default=None,
     help='Path to the dataset file in the .tsv or .mgf format.')
 parser.add_argument('--split_pth', type=str, default=None)
+parser.add_argument('--num_workers', type=int, default=1)
 
 # Data transforms setup
 
@@ -91,6 +94,7 @@ parser.add_argument('--k_predictions', type=int, default=1)
 parser.add_argument('--pre_norm', type=bool, default=False)
 parser.add_argument('--temperature', type=float, default=1)
 parser.add_argument('--smiles_tokenizer', choices=['smiles_bpe', 'selfies'], default='selfies')
+parser.add_argument('--use_chemical_formula', action='store_true')
 
 # - Retrieval
 
@@ -131,7 +135,7 @@ def main(args):
         if args.model == 'fingerprint_ffn':
             spec_transform = SpecBinner(max_mz=args.max_mz, bin_width=args.bin_width)
         else:
-            spec_transform = SpecTokenizer(n_peaks=args.n_peaks)
+            spec_transform = SpecTokenizer(n_peaks=args.n_peaks, max_mz=args.max_mz)
         dataset = RetrievalDataset(
             pth=args.dataset_pth,
             spec_transform=spec_transform,
@@ -141,8 +145,8 @@ def main(args):
     elif args.task == 'de_novo':
         dataset = MassSpecDataset(
             pth=args.dataset_pth,
-            spec_transform=SpecTokenizer(n_peaks=args.n_peaks),
-            mol_transform=None
+            spec_transform=SpecTokenizer(n_peaks=args.n_peaks, max_mz=args.max_mz),
+            mol_transform={'formula': MolToFormulaVector(), 'mol': None} if args.use_chemical_formula else None
         )
     else:
         raise NotImplementedError(f"Task {args.task} not implemented.")
@@ -151,7 +155,8 @@ def main(args):
     data_module = MassSpecDataModule(
         dataset=dataset,
         split_pth=args.split_pth,
-        batch_size=args.batch_size
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
     )
 
     # Init model
@@ -212,6 +217,7 @@ def main(args):
                 k_predictions=args.k_predictions,
                 pre_norm=args.pre_norm,
                 max_smiles_len=max_smiles_len,
+                chemical_formula=args.use_chemical_formula,
                 **common_kwargs
             )
         else:
