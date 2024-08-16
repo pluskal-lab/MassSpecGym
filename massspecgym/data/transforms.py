@@ -213,3 +213,8 @@ class MolToFormulaVector(MolTransform):
                 raise ValueError(f"Element '{symbol}' not found in the list of 118 elements.")
 
         return formula_vector
+
+    @staticmethod
+    def num_elements():
+        # TODO: This should not be hardcoded andrefactored to static attribute
+        return 118
