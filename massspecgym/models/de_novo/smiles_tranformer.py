@@ -2,7 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import typing as T
+from torch_geometric.nn import MLP
 from massspecgym.models.tokenizers import SpecialTokensBaseTokenizer
+from massspecgym.data.transforms import MolToFormulaVector
 from massspecgym.models.base import Stage
 from massspecgym.models.de_novo.base import DeNovoMassSpecGymModel
 from massspecgym.definitions import PAD_TOKEN, SOS_TOKEN, EOS_TOKEN
@@ -24,7 +26,8 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
         max_smiles_len: int = 200,
         k_predictions: int = 1,
         temperature: T.Optional[float] = 1.0,
-        pre_norm=False,
+        pre_norm: bool = False,
+        chemical_formula: bool = False,
         *args,
         **kwargs
     ):
@@ -57,17 +60,33 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
         )
         self.tgt_decoder = nn.Linear(d_model, self.vocab_size)
 
+        self.chemical_formula = chemical_formula
+        if self.chemical_formula:
+            self.formula_mlp = MLP(
+                in_channels=MolToFormulaVector.num_elements(),
+                hidden_channels=MolToFormulaVector.num_elements(),
+                out_channels=d_model,
+                num_layers=1,
+                dropout=dropout,
+                norm=None
+            )
+
         self.criterion = nn.CrossEntropyLoss()
 
     def forward(
         self,
         src,
         tgt,
+        batch,  # TODO: All the steps from batch to src and tgt should be moved to this method and src and tgt should be removed
         tgt_mask=None,
         src_key_padding_mask=None,
         tgt_key_padding_mask=None,
     ):
-        src = self.src_encoder(src) * (self.d_model**0.5)  # (seq_len, batch_size, d_model)
+        src = self.src_encoder(src)  # (seq_len, batch_size, d_model)
+        if self.chemical_formula:
+            formula_emb = self.formula_mlp(batch["formula"])  # (batch_size, d_model)
+            src = src + formula_emb.unsqueeze(0)  # (seq_len, batch_size, d_model) + (1, batch_size, d_model)
+        src = src * (self.d_model**0.5)
         tgt = self.tgt_embedding(tgt) * (self.d_model**0.5)  # (seq_len, batch_size, d_model)
 
         memory = self.transformer.encoder(src, src_key_padding_mask=src_key_padding_mask)
@@ -98,6 +117,7 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
         smiles_pred = self(
             src=spec,
             tgt=smiles[:-1, :],  # :-1 here and 1: below for teacher forcing
+            batch=batch,
             tgt_mask=tgt_mask[:-1, :-1],
             src_key_padding_mask=src_key_padding_mask,
             tgt_key_padding_mask=tgt_key_padding_mask[:, :-1],
