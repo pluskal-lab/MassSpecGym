@@ -5,8 +5,7 @@ pth: "data/MassSpecGym_small.tsv"
 candidates_pth: "data/MassSpecGym_retrieval_candidates_mass_with_test.json"
 # candidates_pth: "data/MassSpecGym_retrieval_candidates_formula_with_test.json"
 split_type: "benchmark"
-instrument_types: ["QTOF","Orbitrap"]
-# subsample_frac: 0.1
+subsample_frac: 0.1
 # output
 mz_max: 1005.
 mz_bin_res: 0.01

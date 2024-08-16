@@ -10,7 +10,7 @@ ints_transform: "sqrt"
 # model
 model_type: "fp"
 # optimization
-max_epochs: 20
+max_epochs: 100
 # other
 accelerator: "gpu"
 do_retrieval: False

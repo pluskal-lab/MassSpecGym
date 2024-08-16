@@ -48,7 +48,7 @@ weight_decay: 0.0000001
 train_sample_weight: False #True
 eval_sample_weight: False #True
 batch_size: 128
-max_epochs: 20
+max_epochs: 100
 drop_last: False
 gradient_clip_val: 0.0
 gradient_clip_algorithm:

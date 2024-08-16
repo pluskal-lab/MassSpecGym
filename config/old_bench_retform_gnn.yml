@@ -11,6 +11,6 @@ ints_transform: "sqrt"
 # model
 model_type: "gnn"
 # optimization
-max_epochs: 20
+max_epochs: 100
 # other
 accelerator: "gpu"
