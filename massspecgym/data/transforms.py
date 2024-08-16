@@ -1,9 +1,11 @@
 import numpy as np
 import pandas as pd
 import torch
+import torch.nn as nn
 import matchms
 import matchms.filtering as ms_filters
 import massspecgym.utils as utils
+from math import ceil
 from rdkit.Chem import AllChem as Chem
 from pathlib import Path
 from typing import Optional, List, Union
@@ -174,3 +176,40 @@ class MolToInChIKey(MolTransform):
     def from_smiles(self, mol: str) -> str:
         mol = Chem.MolFromSmiles(mol)
         return utils.mol_to_inchi_key(mol, twod=self.twod)
+
+
+class MolToFormulaVector(MolTransform):
+    def __init__(self):
+        # List of all 118 elements (indexed by atomic number)
+        self.elements = [
+            "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne", "Na", "Mg", "Al", "Si", "P", "S", "Cl", "Ar",
+            "K", "Ca", "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn", "Ga", "Ge", "As", "Se", "Br", "Kr",
+            "Rb", "Sr", "Y", "Zr", "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn", "Sb", "Te", "I", "Xe",
+            "Cs", "Ba", "La", "Ce", "Pr", "Nd", "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb", "Lu",
+            "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg", "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac",
+            "Th", "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es", "Fm", "Md", "No", "Lr", "Rf", "Db", "Sg", "Bh",
+            "Hs", "Mt", "Ds", "Rg", "Cn", "Nh", "Fl", "Mc", "Lv", "Ts", "Og"
+        ]
+        self.element_index = {element: i for i, element in enumerate(self.elements)}
+
+    def from_smiles(self, smiles: str):
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            raise ValueError(f"Invalid SMILES string: {smiles}")
+
+        # Add explicit hydrogens to the molecule
+        mol = Chem.AddHs(mol)
+
+        # Initialize a vector of zeros for the 118 elements
+        formula_vector = np.zeros(118, dtype=np.int32)
+
+        # Iterate over atoms in the molecule and count occurrences of each element
+        for atom in mol.GetAtoms():
+            symbol = atom.GetSymbol()
+            if symbol in self.element_index:
+                index = self.element_index[symbol]
+                formula_vector[index] += 1
+            else:
+                raise ValueError(f"Element '{symbol}' not found in the list of 118 elements.")
+
+        return formula_vector
