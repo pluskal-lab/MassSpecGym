@@ -29,7 +29,7 @@ lr_schedule: True
 lr_decay_rate: 0.8523
 weight_decay: 0.0000001
 batch_size: 128
-max_epochs: 100
+max_epochs: 20
 optimizer_type: "adamw"
 gradient_clip_val: 5.0
 gradient_clip_algorithm: norm
