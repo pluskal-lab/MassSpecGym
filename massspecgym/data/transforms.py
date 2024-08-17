@@ -205,5 +205,4 @@ class MolToFormulaVector(MolTransform):
 
     @staticmethod
     def num_elements():
-        # TODO: This should not be hardcoded andrefactored to static attribute
         return len(CHEM_ELEMS)
