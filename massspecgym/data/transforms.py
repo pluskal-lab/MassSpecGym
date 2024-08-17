@@ -53,13 +53,15 @@ class SpecTokenizer(SpecTransform):
     def __init__(
         self,
         n_peaks: Optional[int] = 60,
-        prec_mz_intensity: Optional[float] = 1.1
+        prec_mz_intensity: Optional[float] = 1.1,
+        max_mz: int = 1000  # TODO Refactor
     ) -> None:
         self.n_peaks = n_peaks
         self.prec_mz_intensity = prec_mz_intensity
+        self.max_mz = max_mz
 
     def matchms_transforms(self, spec: matchms.Spectrum) -> matchms.Spectrum:
-        return default_matchms_transforms(spec, n_max_peaks=self.n_peaks)
+        return default_matchms_transforms(spec, n_max_peaks=self.n_peaks, mz_to=self.max_mz)
 
     def matchms_to_torch(self, spec: matchms.Spectrum) -> torch.Tensor:
         """
