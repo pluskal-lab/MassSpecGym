@@ -73,29 +73,8 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
 
         self.criterion = nn.CrossEntropyLoss()
 
-    def forward(
-        self,
-        src,
-        tgt,
-        batch,  # TODO: All the steps from batch to src and tgt should be moved to this method and src and tgt should be removed
-        tgt_mask=None,
-        src_key_padding_mask=None,
-        tgt_key_padding_mask=None,
-    ):
-        src = self.src_encoder(src)  # (seq_len, batch_size, d_model)
-        if self.chemical_formula:
-            formula_emb = self.formula_mlp(batch["formula"])  # (batch_size, d_model)
-            src = src + formula_emb.unsqueeze(0)  # (seq_len, batch_size, d_model) + (1, batch_size, d_model)
-        src = src * (self.d_model**0.5)
-        tgt = self.tgt_embedding(tgt) * (self.d_model**0.5)  # (seq_len, batch_size, d_model)
-
-        memory = self.transformer.encoder(src, src_key_padding_mask=src_key_padding_mask)
-        output = self.transformer.decoder(tgt, memory, tgt_mask=tgt_mask, tgt_key_padding_mask=tgt_key_padding_mask)
-
-        output = self.tgt_decoder(output)  # (seq_len, batch_size, vocab_size)
-        return output
-
-    def step(self, batch: dict, stage: Stage = Stage.NONE) -> dict:
+    def forward(self, batch):
+        
         spec = batch["spec"]  # (batch_size, seq_len, in_dim)
         smiles = batch["mol"]  # List of SMILES of length batch_size
 
@@ -111,19 +90,41 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
         tgt_seq_len = smiles.size(1)
         tgt_mask = self.transformer.generate_square_subsequent_mask(tgt_seq_len).to(smiles.device)
 
-        spec = spec.permute(1, 0, 2)  # (seq_len, batch_size, in_dim)
+        # Preapre inputs for transformer teacher forcing
+        src = spec.permute(1, 0, 2)  # (seq_len, batch_size, in_dim)
         smiles = smiles.permute(1, 0)  # (seq_len, batch_size)
+        tgt = smiles[:-1, :]
+        tgt_mask = tgt_mask[:-1, :-1]
+        src_key_padding_mask = src_key_padding_mask
+        tgt_key_padding_mask = tgt_key_padding_mask[:, :-1]
 
-        smiles_pred = self(
-            src=spec,
-            tgt=smiles[:-1, :],  # :-1 here and 1: below for teacher forcing
-            batch=batch,
-            tgt_mask=tgt_mask[:-1, :-1],
-            src_key_padding_mask=src_key_padding_mask,
-            tgt_key_padding_mask=tgt_key_padding_mask[:, :-1],
-        )
+        # Input and output embeddings
+        src = self.src_encoder(src)  # (seq_len, batch_size, d_model)
+        if self.chemical_formula:
+            formula_emb = self.formula_mlp(batch["formula"])  # (batch_size, d_model)
+            src = src + formula_emb.unsqueeze(0)  # (seq_len, batch_size, d_model) + (1, batch_size, d_model)
+        src = src * (self.d_model**0.5)
+        tgt = self.tgt_embedding(tgt) * (self.d_model**0.5)  # (seq_len, batch_size, d_model)
 
-        loss = self.criterion(smiles_pred.view(-1, self.vocab_size), smiles[1:, :].contiguous().view(-1))
+        # Transformer forward pass
+        memory = self.transformer.encoder(src, src_key_padding_mask=src_key_padding_mask)
+        output = self.transformer.decoder(tgt, memory, tgt_mask=tgt_mask, tgt_key_padding_mask=tgt_key_padding_mask)
+
+        # Logits to vocabulary
+        output = self.tgt_decoder(output)  # (seq_len, batch_size, vocab_size)
+
+        # Reshape before returning
+        smiles_pred = output.view(-1, self.vocab_size)
+        smiles = smiles[1:, :].contiguous().view(-1)
+        return smiles_pred, smiles
+
+    def step(self, batch: dict, stage: Stage = Stage.NONE) -> dict:
+
+        # Forward pass
+        smiles_pred, smiles = self.forward(batch)
+
+        # Compute loss
+        loss = self.criterion(smiles_pred, smiles)
 
         # Generate SMILES strings
         if stage in self.log_only_loss_at_stages:
