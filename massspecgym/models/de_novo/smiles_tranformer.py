@@ -130,7 +130,7 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
         if stage in self.log_only_loss_at_stages:
             mols_pred = None
         else:
-            mols_pred = self.decode_smiles(batch["spec"])
+            mols_pred = self.decode_smiles(batch)
 
         return dict(loss=loss, mols_pred=mols_pred)
 
@@ -158,14 +158,19 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
 
         return decoded_smiles_str
 
-    def greedy_decode(self, spec, max_len, temperature):
+    def greedy_decode(self, batch, max_len, temperature):
 
         with torch.inference_mode():
 
+            spec = batch["spec"]
             src_key_padding_mask = self.generate_src_padding_mask(spec)   
 
             spec = spec.permute(1, 0, 2)  # (seq_len, batch_size, in_dim)
-            src = self.src_encoder(spec) * (self.d_model**0.5)
+            src = self.src_encoder(spec)  # (seq_len, batch_size, d_model)
+            if self.chemical_formula:
+                formula_emb = self.formula_mlp(batch["formula"])  # (batch_size, d_model)
+                src = src + formula_emb.unsqueeze(0)  # (seq_len, batch_size, d_model) + (1, batch_size, d_model)
+            src = src * (self.d_model**0.5)
             memory = self.transformer.encoder(src, src_key_padding_mask=src_key_padding_mask,)
 
             batch_size = src.size(1)
