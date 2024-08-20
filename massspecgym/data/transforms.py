@@ -54,11 +54,11 @@ class SpecTokenizer(SpecTransform):
         self,
         n_peaks: Optional[int] = 60,
         prec_mz_intensity: Optional[float] = 1.1,
-        matchms_kwargs: dict = {}
+        matchms_kwargs: Optional[dict] = None
     ) -> None:
         self.n_peaks = n_peaks
         self.prec_mz_intensity = prec_mz_intensity
-        self.matchms_kwargs = matchms_kwargs
+        self.matchms_kwargs = matchms_kwargs if matchms_kwargs is not None else {}
 
     def matchms_transforms(self, spec: matchms.Spectrum) -> matchms.Spectrum:
         return default_matchms_transforms(spec, n_max_peaks=self.n_peaks, **self.matchms_kwargs)

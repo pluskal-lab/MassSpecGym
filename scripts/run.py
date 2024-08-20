@@ -135,7 +135,7 @@ def main(args):
         if args.model == 'fingerprint_ffn':
             spec_transform = SpecBinner(max_mz=args.max_mz, bin_width=args.bin_width)
         else:
-            spec_transform = SpecTokenizer(n_peaks=args.n_peaks, max_mz=args.max_mz)
+            spec_transform = SpecTokenizer(n_peaks=args.n_peaks, matchms_kwargs=dict(mz_to=args.max_mz))
         dataset = RetrievalDataset(
             pth=args.dataset_pth,
             spec_transform=spec_transform,
@@ -145,7 +145,7 @@ def main(args):
     elif args.task == 'de_novo':
         dataset = MassSpecDataset(
             pth=args.dataset_pth,
-            spec_transform=SpecTokenizer(n_peaks=args.n_peaks, max_mz=args.max_mz),
+            spec_transform = SpecTokenizer(n_peaks=args.n_peaks, matchms_kwargs=dict(mz_to=args.max_mz)),
             mol_transform={'formula': MolToFormulaVector(), 'mol': None} if args.use_chemical_formula else None
         )
     else:

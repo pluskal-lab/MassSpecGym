@@ -18,7 +18,7 @@ export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 # Train SmilesTransformer on de novo formula bonus challenge
 # srun --export=ALL --preserve-env python3 run.py \
 #     --job_key="${job_key}" \
-#     --run_name=rebuttal_smiles_transformer_formula_train \
+#     --run_name=rebuttal_smiles_transformer_formula_v3_train \
 #     --task=de_novo \
 #     --model=smiles_transformer \
 #     --log_only_loss_at_stages=train,val \
@@ -35,7 +35,7 @@ export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 # Train SelfiesTransformer on de novo formula bonus challenge
 # srun --export=ALL --preserve-env python3 run.py \
 #     --job_key="${job_key}" \
-#     --run_name=rebuttal_selfies_transformer_formula_train \
+#     --run_name=rebuttal_selfies_transformer_formula_v3_train \
 #     --task=de_novo \
 #     --model=smiles_transformer \
 #     --log_only_loss_at_stages=train,val \
@@ -47,7 +47,7 @@ export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 #     --num_encoder_layers=6 \
 #     --smiles_tokenizer=selfies \
 #     --use_chemical_formula \
-#     --dataset_pth="../data/MIST_CANOPUS_with_MassSpecGym_test.tsv"
+#     --dataset_pth="../data/MassSpecGym_with_test/MassSpecGym_with_test.tsv"
 
 # Train SmilesTransformer on de novo using MIST CANOPUS dataset
 # srun --export=ALL --preserve-env python3 run.py \
@@ -133,23 +133,27 @@ export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 #     # --checkpoint_pth="./MassSpecGymDeNovo/ni6D2Mxb3K/step=003800-val_loss=0.577.ckpt"
 
 # Test SmilesTransformer on de novo from checkpoint (bonus formula challenge)
-srun --export=ALL --preserve-env python3 run.py \
-    --job_key="${job_key}" \
-    --run_name=rebuttal_selfies_transformer_formula_test \
-    --devices=1 \
-    --test_only \
-    --task=de_novo \
-    --model=smiles_transformer \
-    --smiles_tokenizer="selfies" \
-    --use_chemical_formula \
-    --dataset_pth="../data/MassSpecGym_with_test/MassSpecGym_with_test.tsv" \
-    --checkpoint_pth="./MassSpecGymDeNovo/6IjntsDfWm/step=000600-val_loss=0.350.ckpt"
-    # smiles_bpe
-    # ./MassSpecGymDeNovo/NEA3EkbCos/step=006460-val_loss=0.295.ckpt
-    # selfies
-    # ./MassSpecGymDeNovo/6IjntsDfWm/step=000600-val_loss=0.350.ckpt
-
-
+# srun --export=ALL --preserve-env python3 run.py \
+#     --job_key="${job_key}" \
+#     --run_name=rebuttal_selfies_transformer_formula_v3_test \
+#     --devices=1 \
+#     --test_only \
+#     --task=de_novo \
+#     --model=smiles_transformer \
+#     --smiles_tokenizer="selfies" \
+#     --use_chemical_formula \
+#     --dataset_pth="../data/MassSpecGym_with_test/MassSpecGym_with_test.tsv" \
+#     --checkpoint_pth="./MassSpecGymDeNovo/oxrgv0eaGV/step=007220-val_loss=0.562.ckpt"
+#     # v0
+#     # smiles_bpe
+#     # ./MassSpecGymDeNovo/NEA3EkbCos/step=006460-val_loss=0.295.ckpt
+#     # selfies
+#     # ./MassSpecGymDeNovo/6IjntsDfWm/step=000600-val_loss=0.350.ckpt
+#     # v3
+#     # smile_bpe
+#     # ./MassSpecGymDeNovo/I0m4ImYCSs/step=006460-val_loss=0.286.ckpt
+#     # selfies
+#     # ./MassSpecGymDeNovo/oxrgv0eaGV/step=007220-val_loss=0.562.ckpt
 
 # Train DeepSets on retrieval
 # srun --export=ALL --preserve-env python3 run.py \
@@ -200,20 +204,20 @@ srun --export=ALL --preserve-env python3 run.py \
 #     # --checkpoint_pth="./MassSpecGymRetrieval/eknSFeAdyN/step=000380-val_loss=0.591.ckpt"
 
 # Test DeepSets with Fourier features from checkpoint on retrieval
-srun --export=ALL --preserve-env python3 run.py \
-    --job_key="${job_key}" \
-    --run_name=rebuttal_deepsets_ff_test_mass \
-    --devices=1 \
-    --test_only \
-    --task=retrieval \
-    --model=deepsets \
-    --dataset_pth="../data/MassSpecGym_with_test/MassSpecGym_with_test.tsv" \
-    --candidates_pth="../data/MassSpecGym_with_test/MassSpecGym_retrieval_candidates_mass_with_test.json" \
-    --checkpoint_pth="./MassSpecGymRetrieval/y3QXN6wDDk/step=003033-val_loss=0.570.ckpt"
-    # mass
-    # --checkpoint_pth="./MassSpecGymRetrieval/y3QXN6wDDk/step=003033-val_loss=0.570.ckpt"
-    # formula
-    # --checkpoint_pth="./MassSpecGymRetrieval/gO6htxckUn/step=000380-val_loss=0.566.ckpt"
+# srun --export=ALL --preserve-env python3 run.py \
+#     --job_key="${job_key}" \
+#     --run_name=rebuttal_deepsets_ff_test_mass \
+#     --devices=1 \
+#     --test_only \
+#     --task=retrieval \
+#     --model=deepsets \
+#     --dataset_pth="../data/MassSpecGym_with_test/MassSpecGym_with_test.tsv" \
+#     --candidates_pth="../data/MassSpecGym_with_test/MassSpecGym_retrieval_candidates_mass_with_test.json" \
+#     --checkpoint_pth="./MassSpecGymRetrieval/y3QXN6wDDk/step=003033-val_loss=0.570.ckpt"
+#     # mass
+#     # --checkpoint_pth="./MassSpecGymRetrieval/y3QXN6wDDk/step=003033-val_loss=0.570.ckpt"
+#     # formula
+#     # --checkpoint_pth="./MassSpecGymRetrieval/gO6htxckUn/step=000380-val_loss=0.566.ckpt"
 
 # Train FingerprintFFN on retrieval
 # srun --export=ALL --preserve-env python3 run.py \
