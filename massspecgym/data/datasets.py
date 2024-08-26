@@ -236,7 +236,7 @@ class SimulationDataset(MassSpecDataset):
         mol_transform: MolTransform,
         meta_transform: MetaTransform,
         meta_keys: T.List[str],
-        pth: Optional[Path] = None,
+        pth: T.Optional[Path] = None,
         return_mol_freq: bool = True,
         return_identifier: bool = True,
         dtype: T.Type = torch.float32
