@@ -1,5 +1,5 @@
 # wandb
-wandb_name: "old_bench_retform_preconly"
+wandb_name: "gnn_formula"
 # data
 pth: "data/MassSpecGym.tsv"
 candidates_pth: "data/MassSpecGym_retrieval_candidates_formula_with_test.json"
@@ -7,11 +7,11 @@ split_type: "benchmark"
 # output
 mz_max: 1005.
 mz_bin_res: 0.01
-ints_transform: "none"
+ints_transform: "sqrt"
 # model
-model_type: "prec_only"
+model_type: "gnn"
 # optimization
-max_epochs: 1
+max_epochs: 100
 # other
 accelerator: "gpu"
 save_ckpt: True

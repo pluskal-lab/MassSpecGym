@@ -1,5 +1,5 @@
 # wandb
-wandb_name: "old_bench_retmass_gnn"
+wandb_name: "fp_mass"
 # data
 pth: "data/MassSpecGym.tsv"
 candidates_pth: "data/MassSpecGym_retrieval_candidates_mass_with_test.json"
@@ -9,7 +9,7 @@ mz_max: 1005.
 mz_bin_res: 0.01
 ints_transform: "sqrt"
 # model
-model_type: "gnn"
+model_type: "fp"
 # optimization
 max_epochs: 100
 # other

@@ -1,8 +1,8 @@
 # wandb
-wandb_name: "old_bench_retmass_preconly"
+wandb_name: "preconly_0,01"
 # data
 pth: "data/MassSpecGym.tsv"
-candidates_pth: "data/MassSpecGym_retrieval_candidates_mass_with_test.json"
+candidates_pth: "data/MassSpecGym_retrieval_candidates_formula_with_test.json"
 split_type: "benchmark"
 # output
 mz_max: 1005.
@@ -14,4 +14,4 @@ model_type: "prec_only"
 max_epochs: 1
 # other
 accelerator: "gpu"
-save_ckpt: True
+do_retrieval: False

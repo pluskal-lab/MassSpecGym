@@ -1,5 +1,5 @@
 # wandb
-wandb_name: "old_bench_gnn"
+wandb_name: "sim_gnn"
 # data
 pth: "data/MassSpecGym.tsv"
 split_type: "benchmark"
