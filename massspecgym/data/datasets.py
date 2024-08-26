@@ -6,7 +6,6 @@ import torch
 import matchms
 import massspecgym.utils as utils
 from pathlib import Path
-from typing import Optional
 from rdkit import Chem
 from torch.utils.data.dataset import Dataset
 from torch.utils.data.dataloader import default_collate
@@ -27,9 +26,9 @@ class MassSpecDataset(Dataset):
 
     def __init__(
         self,
-        spec_transform: Optional[SpecTransform] = None,
-        mol_transform: Optional[MolTransform] = None,
-        pth: Optional[Path] = None,
+        spec_transform: T.Optional[T.Union[SpecTransform, T.Dict[str, SpecTransform]]] = None,
+        mol_transform: T.Optional[T.Union[MolTransform, T.Dict[str, MolTransform]]] = None,
+        pth: T.Optional[Path] = None,
         return_mol_freq: bool = True,
         return_identifier: bool = True,
         dtype: T.Type = torch.float32
@@ -88,23 +87,32 @@ class MassSpecDataset(Dataset):
     def __getitem__(
         self, i: int, transform_spec: bool = True, transform_mol: bool = True
     ) -> dict:
-        spec = self.spectra.iloc[i]
-        spec = (
-            self.spec_transform(spec)
-            if transform_spec and self.spec_transform
-            else spec
-        )
-        spec = torch.as_tensor(spec, dtype=self.dtype)
-
+        spec = self.spectra[i]
         metadata = self.metadata.iloc[i]
         mol = metadata["smiles"]
-        mol = self.mol_transform(mol) if transform_mol and self.mol_transform else mol
-        if isinstance(mol, np.ndarray):
-            mol = torch.as_tensor(mol, dtype=self.dtype)
 
-        item = {"spec": spec, "mol": mol}
+        # Apply all transformations to the spectrum
+        item = {}
+        if transform_spec and self.spec_transform:
+            if isinstance(self.spec_transform, dict):
+                for key, transform in self.spec_transform.items():
+                    item[key] = transform(spec) if transform is not None else spec
+            else:
+                item["spec"] = self.spec_transform(spec)
+        else:
+            item["spec"] = spec
 
-        # TODO: Add other metadata to the item. Should it be just done in subclasses?
+        # Apply all transformations to the molecule
+        if transform_mol and self.mol_transform:
+            if isinstance(self.mol_transform, dict):
+                for key, transform in self.mol_transform.items():
+                    item[key] = transform(mol) if transform is not None else mol
+            else:
+                item["mol"] = self.mol_transform(mol)
+        else:
+            item["mol"] = mol
+
+        # Add other metadata to the item
         item.update({
             k: metadata[k] for k in ["precursor_mz", "adduct"]
         })
@@ -114,6 +122,11 @@ class MassSpecDataset(Dataset):
 
         if self.return_identifier:
             item["identifier"] = metadata["identifier"]
+
+        # TODO: this should be refactored
+        for k, v in item.items():
+            if not isinstance(v, str):
+                item[k] = torch.as_tensor(v, dtype=self.dtype)
 
         return item
 

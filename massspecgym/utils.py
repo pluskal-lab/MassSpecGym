@@ -10,6 +10,9 @@ import pandas as pd
 import typing as T
 import pulp
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from itertools import groupby
 from pathlib import Path
 from myopic_mces.myopic_mces import MCES
 from rdkit.Chem import AllChem as Chem
@@ -189,6 +192,17 @@ def init_plotting(figsize=(6, 2), font_scale=1.0, style="whitegrid"):
 
 def parse_spec_array(arr: str) -> np.ndarray:
     return np.array(list(map(float, arr.split(","))))
+
+
+def spec_array_to_str(arr: np.ndarray) -> str:
+    return ",".join(map(str, arr))
+
+
+def compute_mass(smiles: str) -> float:
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        raise ValueError("Invalid SMILES string.")
+    return ExactMolWt(mol)
 
 
 def plot_spectrum(spec, hue=None, xlim=None, ylim=None, mirror_spec=None, highl_idx=None,
@@ -391,3 +405,69 @@ def unbatch_list(batch_list: list, batch_idx: torch.Tensor) -> list:
         [batch_list[j] for j in range(len(batch_list)) if batch_idx[j] == i]
         for i in range(batch_idx[-1] + 1)
     ]
+
+
+class CosSimLoss(nn.Module):
+    def __init__(self):
+        super(CosSimLoss, self).__init__()
+
+    def forward(self, inputs, targets):
+        return 1 - F.cosine_similarity(inputs, targets).mean()
+
+      
+def parse_sirius_ms(spectra_file: str) -> T.Tuple[dict, T.List[T.Tuple[str, np.ndarray]]]:
+    """
+    Parses spectra from the SIRIUS .ms file.
+
+    Copied from the code of Goldman et al.:
+    https://github.com/samgoldman97/mist/blob/4c23d34fc82425ad5474a53e10b4622dcdbca479/src/mist/utils/parse_utils.py#LL10C77-L10C77.
+    :return T.Tuple[dict, T.List[T.Tuple[str, np.ndarray]]]: metadata and list of spectra tuples containing name and array
+    """
+    lines = [i.strip() for i in open(spectra_file, "r").readlines()]
+
+    group_num = 0
+    metadata = {}
+    spectras = []
+    my_iterator = groupby(
+        lines, lambda line: line.startswith(">") or line.startswith("#")
+    )
+
+    for index, (start_line, lines) in enumerate(my_iterator):
+        group_lines = list(lines)
+        subject_lines = list(next(my_iterator)[1])
+        # Get spectra
+        if group_num > 0:
+            spectra_header = group_lines[0].split(">")[1]
+            peak_data = [
+                [float(x) for x in peak.split()[:2]]
+                for peak in subject_lines
+                if peak.strip()
+            ]
+            # Check if spectra is empty
+            if len(peak_data):
+                peak_data = np.vstack(peak_data)
+                # Add new tuple
+                spectras.append((spectra_header, peak_data))
+        # Get meta data
+        else:
+            entries = {}
+            for i in group_lines:
+                if " " not in i:
+                    continue
+                elif i.startswith("#INSTRUMENT TYPE"):
+                    key = "#INSTRUMENT TYPE"
+                    val = i.split(key)[1].strip()
+                    entries[key[1:]] = val
+                else:
+                    start, end = i.split(" ", 1)
+                    start = start[1:]
+                    while start in entries:
+                        start = f"{start}'"
+                    entries[start] = end
+
+            metadata.update(entries)
+        group_num += 1
+
+    metadata["_FILE_PATH"] = spectra_file
+    metadata["_FILE"] = Path(spectra_file).stem
+    return metadata, spectras

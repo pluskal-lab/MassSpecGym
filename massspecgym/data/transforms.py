@@ -1,18 +1,17 @@
 import numpy as np
-import pandas as pd
 import torch
 import matchms
 import matchms.filtering as ms_filters
-import massspecgym.utils as utils
 from rdkit.Chem import AllChem as Chem
-from pathlib import Path
-from typing import Optional, List, Union
+from typing import Optional
 from abc import ABC, abstractmethod
 import torch
 from torch_geometric.data import Batch
 
 from massspecgym.simulation_utils.feat_utils import MolGraphFeaturizer, get_fingerprints
 from massspecgym.simulation_utils.misc_utils import scatter_reduce
+import massspecgym.utils as utils
+from massspecgym.definitions import CHEM_ELEMS
 
 
 class SpecTransform(ABC):
@@ -59,13 +58,15 @@ class SpecTokenizer(SpecTransform):
     def __init__(
         self,
         n_peaks: Optional[int] = 60,
-        prec_mz_intensity: Optional[float] = 1.1
+        prec_mz_intensity: Optional[float] = 1.1,
+        matchms_kwargs: Optional[dict] = None
     ) -> None:
         self.n_peaks = n_peaks
         self.prec_mz_intensity = prec_mz_intensity
+        self.matchms_kwargs = matchms_kwargs if matchms_kwargs is not None else {}
 
     def matchms_transforms(self, spec: matchms.Spectrum) -> matchms.Spectrum:
-        return default_matchms_transforms(spec, n_max_peaks=self.n_peaks)
+        return default_matchms_transforms(spec, n_max_peaks=self.n_peaks, **self.matchms_kwargs)
 
     def matchms_to_torch(self, spec: matchms.Spectrum) -> torch.Tensor:
         """
@@ -222,6 +223,37 @@ class MolToInChIKey(MolTransform):
     def from_smiles(self, mol: str) -> str:
         mol = Chem.MolFromSmiles(mol)
         return utils.mol_to_inchi_key(mol, twod=self.twod)
+
+
+class MolToFormulaVector(MolTransform):
+    def __init__(self):
+        self.element_index = {element: i for i, element in enumerate(CHEM_ELEMS)}
+
+    def from_smiles(self, smiles: str):
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            raise ValueError(f"Invalid SMILES string: {smiles}")
+
+        # Add explicit hydrogens to the molecule
+        mol = Chem.AddHs(mol)
+
+        # Initialize a vector of zeros for the 118 elements
+        formula_vector = np.zeros(118, dtype=np.int32)
+
+        # Iterate over atoms in the molecule and count occurrences of each element
+        for atom in mol.GetAtoms():
+            symbol = atom.GetSymbol()
+            if symbol in self.element_index:
+                index = self.element_index[symbol]
+                formula_vector[index] += 1
+            else:
+                raise ValueError(f"Element '{symbol}' not found in the list of 118 elements.")
+
+        return formula_vector
+
+    @staticmethod
+    def num_elements():
+        return len(CHEM_ELEMS)
 
 
 class MolToPyG(MolTransform):
