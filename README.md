@@ -201,7 +201,7 @@ trainer = Trainer(accelerator="cpu", devices=1, max_epochs=5)
 trainer.fit(model, datamodule=data_module)
 ```
 
-4. Test your model (the test API will be available soon):
+4. Test your model:
 
 ```python
 # Test
