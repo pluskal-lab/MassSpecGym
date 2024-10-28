@@ -9,13 +9,13 @@ with open(os.path.join(here, "README.md"), encoding="utf-8") as f:
 setup(
     name="massspecgym",
     packages=find_packages(),
-    version="0.2.0",
-    description="MassSpecGym: Benchmark For the Discovery of New Molecules From Mass Spectra",
+    version="1.0.0",
+    description="MassSpecGym: A benchmark for the discovery and identification of molecules",
     author="MassSpecGym developers",
+    author_email="roman.bushuiev@uochb.cas.cz",
     license="MIT",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    # url="",  # TODO: Add URL to documentation
     install_requires=[
         "torch==2.3.0",
         "pytorch-lightning==2.2.5",
@@ -48,5 +48,11 @@ setup(
             "scikit-learn==1.5.0",
             "pandarallel==1.6.5",
         ],
-    }
+    },
+    python_requires='>=3.11',
+    classifiers=[
+        "Programming Language :: Python :: 3.11",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
+    ],
 )
