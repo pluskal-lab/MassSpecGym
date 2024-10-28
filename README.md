@@ -8,7 +8,7 @@
 <p>
 
 <p align="center">
-  <img src="assets/MassSpecGym_abstract.svg" width="80%"/>
+  <img src="https://raw.githubusercontent.com/pluskal-lab/MassSpecGym/5d7d58af99947988f947eeb5bd5c6a472c2938b7/assets/MassSpecGym_abstract.svg" width="80%"/>
 </p>
 
 MassSpecGym provides three challenges for benchmarking the discovery and identification of new molecules from MS/MS spectra. The provided challenges abstract the process of scientific discovery from biological and environmental samples into well-defined machine learning problems.
@@ -19,27 +19,35 @@ MassSpecGym provides three challenges for benchmarking the discovery and identif
 
 ## Installation
 
-Installation steps:
+Installation is available via `pip`:
 
 ```bash
-conda create -n massspecgym python=3.11
-conda activate massspecgym
-git clone https://github.com/pluskal-lab/MassSpecGym.git; cd MassSpecGym
-pip install -e .[dev,notebooks]
+pip install massspecgym
 ```
 
-For AMD GPUs, you may need to install PyTorch for ROCm:
+If you use conda, we recommend creating and activating a new environment before installing MassSpecGym:
+
+```bash
+conda create -n massspecgym python==3.11
+conda activate massspecgym
+```
+
+If you are planning to run Jupyter notebooks provided in the repository or contribute to the project, we recommend installing the optional dependencies:
+
+```bash
+pip install massspecgym[notebooks, dev]
+```
+
+<!-- For AMD GPUs, you may need to install PyTorch for ROCm:
 
 ```bash
 pip install -U torch==2.3.0 --index-url https://download.pytorch.org/whl/rocm6.0
-```
-
-📣 Easier installation via `pip` will be available soon!
+``` -->
 
 ## MassSpecGym infrastructure
 
 <p align="center">
-  <img src="assets/MassSpecGym_infrastructure.svg" width="80%"/>
+  <img src="https://raw.githubusercontent.com/pluskal-lab/MassSpecGym/5d7d58af99947988f947eeb5bd5c6a472c2938b7/assets/MassSpecGym_infrastructure.svg" width="80%"/>
 </p>
 
 ## Train and evaluate your model 🚀
@@ -157,10 +165,10 @@ trainer.fit(model, datamodule=data_module)
 trainer.test(model, datamodule=data_module)
 ```
 
-## TODO
+## References
 
-- [x] Croissant.
-- [ ] Testing API.
-- [ ] Optimize de novo evaluation metrics to run in parallel by workers initialized in the corresponding pl.Module constructor
-- [ ] Link to documentation.
-- [ ] Link to Papers With Code leaderboard (requires url to paper).
+If you use MassSpecGym in your work, please cite the following paper:
+
+```bibtex
+TODO
+```
