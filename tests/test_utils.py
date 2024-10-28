@@ -1,5 +1,6 @@
 import numpy as np
 import matchms
+import os
 from rdkit.Chem import AllChem as Chem
 import massspecgym.utils as utils
 
@@ -59,5 +60,11 @@ def test_morgan_fp():
 
 
 def test_standardize_smiles():
-    assert utils.standardize_smiles("OCO") == "C(O)O"
-    assert utils.standardize_smiles(["OCO", "CC"]) == ["C(O)O", "CC"]
+    def asserts():
+        assert utils.standardize_smiles("OCO") == "C(O)O"
+        assert utils.standardize_smiles(["OCO", "CC"]) == ["C(O)O", "CC"]
+    try:
+        asserts()
+    except ImportError:
+        os.system("pip install git+https://github.com/boecker-lab/standardizeUtils@b415f1c51b49f6c5cd0e9c6ab89224c8ad657a35#egg=standardizeUtils")
+        asserts()

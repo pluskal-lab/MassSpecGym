@@ -127,7 +127,7 @@ def morgan_fp(mol: Chem.Mol, fp_size=2048, radius=2, to_np=True):
 
     fp = Chem.GetMorganFingerprintAsBitVect(mol, radius=radius, nBits=fp_size)
     if to_np:
-        fp_np = np.zeros((0,), dtype=bool)
+        fp_np = np.zeros((0,), dtype=np.int32)
         DataStructs.ConvertToNumpyArray(fp, fp_np)
         fp = fp_np
     return fp
