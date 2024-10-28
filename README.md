@@ -80,7 +80,7 @@ dataset = MassSpecDataset(
 )
 ```
 
-Third, MassSpecGym provides a `MassSpecDataModule`, a PyTorch Lightning [LightningDataModule](https://lightning.ai/docs/pytorch/stable/data/datamodule.html) that automatically handles data splitting into training, validation, and testing folds.
+Third, MassSpecGym provides a `MassSpecDataModule`, a PyTorch Lightning [LightningDataModule](https://lightning.ai/docs/pytorch/stable/data/datamodule.html) that automatically handles data splitting into training, validation, and testing folds, as well as loading data into batches.
 
 ```python
 from massspecgym.data import MassSpecDataModule
