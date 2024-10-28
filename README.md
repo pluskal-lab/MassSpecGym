@@ -13,11 +13,11 @@
 
 MassSpecGym provides three challenges for benchmarking the discovery and identification of new molecules from MS/MS spectra:
 
-- 💥 ***De novo* molecular generation** (input - MS/MS spectrum, output - molecular structure)
-    - 🎆 **Bonus chemical formulae challenge** (input - MS/MS spectrum and chemical formula, output - molecular structure)
-- 💥 **Molecular retrieval** (input - MS/MS spectrum, output - ranked list of candidate molecular structures)
-    - 🎆 **Bonus chemical formulae challenge** (input - MS/MS spectrum and chemical formula, output - ranked list of candidate molecular structures)
-- 💥 **Spectrum simulation** (input - molecular structure, output - MS/MS spectrum)
+- 💥 ***De novo* molecular generation** (MS/MS spectrum → molecular structure)
+    - 🎆 **Bonus chemical formulae challenge** (MS/MS spectrum + chemical formula → molecular structure)
+- 💥 **Molecular retrieval** (MS/MS spectrum → ranked list of candidate molecular structures)
+    - 🎆 **Bonus chemical formulae challenge** (MS/MS spectrum + chemical formula → ranked list of candidate molecular structures)
+- 💥 **Spectrum simulation** (molecular structure → MS/MS spectrum)
 
 The provided challenges abstract the process of scientific discovery from biological and environmental samples into well-defined machine learning problems with pre-defined datasets, data splits, and evaluation metrics.
 
