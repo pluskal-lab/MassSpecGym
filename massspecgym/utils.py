@@ -58,14 +58,39 @@ def load_unlabeled_mols(col_name: str = "smiles") -> pd.Series:
     )[col_name]
 
 
-def load_train_mols(col_name: str = "smiles") -> pd.Series:
+def load_massspecgym_mols(fold: T.Optional[str] = None, unique: bool = True) -> pd.Series:
+    """
+    Load a list of molecules from the MassSpecGym dataset.
+
+    Args:
+        fold (str, optional): Fold name to load. If None, the entire dataset is loaded.
+        unique (bool, optional): Whether to return only unique molecules.
+    """
+    df = load_massspecgym(fold)
+    mols = df["smiles"]
+    if unique:
+        mols = pd.Series(mols.unique())
+    return mols
+
+
+def load_train_mols(unique: bool = True) -> pd.Series:
     """
     Load a list of training molecules.
 
     Args:
-        col_name (str, optional): Name of the column to return. Should be one of ["smiles", "selfies"].
+        unique (bool, optional): Whether to return only unique molecules.
     """
-    return load_massspecgym("train")[col_name]
+    return load_massspecgym_mols("train", unique=unique)
+
+
+def load_val_mols(unique: bool = True) -> pd.Series:
+    """
+    Load a list of validation molecules.
+
+    Args:
+        unique (bool, optional): Whether to return only unique molecules.
+    """
+    return load_massspecgym_mols("val", unique=unique)
 
 
 def pad_spectrum(
@@ -106,7 +131,7 @@ def morgan_fp(mol: Chem.Mol, fp_size=2048, radius=2, to_np=True):
 
     fp = Chem.GetMorganFingerprintAsBitVect(mol, radius=radius, nBits=fp_size)
     if to_np:
-        fp_np = np.zeros((0,), dtype=np.int32)
+        fp_np = np.zeros((0,), dtype=bool)
         DataStructs.ConvertToNumpyArray(fp, fp_np)
         fp = fp_np
     return fp
