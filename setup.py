@@ -29,7 +29,6 @@ setup(
         "wandb==0.17.0",
         "huggingface-hub==0.23.2",
         "seaborn==0.13.2",
-        "standardizeUtils @ git+https://github.com/boecker-lab/standardizeUtils@b415f1c51b49f6c5cd0e9c6ab89224c8ad657a35#egg=standardizeUtils",
         "chemparse==0.3.1",
         "chemformula==1.3.1",
         "networkx==3.3",

@@ -19,10 +19,6 @@ from rdkit.Chem import AllChem as Chem
 from rdkit.Chem import DataStructs, Draw
 from rdkit.Chem.Descriptors import ExactMolWt
 from huggingface_hub import hf_hub_download
-from standardizeUtils.standardizeUtils import (
-    standardize_structure_with_pubchem,
-    standardize_structure_list_with_pubchem,
-)
 from torchmetrics.wrappers import BootStrapper
 from torchmetrics.metric import Metric
 
@@ -156,6 +152,18 @@ def standardize_smiles(smiles: T.Union[str, T.List[str]]) -> T.Union[str, T.List
     """
     Standardize SMILES representation of a molecule using PubChem standardization.
     """
+    try:
+        from standardizeUtils.standardizeUtils import (
+            standardize_structure_with_pubchem,
+            standardize_structure_list_with_pubchem,
+        )
+    except ImportError:
+        raise ImportError(
+            "The standardizeUtils package is required for SMILES standardization. "
+            "Please install it using: pip install "
+            "git+https://github.com/boecker-lab/standardizeUtils@b415f1c51b49f6c5cd0e9c6ab89224c8ad657a35#egg=standardizeUtils"
+        )
+
     if isinstance(smiles, str):
         return standardize_structure_with_pubchem(smiles, 'smiles')
     elif isinstance(smiles, list):
