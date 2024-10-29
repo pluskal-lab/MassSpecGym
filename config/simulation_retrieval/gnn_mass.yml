@@ -1,8 +1,8 @@
 # wandb
 wandb_name: "gnn_mass"
 # data
-pth: "data/MassSpecGym.tsv"
-candidates_pth: "data/MassSpecGym_retrieval_candidates_mass_with_test.json"
+pth: "MassSpecGym.tsv"
+candidates_pth: "molecules/MassSpecGym_retrieval_candidates_mass.json"
 split_type: "benchmark"
 # output
 mz_max: 1005.

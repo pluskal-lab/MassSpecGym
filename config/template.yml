@@ -3,8 +3,8 @@ wandb_entity: "your_wandb_entity" ### change this
 wandb_project: "your_wandb_project" ## change this
 wandb_name: "template"
 # data
-pth: "data/MassSpecGym.tsv"
-candidates_pth: "data/MassSpecGym_retrieval_candidates_mass_with_test.json"
+pth: ## add path
+candidates_pth: # add path
 meta_keys: ["adduct","precursor_mz","instrument_type","collision_energy"]
 fp_types: ["morgan","maccs","rdkit"]
 adducts: ["[M+H]+"]

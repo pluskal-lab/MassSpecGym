@@ -1,4 +1,5 @@
 import argparse
+import os
 
 from massspecgym.runner import init_run
 
@@ -31,7 +32,7 @@ if __name__ == "__main__":
         "-s",
         "--checkpoint_dp",
         type=str,
-        required=True,
+        default=os.getcwd()
     )
     args = parser.parse_args()
 

@@ -1,7 +1,7 @@
 # wandb
 wandb_name: "sim_preconly"
 # data
-pth: "data/MassSpecGym.tsv"
+pth: "MassSpecGym.tsv"
 split_type: "benchmark"
 # output
 mz_max: 1005.

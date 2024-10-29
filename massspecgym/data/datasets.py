@@ -255,6 +255,18 @@ class SimulationDataset(MassSpecDataset):
 
     def load_data(self):
 
+        # set self.pth correctly
+        # download if necessary
+        if self.pth is None:
+            self.pth = utils.hugging_face_download(
+                "MassSpecGym.tsv"
+            )
+        else: 
+            assert isinstance(self.pth, str)
+            if not os.path.isfile(self.pth):
+                self.pth = utils.hugging_face_download(self.pth)
+
+        # will never download here
         super().load_data()
 
         # remove any spectra not included in the simulation challenge
