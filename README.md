@@ -68,7 +68,7 @@ from massspecgym.utils import load_massspecgym
 df = load_massspecgym()
 ```
 
-Second, MassSpecGym provides [a set of transforms](https://github.com/pluskal-lab/MassSpecGym/blob/main/massspecgym/data/transforms.py) for spectra and molecules, which can be used to preprocess data for machine learning models. These transforms can be applied in conjunction with the `MassSpecDataset` class (or its subclasses), resulting in a PyTorch `Dataset` object that implicitly applies the specified transforms to each data point. Note that `MassSpecDataset` also downloads the dataset from the Hugging Face repository as needed.
+Second, MassSpecGym provides [a set of transforms](https://github.com/pluskal-lab/MassSpecGym/blob/main/massspecgym/data/transforms.py) for spectra and molecules, which can be used to preprocess data for machine learning models. These transforms can be used in conjunction with the `MassSpecDataset` class (or its subclasses), resulting in a PyTorch `Dataset` object that implicitly applies the specified transforms to each data point. Note that `MassSpecDataset` also automatically downloads the dataset from the Hugging Face repository as needed.
 
 ```python
 from massspecgym.data import MassSpecDataset
