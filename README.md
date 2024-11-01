@@ -24,7 +24,7 @@ The provided challenges abstract the process of scientific discovery from biolog
 
 <!-- [![Dataset on Hugging Face](https://huggingface.co/datasets/huggingface/badges/resolve/main/dataset-on-hf-md-dark.svg)](https://huggingface.co/datasets/roman-bushuiev/MassSpecGym)   -->
 
-📣 The paper will be available soon!
+📚 Please see more details in our [NeurIPS 2024 Spotlight paper](https://arxiv.org/abs/2410.23326).
 
 ## 📦 Installation
 
@@ -217,5 +217,12 @@ TODO
 If you use MassSpecGym in your work, please cite the following paper:
 
 ```bibtex
-TODO
+@article{bushuiev2024massspecgym,
+      title={MassSpecGym: A benchmark for the discovery and identification of molecules}, 
+      author={Roman Bushuiev and Anton Bushuiev and Niek F. de Jonge and Adamo Young and Fleming Kretschmer and Raman Samusevich and Janne Heirman and Fei Wang and Luke Zhang and Kai Dührkop and Marcus Ludwig and Nils A. Haupt and Apurva Kalia and Corinna Brungs and Robin Schmid and Russell Greiner and Bo Wang and David S. Wishart and Li-Ping Liu and Juho Rousu and Wout Bittremieux and Hannes Rost and Tytus D. Mak and Soha Hassoun and Florian Huber and Justin J. J. van der Hooft and Michael A. Stravs and Sebastian Böcker and Josef Sivic and Tomáš Pluskal},
+      year={2024},
+      eprint={2410.23326},
+      url={https://arxiv.org/abs/2410.23326},
+      doi={10.48550/arXiv.2410.23326}
+}
 ```
