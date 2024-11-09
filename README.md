@@ -2,6 +2,7 @@
 
 <p>
   <a href="https://huggingface.co/datasets/roman-bushuiev/MassSpecGym"><img alt="Dataset on Hugging Face" src="https://huggingface.co/datasets/huggingface/badges/resolve/main/dataset-on-hf-md-dark.svg" height="22px"></a>
+  <a href="https://doi.org/10.48550/arXiv.2410.23326"><img alt="arXiv badge" src="https://img.shields.io/badge/arXiv-2410.23326-b31b1b.svg" height="22px"></a>
   <a href="https://pypi.org/project/massspecgym"><img alt="Dataset on Hugging Face" src="https://img.shields.io/pypi/v/massspecgym" height="22px"></a>
   <a href="https://github.com/pytorch/pytorch"> <img src="https://img.shields.io/badge/PyTorch-%23EE4C2C.svg?style=for-the-badge&logo=PyTorch&logoColor=white" height="22px"></a>
   <a href="https://github.com/Lightning-AI/pytorch-lightning"> <img src="https://img.shields.io/badge/-Lightning-792ee5?logo=pytorchlightning&logoColor=white" height="22px"></a>
@@ -208,11 +209,11 @@ trainer.fit(model, datamodule=data_module)
 trainer.test(model, datamodule=data_module)
 ```
 
-## Submit your results to the leaderboard
+## 🏅 Submit your results to the leaderboard
 
 TODO
 
-## References
+## 🔗 References
 
 If you use MassSpecGym in your work, please cite the following paper:
 
