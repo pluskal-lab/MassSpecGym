@@ -7,6 +7,7 @@
   <a href="https://github.com/pytorch/pytorch"> <img src="https://img.shields.io/badge/PyTorch-%23EE4C2C.svg?style=for-the-badge&logo=PyTorch&logoColor=white" height="22px"></a>
   <a href="https://github.com/Lightning-AI/pytorch-lightning"> <img src="https://img.shields.io/badge/-Lightning-792ee5?logo=pytorchlightning&logoColor=white" height="22px"></a>
   <a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg" height="22px"></a>
+  <a href="https://paperswithcode.com/sota/de-novo-molecule-generation-from-ms-ms?p=massspecgym-a-benchmark-for-the-discovery-and"><img alt="PWC" src="https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/massspecgym-a-benchmark-for-the-discovery-and/de-novo-molecule-generation-from-ms-ms" height="22px"></a>
 <p>
 
 <p align="center">
@@ -18,8 +19,8 @@ MassSpecGym provides three challenges for benchmarking the discovery and identif
 - 💥 ***De novo* molecule generation** (MS/MS spectrum → molecular structure)
     - ✨ **Bonus chemical formulae challenge** (MS/MS spectrum + chemical formula → molecular structure)
 - 💥 **Molecule retrieval** (MS/MS spectrum → ranked list of candidate molecular structures)
-    - ✨ **Bonus chemical formulae challenge** (MS/MS spectrum + chemical formula → ranked list of candidate molecular structures)
-- 💥 **Spectrum simulation** (molecular structure → MS/MS spectrum)
+    - ✨ **Bonus chemical formulae challenge** (MS/MS spectrum → ranked list of candidate molecular structures with ground-truth chemical formulae)
+- 💥 **Spectrum simulation** (molecular structure → MS/MS spectrum; evaluated on the retrieval of molecular structures with ground-truth chemical formulae)
 
 The provided challenges abstract the process of scientific discovery from biological and environmental samples into well-defined machine learning problems with pre-defined datasets, data splits, and evaluation metrics.
 
@@ -211,7 +212,7 @@ trainer.test(model, datamodule=data_module)
 
 ## 🏅 Submit your results to the leaderboard
 
-TODO
+The MassSpecGym leaderboard is available on the [Papers with Code website](https://paperswithcode.com/dataset/massspecgym). To submit your results, please see the [following tutorial](https://github.com/paperswithcode/tutorials/blob/main/add_results.md).
 
 ## 🔗 References
 
