@@ -20,7 +20,8 @@ MassSpecGym provides three challenges for benchmarking the discovery and identif
     - ✨ **Bonus chemical formulae challenge** (MS/MS spectrum + chemical formula → molecular structure)
 - 💥 **Molecule retrieval** (MS/MS spectrum → ranked list of candidate molecular structures)
     - ✨ **Bonus chemical formulae challenge** (MS/MS spectrum → ranked list of candidate molecular structures with ground-truth chemical formulae)
-- 💥 **Spectrum simulation** (molecular structure → MS/MS spectrum; evaluated on the retrieval of molecular structures with ground-truth chemical formulae)
+- 💥 **Spectrum simulation** (molecular structure → MS/MS spectrum)
+    - ✨ **Bonus chemical formulae challenge** (molecular structure → MS/MS spectrum; evaluated on the retrieval of molecular structures with ground-truth chemical formulae)
 
 The provided challenges abstract the process of scientific discovery from biological and environmental samples into well-defined machine learning problems with pre-defined datasets, data splits, and evaluation metrics.
 
