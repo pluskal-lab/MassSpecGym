@@ -141,6 +141,15 @@ class RetrievalDataset(MassSpecDataset):
         candidates_pth: T.Optional[T.Union[Path, str]] = None,
         **kwargs,
     ):
+        """
+        Args:
+            mol_label_transform (MolTransform, optional): Transformation to apply to the candidate molecules.
+                Defaults to `MolToInChIKey()`.
+            candidates_pth (Optional[Union[Path, str]], optional): Path to the .json file containing the candidates for
+                retrieval. Defaults to None, in which case the candidates for standard `molecular retrieval` challenge
+                are downloaded from HuggingFace Hub. If set to `bonus`, the candidates based on molecular formulas
+                for the `bonus chemical formulae challenge` are downloaded instead.
+        """
         super().__init__(**kwargs)
 
         self.candidates_pth = candidates_pth
@@ -150,6 +159,10 @@ class RetrievalDataset(MassSpecDataset):
         if self.candidates_pth is None:
             self.candidates_pth = utils.hugging_face_download(
                 "molecules/MassSpecGym_retrieval_candidates_mass.json"
+            )
+        elif self.candidates_pth == 'bonus':
+            self.candidates_pth = utils.hugging_face_download(
+                "molecules/MassSpecGym_retrieval_candidates_formula.json"
             )
         elif isinstance(self.candidates_pth, str):
             if Path(self.candidates_pth).is_file():

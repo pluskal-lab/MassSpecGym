@@ -140,12 +140,12 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
     def generate_tgt_padding_mask(self, smiles):
         return smiles == self.pad_token_id
 
-    def decode_smiles(self, spec):
+    def decode_smiles(self, batch):
 
         decoded_smiles_str = []
         for _ in range(self.k_predictions):
             decoded_smiles = self.greedy_decode(
-                spec,  # (batch_size, seq_len, in_dim) 
+                batch,
                 max_len=self.max_smiles_len,
                 temperature=self.temperature,
             )
@@ -162,7 +162,7 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
 
         with torch.inference_mode():
 
-            spec = batch["spec"]
+            spec = batch["spec"]    # (batch_size, seq_len, in_dim) 
             src_key_padding_mask = self.generate_src_padding_mask(spec)   
 
             spec = spec.permute(1, 0, 2)  # (seq_len, batch_size, in_dim)
@@ -171,7 +171,7 @@ class SmilesTransformer(DeNovoMassSpecGymModel):
                 formula_emb = self.formula_mlp(batch["formula"])  # (batch_size, d_model)
                 src = src + formula_emb.unsqueeze(0)  # (seq_len, batch_size, d_model) + (1, batch_size, d_model)
             src = src * (self.d_model**0.5)
-            memory = self.transformer.encoder(src, src_key_padding_mask=src_key_padding_mask,)
+            memory = self.transformer.encoder(src, src_key_padding_mask=src_key_padding_mask)
 
             batch_size = src.size(1)
             out_tokens = torch.ones(1, batch_size).fill_(self.start_token_id).type(torch.long).to(spec.device)

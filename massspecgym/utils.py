@@ -19,10 +19,6 @@ from rdkit.Chem import AllChem as Chem
 from rdkit.Chem import DataStructs, Draw
 from rdkit.Chem.Descriptors import ExactMolWt
 from huggingface_hub import hf_hub_download
-from standardizeUtils.standardizeUtils import (
-    standardize_structure_with_pubchem,
-    standardize_structure_list_with_pubchem,
-)
 from torchmetrics.wrappers import BootStrapper
 from torchmetrics.metric import Metric
 
@@ -58,14 +54,39 @@ def load_unlabeled_mols(col_name: str = "smiles") -> pd.Series:
     )[col_name]
 
 
-def load_train_mols(col_name: str = "smiles") -> pd.Series:
+def load_massspecgym_mols(fold: T.Optional[str] = None, unique: bool = True) -> pd.Series:
+    """
+    Load a list of molecules from the MassSpecGym dataset.
+
+    Args:
+        fold (str, optional): Fold name to load. If None, the entire dataset is loaded.
+        unique (bool, optional): Whether to return only unique molecules.
+    """
+    df = load_massspecgym(fold)
+    mols = df["smiles"]
+    if unique:
+        mols = pd.Series(mols.unique())
+    return mols
+
+
+def load_train_mols(unique: bool = True) -> pd.Series:
     """
     Load a list of training molecules.
 
     Args:
-        col_name (str, optional): Name of the column to return. Should be one of ["smiles", "selfies"].
+        unique (bool, optional): Whether to return only unique molecules.
     """
-    return load_massspecgym("train")[col_name]
+    return load_massspecgym_mols("train", unique=unique)
+
+
+def load_val_mols(unique: bool = True) -> pd.Series:
+    """
+    Load a list of validation molecules.
+
+    Args:
+        unique (bool, optional): Whether to return only unique molecules.
+    """
+    return load_massspecgym_mols("val", unique=unique)
 
 
 def pad_spectrum(
@@ -131,6 +152,18 @@ def standardize_smiles(smiles: T.Union[str, T.List[str]]) -> T.Union[str, T.List
     """
     Standardize SMILES representation of a molecule using PubChem standardization.
     """
+    try:
+        from standardizeUtils.standardizeUtils import (
+            standardize_structure_with_pubchem,
+            standardize_structure_list_with_pubchem,
+        )
+    except ImportError:
+        raise ImportError(
+            "The standardizeUtils package is required for SMILES standardization. "
+            "Please install it using: pip install "
+            "git+https://github.com/boecker-lab/standardizeUtils@b415f1c51b49f6c5cd0e9c6ab89224c8ad657a35#egg=standardizeUtils"
+        )
+
     if isinstance(smiles, str):
         return standardize_structure_with_pubchem(smiles, 'smiles')
     elif isinstance(smiles, list):
