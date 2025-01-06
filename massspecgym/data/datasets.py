@@ -150,6 +150,16 @@ class RetrievalDataset(MassSpecDataset):
         candidates_pth: T.Optional[T.Union[Path, str]] = None,
         **kwargs,
     ):
+        """
+        Args:
+            mol_label_transform (MolTransform, optional): Transformation to apply to the candidate molecules.
+                Defaults to `MolToInChIKey()`.
+            candidates_pth (Optional[Union[Path, str]], optional): Path to the .json file containing the candidates for
+                retrieval. Defaults to None, in which case the candidates for standard `molecular retrieval` challenge
+                are downloaded from HuggingFace Hub. If set to `bonus`, the candidates based on molecular formulas
+                for the `bonus chemical formulae challenge` are downloaded instead.
+        """
+        # note: __init__ calls load_data, these variables are required for load_data to work properly
         self.mol_label_transform = mol_label_transform
         self.candidates_pth = candidates_pth
         super().__init__(**kwargs)
@@ -160,6 +170,10 @@ class RetrievalDataset(MassSpecDataset):
         if self.candidates_pth is None:
             self.candidates_pth = utils.hugging_face_download(
                 "molecules/MassSpecGym_retrieval_candidates_mass.json"
+            )
+        elif self.candidates_pth == 'bonus':
+            self.candidates_pth = utils.hugging_face_download(
+                "molecules/MassSpecGym_retrieval_candidates_formula.json"
             )
         elif isinstance(self.candidates_pth, str):
             if Path(self.candidates_pth).is_file():
@@ -242,6 +256,7 @@ class SimulationDataset(MassSpecDataset):
         dtype: T.Type = torch.float32
     ): 
         
+        # note: __init__ calls load_data, these variables are required for load_data to work properly
         self.meta_transform = meta_transform
         self.meta_keys = meta_keys
         super().__init__(
@@ -350,7 +365,6 @@ class SimulationDataset(MassSpecDataset):
         
 class RetrievalSimulationDataset(SimulationDataset):
 
-
     def __init__(
         self,
         mol_label_transform: MolTransform = MolToInChIKey(),
@@ -358,6 +372,7 @@ class RetrievalSimulationDataset(SimulationDataset):
 
         **kwargs,
     ):
+        # note: __init__ calls load_data, these variables are required for load_data to work properly
         self.mol_label_transform = mol_label_transform
         self.candidates_pth = candidates_pth
         super().__init__(**kwargs)

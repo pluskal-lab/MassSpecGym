@@ -311,7 +311,7 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         """
         Compute evaluation metrics for the retrieval model based on the batch and corresponding predictions.
         This method will be used in the `on_train_batch_end`, `on_validation_batch_end`, since `on_test_batch_end` is
-        overriden below.
+        overridden below.
         """
 
         batch_size = torch.max(outputs["true_batch_idxs"])+1
