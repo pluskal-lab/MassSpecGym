@@ -25,6 +25,7 @@ NCE_MAX = 200.
 MZ_MAX = 1500.0
 MZ_BIN_RES = 0.01
 INTS_THRESH = 0.0
+LN_2 = float(np.log(2.))
 
 def get_ints_transform_func(ints_transform):
 
@@ -287,7 +288,7 @@ def js_sim_helper(
         dim_size=batch_size
     )
     # jss
-    jss = 1.-0.5*(kl1+kl2)
+    jss = LN_2-0.5*(kl1+kl2)
     return jss
 
 def sparse_jensen_shannon_similarity(
