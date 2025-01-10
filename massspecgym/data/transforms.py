@@ -146,6 +146,9 @@ class SpecBinner(SpecTransform):
 
 
 class SpecToMzsInts(SpecTransform):
+    """
+    Similar to SpecTokenizer, but sparse (without padding).
+    """
 
     def __init__(
         self,
@@ -160,25 +163,21 @@ class SpecToMzsInts(SpecTransform):
         self.mz_bin_res = mz_bin_res
 
     def matchms_transforms(self, spec: matchms.Spectrum) -> matchms.Spectrum:
-        # little hack to avoid selecting peaks at mz_to exactly
-        spec = ms_filters.select_by_mz(spec, mz_from=self.mz_from, mz_to=self.mz_to)
-        if self.n_peaks is not None:
-            spec = ms_filters.reduce_to_number_of_peaks(spec, n_max=self.n_peaks)
-        spec = ms_filters.normalize_intensities(spec)
-        # spec.peaks.intensities = spec.peaks.intensities * 1000.
-        return spec
+
+        return default_matchms_transforms(spec, n_max_peaks=self.n_peaks, mz_from=self.mz_from, mz_to=self.mz_to)        
 
     def matchms_to_torch(self, spec: matchms.Spectrum) -> dict:
         """
-        Stack arrays of mz and intensities into a matrix of shape (num_peaks, 2).
-        If the number of peaks is less than `n_peaks`, pad the matrix with zeros.
+        Returns mzs and ints as a dictionary of torch tensors, each of size `n_peaks`.
         """
         mzs = torch.as_tensor(spec.peaks.mz, dtype=torch.float32)
         ints = torch.as_tensor(spec.peaks.intensities, dtype=torch.float32)
         return {"spec_mzs": mzs, "spec_ints": ints}
     
     def collate_fn(self, batch_data_d: dict) -> dict:
-
+        """
+        Add batch indices to the data dictionary. This is to support sparse batching (no padding).
+        """
         device = batch_data_d["spec_mzs"][0].device
         counts = torch.tensor([spec_mzs.shape[0] for spec_mzs in batch_data_d["spec_mzs"]],device=device,dtype=torch.int64)
         batch_idxs = torch.repeat_interleave(torch.arange(counts.shape[0],device=device),counts,dim=0)
