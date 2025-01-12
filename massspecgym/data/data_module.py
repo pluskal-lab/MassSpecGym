@@ -39,6 +39,13 @@ class MassSpecDataModule(pl.LightningDataModule):
         self.persistent_workers = persistent_workers if num_workers > 0 else False
 
     def prepare_data(self):
+        """Pre-processing to be executed only on a single main device when using distributed training."""
+        pass
+
+    def setup(self, stage=None):
+        """Pre-processing to be executed on every device when using distributed training."""
+
+        # Prepare split
         if self.split_pth is None:
             self.split = self.dataset.metadata[["identifier", "fold"]]
         else:
@@ -58,7 +65,7 @@ class MassSpecDataModule(pl.LightningDataModule):
                 '"Folds" column must contain only "train", "val", or "test" values.'
             )
 
-    def setup(self, stage=None):
+        # Split dataset
         split_mask = self.split.loc[self.dataset.metadata["identifier"]].values
         if stage == "fit" or stage is None:
             self.train_dataset = Subset(

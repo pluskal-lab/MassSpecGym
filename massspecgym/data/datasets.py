@@ -215,7 +215,7 @@ class RetrievalDataset(MassSpecDataset):
         item["candidates"] = [self.mol_transform(c) for c in item["candidates"]]
         if isinstance(item["mol"], np.ndarray):
             item["mol"] = torch.as_tensor(item["mol"], dtype=self.dtype)
-            # item["candidates"] = [torch.as_tensor(c, dtype=self.dtype) for c in item["candidates"]]
+            item["candidates"] = torch.as_tensor(np.stack(item["candidates"]), dtype=self.dtype)
 
         return item
 
@@ -229,7 +229,7 @@ class RetrievalDataset(MassSpecDataset):
 
         # Collate candidates and labels by concatenating and storing sizes of each list
         collated_batch["candidates"] = torch.as_tensor(
-            np.concatenate([item["candidates"] for item in batch])
+            torch.concatenate([item["candidates"] for item in batch])
         )
         collated_batch["labels"] = torch.as_tensor(
             sum([item["labels"] for item in batch], start=[])

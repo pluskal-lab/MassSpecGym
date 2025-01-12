@@ -61,6 +61,20 @@ class SpecTokenizer(SpecTransform):
         prec_mz_intensity: Optional[float] = 1.1,
         matchms_kwargs: Optional[dict] = None
     ) -> None:
+        """
+        Stack arrays of mz and intensities into a matrix of shape (num_peaks, 2).
+        If the number of peaks is less than `n_peaks`, pad the matrix with zeros.
+        If `prec_mz_intensity` is provided, prepend the precursor m/z peak with the specified
+        intensity value as an additional row at the start of the matrix.
+
+        Args:
+            n_peaks (Optional[int], default=60): Maximum number of peaks to keep. If None, 
+                keep all peaks.
+            prec_mz_intensity (Optional[float], default=1.1): Intensity value to use for the 
+                precursor m/z peak. If None, precursor m/z is not added.
+            matchms_kwargs (Optional[dict], default=None): Additional keyword arguments to pass 
+                to default_matchms_transforms().
+        """
         self.n_peaks = n_peaks
         self.prec_mz_intensity = prec_mz_intensity
         self.matchms_kwargs = matchms_kwargs if matchms_kwargs is not None else {}
@@ -69,10 +83,6 @@ class SpecTokenizer(SpecTransform):
         return default_matchms_transforms(spec, n_max_peaks=self.n_peaks, **self.matchms_kwargs)
 
     def matchms_to_torch(self, spec: matchms.Spectrum) -> torch.Tensor:
-        """
-        Stack arrays of mz and intensities into a matrix of shape (num_peaks, 2).
-        If the number of peaks is less than `n_peaks`, pad the matrix with zeros.
-        """
         spec_t = np.vstack([spec.peaks.mz, spec.peaks.intensities]).T
         if self.prec_mz_intensity is not None:
             spec_t = np.vstack([[spec.metadata["precursor_mz"], self.prec_mz_intensity], spec_t])
