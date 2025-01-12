@@ -288,7 +288,9 @@ def js_sim_helper(
         dim_size=batch_size
     )
     # jss
-    jss = LN_2-0.5*(kl1+kl2)
+    jsd = 0.5*(kl1+kl2)
+    # jss = (LN_2 - jsd) / LN_2
+    jss = 1. - (jsd / LN_2)
     return jss
 
 def sparse_jensen_shannon_similarity(
