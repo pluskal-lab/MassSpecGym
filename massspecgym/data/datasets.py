@@ -166,6 +166,8 @@ class RetrievalDataset(MassSpecDataset):
 
     def load_data(self):
 
+        super().load_data()
+
         # Download candidates from HuggigFace Hub if not a path to exisiting file is passed
         if self.candidates_pth is None:
             self.candidates_pth = utils.hugging_face_download(
@@ -380,6 +382,7 @@ class RetrievalSimulationDataset(SimulationDataset):
     def load_data(self):
 
         super().load_data()
+
         # Download candidates from HuggigFace Hub
         if self.candidates_pth is None:
             self.candidates_pth = utils.hugging_face_download(
