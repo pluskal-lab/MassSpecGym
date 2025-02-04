@@ -3,6 +3,7 @@ from pprint import pprint
 
 def fix_jss(x):
 
+    # y = x / (np.log(2) * 100.)
     y = 1. - (1. - x / 100.) / np.log(2.)
     return y
 
