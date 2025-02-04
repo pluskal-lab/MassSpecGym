@@ -1,6 +1,6 @@
 # wandb
-wandb_entity: "adamoyoung" #"your_wandb_entity" ### change this
-wandb_project: "msg" #"your_wandb_project" ## change this
+wandb_entity: "your_wandb_entity" ### change this
+wandb_project: "your_wandb_project" ## change this
 wandb_name: "template"
 # data
 pth: ## add path
