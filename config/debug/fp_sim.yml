@@ -1,14 +1,15 @@
 # wandb
-wandb_name: "sim_preconly"
+wandb_name: "debug_fp_sim"
 # data
 pth: "MassSpecGym.tsv"
 split_type: "benchmark"
+subsample_frac:
 # output
 mz_max: 1005.
 mz_bin_res: 0.01
-ints_transform: "none"
+ints_transform: "sqrt"
 # model
-model_type: "prec_only"
+model_type: "fp"
 # optimization
 max_epochs: 1
 # other

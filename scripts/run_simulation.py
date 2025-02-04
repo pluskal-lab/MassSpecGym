@@ -173,7 +173,7 @@ if __name__ == "__main__":
         "-t",
         "--template_fp",
         type=str,
-        default="config/template.yml",
+        default="config/simulation/template.yml",
         help="path to template config file"
     )
     parser.add_argument(

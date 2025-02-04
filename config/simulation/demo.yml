@@ -1,0 +1,18 @@
+# wandb
+wandb_name: "demo"
+# data
+pth: "MassSpecGym.tsv"
+# candidates_pth: "molecules/MassSpecGym_retrieval_candidates_mass.json"
+split_type: "benchmark"
+subsample_frac: 0.01 # 1.0
+# output
+mz_max: 1005.
+mz_bin_res: 0.01
+ints_transform: "sqrt"
+# model
+model_type: "fp"
+# optimization
+max_epochs: 1 # 100
+# other
+accelerator: "cpu"
+save_ckpt: False

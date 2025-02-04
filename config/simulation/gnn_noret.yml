@@ -1,5 +1,5 @@
 # wandb
-wandb_name: "sim_fp"
+wandb_name: "gnn_noret"
 # data
 pth: "MassSpecGym.tsv"
 split_type: "benchmark"
@@ -8,7 +8,7 @@ mz_max: 1005.
 mz_bin_res: 0.01
 ints_transform: "sqrt"
 # model
-model_type: "fp"
+model_type: "gnn"
 # optimization
 max_epochs: 100
 # other
