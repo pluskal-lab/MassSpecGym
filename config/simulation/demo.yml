@@ -15,4 +15,5 @@ model_type: "fp"
 max_epochs: 1 # 100
 # other
 accelerator: "cpu"
+num_workers: 0
 save_ckpt: False
