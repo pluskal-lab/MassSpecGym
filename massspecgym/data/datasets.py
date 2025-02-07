@@ -206,8 +206,9 @@ class RetrievalDataset(MassSpecDataset):
             )
 
         # Transform the query and candidate molecules
-        item["mol"] = self.mol_transform(item["mol"])
-        item["candidates"] = [self.mol_transform(c) for c in item["candidates"]]
+        if self.mol_transform:
+            item["mol"] = self.mol_transform(item["mol"])
+            item["candidates"] = [self.mol_transform(c) for c in item["candidates"]]
         if isinstance(item["mol"], np.ndarray):
             item["mol"] = torch.as_tensor(item["mol"], dtype=self.dtype)
             item["candidates"] = torch.as_tensor(np.stack(item["candidates"]), dtype=self.dtype)
