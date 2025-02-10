@@ -44,6 +44,7 @@ class MassSpecDataset(Dataset):
         self.mol_transform = mol_transform
         self.return_mol_freq = return_mol_freq
         self.return_identifier = return_identifier
+        self.identifiers_subset = identifiers_subset
         self.dtype = dtype
         self.load_data()
         self.compute_mol_freq()
@@ -75,8 +76,8 @@ class MassSpecDataset(Dataset):
         else:
             raise ValueError(f"{self.pth.suffix} file format not supported.")
         
-        if identifiers_subset is not None:
-            self.metadata = self.metadata[self.metadata["identifier"].isin(identifiers_subset)]
+        if self.identifiers_subset is not None:
+            self.metadata = self.metadata[self.metadata["identifier"].isin(self.identifiers_subset)]
             self.spectra = self.spectra[self.metadata.index].reset_index(drop=True)
             self.metadata = self.metadata.reset_index(drop=True)
 
