@@ -5,6 +5,11 @@ import matchms.filtering as ms_filters
 from rdkit.Chem import AllChem as Chem
 from typing import Optional
 from abc import ABC, abstractmethod
+import torch
+from torch_geometric.data import Batch
+
+from massspecgym.simulation_utils.feat_utils import MolGraphFeaturizer, get_fingerprints
+from massspecgym.simulation_utils.misc_utils import scatter_reduce
 import massspecgym.utils as utils
 from massspecgym.definitions import CHEM_ELEMS
 
@@ -150,6 +155,48 @@ class SpecBinner(SpecTransform):
         return binned_intensities  # , bin_edges
 
 
+class SpecToMzsInts(SpecTransform):
+    """
+    Similar to SpecTokenizer, but sparse (without padding).
+    """
+
+    def __init__(
+        self,
+        n_peaks: Optional[int] = None,
+        mz_from: Optional[float] = 10.,
+        mz_to: Optional[float] = 1000.,
+        mz_bin_res: Optional[float] = 0.01
+    ) -> None:
+        self.n_peaks = n_peaks
+        self.mz_from = mz_from
+        self.mz_to = mz_to
+        self.mz_bin_res = mz_bin_res
+
+    def matchms_transforms(self, spec: matchms.Spectrum) -> matchms.Spectrum:
+
+        return default_matchms_transforms(spec, n_max_peaks=self.n_peaks, mz_from=self.mz_from, mz_to=self.mz_to)        
+
+    def matchms_to_torch(self, spec: matchms.Spectrum) -> dict:
+        """
+        Returns mzs and ints as a dictionary of torch tensors, each of size `n_peaks`.
+        """
+        mzs = torch.as_tensor(spec.peaks.mz, dtype=torch.float32)
+        ints = torch.as_tensor(spec.peaks.intensities, dtype=torch.float32)
+        return {"spec_mzs": mzs, "spec_ints": ints}
+    
+    def collate_fn(self, batch_data_d: dict) -> dict:
+        """
+        Add batch indices to the data dictionary. This is to support sparse batching (no padding).
+        """
+        device = batch_data_d["spec_mzs"][0].device
+        counts = torch.tensor([spec_mzs.shape[0] for spec_mzs in batch_data_d["spec_mzs"]],device=device,dtype=torch.int64)
+        batch_idxs = torch.repeat_interleave(torch.arange(counts.shape[0],device=device),counts,dim=0)
+        collate_data_d = {}
+        collate_data_d["spec_mzs"] = torch.cat(batch_data_d["spec_mzs"],dim=0)
+        collate_data_d["spec_ints"] = torch.cat(batch_data_d["spec_ints"],dim=0)
+        collate_data_d["spec_batch_idxs"] = batch_idxs
+        return collate_data_d
+
 class MolTransform(ABC):
     @abstractmethod
     def from_smiles(self, mol: str):
@@ -216,3 +263,149 @@ class MolToFormulaVector(MolTransform):
     @staticmethod
     def num_elements():
         return len(CHEM_ELEMS)
+
+
+class MolToPyG(MolTransform):
+
+    def __init__(
+        self, 
+        pyg_node_feats: list[str] = [
+            "a_onehot",
+            "a_degree",
+            "a_hybrid",
+            "a_formal",
+            "a_radical",
+            "a_ring",
+            "a_mass",
+            "a_chiral"
+        ],
+        pyg_edge_feats: list[str] = [
+            "b_degree",
+        ],
+        pyg_pe_embed_k: int = 0,
+        pyg_bigraph: bool = True):
+
+        self.pyg_node_feats = pyg_node_feats
+        self.pyg_edge_feats = pyg_edge_feats
+        self.pyg_pe_embed_k = pyg_pe_embed_k
+        self.pyg_bigraph = pyg_bigraph
+
+    def from_smiles(self, mol: str):
+        
+        mol = Chem.MolFromSmiles(mol)
+        mg_featurizer = MolGraphFeaturizer(
+            self.pyg_node_feats,
+            self.pyg_edge_feats,
+            self.pyg_pe_embed_k
+        )
+        mol_pyg = mg_featurizer.get_pyg_graph(mol,bigraph=self.pyg_bigraph)
+        return {"mol_pyg": mol_pyg}
+    
+    def get_input_sizes(self):
+
+        g = self.from_smiles("CCO")["mol_pyg"]
+        size_d = {
+            "mol_node_feats_size": g.x.shape[1],
+            "mol_edge_feats_size": g.edge_attr.shape[1],
+        }
+        return size_d
+
+    def collate_fn(self, batch_data_d: dict) -> dict:
+
+        collate_data_d = {}
+        collate_data_d["mol_pyg"] = Batch.from_data_list(batch_data_d["mol_pyg"])
+        return collate_data_d
+
+
+class MolToFingerprints(MolTransform):
+
+    def __init__(
+        self,
+        fp_types: list[str] = [
+            "morgan",
+            "maccs",
+            "rdkit"]):
+
+        self.fp_types = sorted(fp_types)
+
+    def from_smiles(self, mol: str) -> dict:
+        
+        fps = []
+        mol = Chem.MolFromSmiles(mol)
+        fps = get_fingerprints(mol, self.fp_types)
+        fps = torch.as_tensor(fps, dtype=torch.float32)
+        return {"fps": fps}
+    
+    def get_input_sizes(self) -> dict:
+
+        fps = self.from_smiles("CCO")["fps"]
+        return {"fps_input_size": fps.shape[0]} 
+    
+    def collate_fn(self, batch_data_d: dict, prefix="") -> dict:
+
+        collate_data_d = {}
+        collate_data_d["fps"] = torch.stack(batch_data_d["fps"],dim=0)
+        return collate_data_d
+
+
+class MetaTransform(ABC):
+
+    @abstractmethod
+    def from_meta(self, metadata: dict) -> dict:
+        """
+        Convert metadata to a dict of numerical representations. Abstract method.
+        """
+
+    def __call__(self, metadata: dict):
+        return self.from_meta(metadata)
+
+
+class StandardMeta(MetaTransform):
+    
+    def __init__(self, adducts: list[str], instrument_types: list[str], max_collision_energy: float):
+        self.adduct_to_idx = {adduct: idx for idx, adduct in enumerate(sorted(adducts))}
+        self.inst_to_idx = {inst: idx for idx, inst in enumerate(sorted(instrument_types))}
+        self.num_adducts = len(self.adduct_to_idx)
+        self.num_instrument_types = len(self.inst_to_idx)
+        self.num_collision_energies = int(max_collision_energy)
+        self.max_collision_energy = max_collision_energy
+
+    def transform_ce(self, ce):
+
+        ce = np.clip(ce, a_min=0, a_max=int(self.max_collision_energy)-1)
+        ce_idx = int(np.around(ce, decimals=0))
+        return ce_idx
+
+    def from_meta(self, metadata: dict):
+        prec_mz = metadata["precursor_mz"]
+        adduct_idx = self.adduct_to_idx.get(metadata["adduct"],self.num_adducts)
+        inst_idx = self.inst_to_idx.get(metadata["instrument_type"],self.num_instrument_types)
+        ce_idx = self.transform_ce(metadata["collision_energy"])
+        meta_d = {
+            "precursor_mz": torch.tensor(prec_mz,dtype=torch.float32),
+            "adduct": torch.tensor(adduct_idx),
+            "instrument_type": torch.tensor(inst_idx),
+            "collision_energy": torch.tensor(ce_idx)
+        }
+        return meta_d
+
+    def get_input_sizes(self):
+
+        size_d = {
+            "adduct_input_size": self.num_adducts+1,
+            "instrument_type_input_size": self.num_instrument_types+1,
+            "collision_energy_input_size": int(self.num_collision_energies)
+        }
+        return size_d
+
+    @property
+    def collate_keys(self):
+
+        return ["adduct","instrument_type","collision_energy","precursor_mz"]
+
+    def collate_fn(self, batch_data_d: dict) -> dict:
+
+        collate_data_d = {}
+        for key in self.collate_keys:
+            collate_data_d[key] = torch.stack(batch_data_d[key],dim=0)
+        return collate_data_d

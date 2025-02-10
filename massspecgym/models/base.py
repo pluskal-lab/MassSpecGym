@@ -7,6 +7,7 @@ from pathlib import Path
 import torch
 import pytorch_lightning as pl
 from torchmetrics import Metric, SumMetric
+import pandas as pd
 from massspecgym.utils import ReturnScalarBootStrapper
 
 
@@ -31,7 +32,6 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         no_mces_metrics_at_stages: T.Sequence[Stage | str] = (),
         bootstrap_metrics: bool = False,
         df_test_path: T.Optional[str | Path] = None,
-        *args,
         **kwargs
     ):
         super().__init__()
@@ -41,6 +41,7 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         self.log_only_loss_at_stages = [
             Stage(s) if isinstance(s, str) else s for s in log_only_loss_at_stages
         ]
+
         self.no_mces_metrics_at_stages = [
             Stage(s) if isinstance(s, str) else s for s in no_mces_metrics_at_stages
         ]
@@ -96,6 +97,7 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         return self.on_batch_end(*args, **kwargs, stage=Stage.TEST)
 
     def configure_optimizers(self):
+        # use Adam as default
         return torch.optim.Adam(
             self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay
         )
@@ -126,7 +128,7 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         model.
         """
         # Process arguments
-        bootstrap = bootstrap and self.bootstrap_metrics
+        bootstrap = bootstrap and self.hparams.bootstrap_metrics
 
         # Log total number of samples (useful for debugging)
         if log_n_samples:
@@ -182,3 +184,10 @@ class MassSpecGymModel(pl.LightningModule, ABC):
             if isinstance(vals, torch.Tensor):
                 vals = vals.tolist()
             self.df_test[col].extend(vals)
+
+    def _save_df_test(self) -> None:
+        # Save test data frame to disk
+        if self.df_test_path is not None:
+            df_test = pd.DataFrame(self.df_test)
+            self.df_test_path.parent.mkdir(parents=True, exist_ok=True)
+            df_test.to_pickle(self.df_test_path)

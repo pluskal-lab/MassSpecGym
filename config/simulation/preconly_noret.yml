@@ -1,0 +1,16 @@
+# wandb
+wandb_name: "preconly_noret"
+# data
+pth: "MassSpecGym.tsv"
+split_type: "benchmark"
+# output
+mz_max: 1005.
+mz_bin_res: 0.01
+ints_transform: "none"
+# model
+model_type: "prec_only"
+# optimization
+max_epochs: 1
+# other
+accelerator: "gpu"
+do_retrieval: False

@@ -9,8 +9,12 @@ from pathlib import Path
 from rdkit import Chem
 from torch.utils.data.dataset import Dataset
 from torch.utils.data.dataloader import default_collate
+from copy import deepcopy
+import os
 from matchms.importing import load_from_mgf
-from massspecgym.data.transforms import SpecTransform, MolTransform, MolToInChIKey
+
+from massspecgym.data.transforms import SpecTransform, MolTransform, MolToInChIKey, MetaTransform
+from massspecgym.simulation_utils.misc_utils import flatten_lol
 
 
 class MassSpecDataset(Dataset):
@@ -39,6 +43,12 @@ class MassSpecDataset(Dataset):
         self.spec_transform = spec_transform
         self.mol_transform = mol_transform
         self.return_mol_freq = return_mol_freq
+        self.return_identifier = return_identifier
+        self.dtype = dtype
+        self.load_data()
+        self.compute_mol_freq()
+
+    def load_data(self):
 
         if self.pth is None:
             self.pth = utils.hugging_face_download("MassSpecGym.tsv")
@@ -60,7 +70,7 @@ class MassSpecDataset(Dataset):
             )
             self.metadata = self.metadata.drop(columns=["mzs", "intensities"])
         elif self.pth.suffix == ".mgf":
-            self.spectra = list(load_from_mgf(str(self.pth)))
+            self.spectra = pd.Series(list(load_from_mgf(str(self.pth))))
             self.metadata = pd.DataFrame([s.metadata for s in self.spectra])
         else:
             raise ValueError(f"{self.pth.suffix} file format not supported.")
@@ -70,13 +80,11 @@ class MassSpecDataset(Dataset):
             self.spectra = self.spectra[self.metadata.index].reset_index(drop=True)
             self.metadata = self.metadata.reset_index(drop=True)
 
+    def compute_mol_freq(self):
         if self.return_mol_freq:
             if "inchikey" not in self.metadata.columns:
                 self.metadata["inchikey"] = self.metadata["smiles"].apply(utils.smiles_to_inchi_key)
             self.metadata["mol_freq"] = self.metadata.groupby("inchikey")["inchikey"].transform("count")
-
-        self.return_identifier = return_identifier
-        self.dtype = dtype
 
     def __len__(self) -> int:
         return len(self.spectra)
@@ -156,10 +164,14 @@ class RetrievalDataset(MassSpecDataset):
                 are downloaded from HuggingFace Hub. If set to `bonus`, the candidates based on molecular formulas
                 for the `bonus chemical formulae challenge` are downloaded instead.
         """
+        # note: __init__ calls load_data, these variables are required for load_data to work properly
+        self.mol_label_transform = mol_label_transform
+        self.candidates_pth = candidates_pth
         super().__init__(**kwargs)
 
-        self.candidates_pth = candidates_pth
-        self.mol_label_transform = mol_label_transform
+    def load_data(self):
+
+        super().load_data()
 
         # Download candidates from HuggigFace Hub if not a path to exisiting file is passed
         if self.candidates_pth is None:
@@ -174,7 +186,7 @@ class RetrievalDataset(MassSpecDataset):
             if Path(self.candidates_pth).is_file():
                 self.candidates_pth = Path(self.candidates_pth)
             else:
-                self.candidates_pth = utils.hugging_face_download(candidates_pth)
+                self.candidates_pth = utils.hugging_face_download(self.candidates_pth)
 
         # Read candidates_pth from json to dict: SMILES -> respective candidate SMILES
         with open(self.candidates_pth, "r") as file:
@@ -238,5 +250,243 @@ class RetrievalDataset(MassSpecDataset):
 
         return collated_batch
 
+class SimulationDataset(MassSpecDataset):
+
+    def __init__(
+        self,
+        spec_transform: SpecTransform,
+        mol_transform: MolTransform,
+        meta_transform: MetaTransform,
+        meta_keys: T.List[str],
+        pth: T.Optional[Path] = None,
+        return_mol_freq: bool = True,
+        return_identifier: bool = True,
+        dtype: T.Type = torch.float32
+    ): 
+        
+        # note: __init__ calls load_data, these variables are required for load_data to work properly
+        self.meta_transform = meta_transform
+        self.meta_keys = meta_keys
+        super().__init__(
+            spec_transform=spec_transform,
+            mol_transform=mol_transform,
+            pth=pth,
+            return_mol_freq=return_mol_freq,
+            return_identifier=return_identifier,
+            dtype=dtype
+        )
+
+    def load_data(self):
+
+        # set self.pth correctly
+        # download if necessary
+        if self.pth is None:
+            self.pth = utils.hugging_face_download(
+                "MassSpecGym.tsv"
+            )
+        else: 
+            assert isinstance(self.pth, str)
+            if not os.path.isfile(self.pth):
+                self.pth = utils.hugging_face_download(self.pth)
+
+        # will never download here
+        super().load_data()
+
+        # remove any spectra not included in the simulation challenge
+        sim_mask = self.metadata["simulation_challenge"]
+        sim_metadata = self.metadata[sim_mask].copy(deep=True)
+        # verify all datapoints are not missing CE information and are [M+H]+
+        assert (sim_metadata["adduct"]=="[M+H]+").all()
+        assert (~sim_metadata["collision_energy"].isna()).all()
+        # mz checks
+        assert (sim_metadata["precursor_mz"] <= self.spec_transform.mz_to).all()
+        # do the filtering
+        self.spectra = self.spectra[sim_mask]
+        self.metadata = sim_metadata.reset_index(drop=True) 
+
+    def _get_spec_feats(self, i):
+
+        spectrum = self.spectra.iloc[i]
+        spec_feats = self.spec_transform(spectrum)
+        return spec_feats
+
+    def _get_mol_feats(self, i):
+
+        metadata = self.metadata.iloc[i]
+        mol_feats = self.mol_transform(metadata["smiles"])
+        return mol_feats
+
+    def _get_meta_feats(self, i):
+
+        metadata = self.metadata.iloc[i]
+        meta_feats = self.meta_transform({k: metadata[k] for k in self.meta_keys})
+        return meta_feats
+
+    def _get_other_feats(self, i):
+
+        metadata = self.metadata.iloc[i]
+        other_feats = {}
+        other_feats["smiles"] = metadata["smiles"]
+        if self.return_mol_freq:
+            other_feats["mol_freq"] = torch.tensor(metadata["mol_freq"])
+        if self.return_identifier:
+            other_feats["identifier"] = metadata["identifier"]
+        return other_feats
+
+    def __getitem__(self, i) -> dict:
+        item = {}
+        item.update(self._get_spec_feats(i))
+        item.update(self._get_mol_feats(i))
+        item.update(self._get_meta_feats(i))
+        item.update(self._get_other_feats(i))
+        return item
+    
+    def get_collate_data(self, batch_data: dict) -> dict:
+
+        collate_data = {}
+        # handle spectrum
+        collate_data.update(self.spec_transform.collate_fn(batch_data))
+        # handle molecule
+        collate_data.update(self.mol_transform.collate_fn(batch_data))
+        # handle metadata
+        collate_data.update(self.meta_transform.collate_fn(batch_data))
+        # handle other stuff
+        if "smiles" in batch_data:
+            collate_data["smiles"] = batch_data["smiles"].copy()
+        if "mol_freq" in batch_data:
+            collate_data["mol_freq"] = torch.stack(batch_data["mol_freq"],dim=0)
+        if "identifier" in batch_data:
+            collate_data["identifier"] = batch_data["identifier"].copy()
+        return collate_data
+
+    def collate_fn(self, data_list: T.List[dict]) -> dict:
+
+        keys = list(data_list[0].keys())
+        collate_data = {}
+        batch_data = {key: [] for key in keys}
+        for data in data_list:
+            for key in keys:
+                batch_data[key].append(data[key])
+        collate_data = self.get_collate_data(batch_data)
+        return collate_data
+
+        
+class RetrievalSimulationDataset(SimulationDataset):
+
+    def __init__(
+        self,
+        mol_label_transform: MolTransform = MolToInChIKey(),
+        candidates_pth: T.Optional[T.Union[Path, str]] = None,
+
+        **kwargs,
+    ):
+        # note: __init__ calls load_data, these variables are required for load_data to work properly
+        self.mol_label_transform = mol_label_transform
+        self.candidates_pth = candidates_pth
+        super().__init__(**kwargs)
+
+    def load_data(self):
+
+        super().load_data()
+
+        # Download candidates from HuggigFace Hub
+        if self.candidates_pth is None:
+            self.candidates_pth = utils.hugging_face_download(
+                "molecules/MassSpecGym_retrieval_candidates_mass.json"
+            )
+        else: 
+            assert isinstance(self.candidates_pth, str)
+            if not os.path.isfile(self.candidates_pth):
+                self.candidates_pth = utils.hugging_face_download(self.candidates_pth)
+
+        # Read candidates_pth from json to dict: SMILES -> respective candidate SMILES
+        with open(self.candidates_pth, "r") as file:
+            self.candidates = json.load(file)
+
+        # check that everything has candidates
+        smileses = self.metadata["smiles"]
+        candidates_mask = []
+        for smiles in smileses:
+            candidates_mask.append(smiles in self.candidates)
+        candidates_mask = np.array(candidates_mask)
+        assert candidates_mask.all()
+
+    def __getitem__(self, i):
+
+        item = super().__getitem__(i)
+        smiles = item["smiles"]
+        assert isinstance(smiles, str)
+
+        # Get candidates
+        if smiles not in self.candidates:
+            raise ValueError(f'No candidates for the query molecule {smiles}.')
+        candidates_smiles = self.candidates[smiles]
+
+        # # Save the original SMILES representations of the canidates (for evaluation)
+        # item["candidates_smiles"] = candidates_smiles
+
+        # Create neg/pos label mask by matching the query molecule with the candidates
+        item_label = self.mol_label_transform(smiles)
+        candidates_labels = [
+            self.mol_label_transform(c) == item_label for c in candidates_smiles
+        ]
+        if not any(candidates_labels):
+            raise ValueError(
+                f'Query molecule {smiles} not found in the candidates list.'
+            )
+        # item["candidates_labels"] = torch.tensor(candidates_labels)
+
+        candidates_mol_feats, candidates_mask = [], []
+        for c in candidates_smiles:
+            try:
+                candidates_mol_feats.append(self.mol_transform(c))
+                candidates_mask.append(True)
+            except IndexError as e:
+                print(f"> error processing candidate {c} for query {smiles}")
+                candidates_mol_feats.append(None)
+                candidates_mask.append(False)
+        
+        candidates_smiles = [candidates_smiles[i] for i in range(len(candidates_smiles)) if candidates_mask[i]]
+        candidates_labels = [candidates_labels[i] for i in range(len(candidates_labels)) if candidates_mask[i]]
+        candidates_mol_feats = [candidates_mol_feats[i] for i in range(len(candidates_mol_feats)) if candidates_mask[i]]
+
+        # filter based on mask
+        item["candidates_smiles"] = candidates_smiles
+        item["candidates_labels"] = torch.tensor(candidates_labels)
+        item["candidates_mol_feats"] = candidates_mol_feats
+
+        return item
+
+    def collate_fn(self, data_list: T.List[dict]) -> dict:
+
+        keys = list(data_list[0].keys())
+        collate_data = {}
+        batch_data = {key: [] for key in keys}
+        for data in data_list:
+            for key in keys:
+                batch_data[key].append(data[key])
+        collate_data = super().get_collate_data(batch_data)
+        # transform candidates mols
+        c_collate_data = {}
+        c_mol_feats = flatten_lol(batch_data["candidates_mol_feats"])
+        c_mol_keys = list(c_mol_feats[0].keys())
+        c_mol_batch_data = {key: [] for key in c_mol_keys}
+        for c_mol_feats in c_mol_feats:
+            for key in c_mol_keys:
+                c_mol_batch_data[key].append(c_mol_feats[key])
+        c_mol_collate_data = self.mol_transform.collate_fn(c_mol_batch_data)
+        # c_meta_feats = batch_data["candidates_meta_feats"]
+        # c_meta_keys = list(c_meta_feats[0].keys())
+        # c_meta_batch_data = 
+        # package it
+        prefix = "" # "candidates_"
+        for key in c_mol_keys:
+            c_collate_data[prefix+key] = c_mol_collate_data[key]
+        c_collate_data[prefix+"smiles"] = flatten_lol(batch_data["candidates_smiles"])
+        c_collate_data[prefix+"batch_ptr"] = torch.tensor([len(item) for item in batch_data["candidates_smiles"]])
+        c_collate_data[prefix+"labels"] = torch.cat(batch_data["candidates_labels"],dim=0)
+        # copy relevant keys
+        collate_data["candidates_data"] = c_collate_data
+        return collate_data
 
 # TODO: Datasets for unlabeled data.

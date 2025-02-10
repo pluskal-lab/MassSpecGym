@@ -1,0 +1,74 @@
+# wandb
+wandb_entity: "your_wandb_entity" ### change this
+wandb_project: "your_wandb_project" ## change this
+wandb_name: "template"
+# data
+pth: ## add path
+candidates_pth: # add path
+meta_keys: ["adduct","precursor_mz","instrument_type","collision_energy"]
+fp_types: ["morgan","maccs","rdkit"]
+adducts: ["[M+H]+"]
+instrument_types: ["QTOF","QFT","Orbitrap","ITFT"]
+max_collision_energy: 200.
+mz_from: 10.
+mz_to: 1000.
+split_type: "benchmark"
+subsample_frac: 
+# input
+metadata_insert_location: "mlp"
+collision_energy_insert_size: 16
+adduct_insert_size: 16
+instrument_type_insert_size: 16
+# output
+mz_max: 1005.
+mz_bin_res: 0.1
+ints_transform: "none"
+# model
+model_type: "fp"
+mlp_hidden_size: 1024
+mlp_dropout: 0.1
+mlp_num_layers: 4
+mlp_use_residuals: True
+ff_prec_mz_offset: 5
+ff_bidirectional: True
+ff_output_map_size: 256
+mol_hidden_size: 256
+mol_num_layers: 4
+mol_gnn_type: GINE
+mol_normalization: batch
+mol_dropout: 0.2
+mol_pool_type: mean
+# optimization
+lr: 0.0003
+lr_schedule: False
+lr_decay_rate: 0.0
+lr_warmup_steps: 1000
+lr_decay_steps: 5000
+weight_decay: 0.0000001
+train_sample_weight: False #True
+eval_sample_weight: False #True
+batch_size: 128
+max_epochs: 100
+drop_last: False
+gradient_clip_val: 0.0
+gradient_clip_algorithm:
+optimizer_type: "adam"
+# other
+num_workers: 8
+accelerator: "cpu"
+log_every_n_steps: 1
+seed: 420
+cache_feats: False
+mp_sharing_strategy: "file_system"
+do_retrieval: True
+retrieval_batch_size: 8
+at_ks: [1, 5, 20]
+pin_memory: True
+persistent_workers: True
+sim_metrics:
+  - cos_sim
+  - js_sim
+  - cos_sim_sqrt
+  - cos_sim_obj
+save_df_test: True
+save_ckpt: False
