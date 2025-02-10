@@ -9,7 +9,7 @@ with open(os.path.join(here, "README.md"), encoding="utf-8") as f:
 setup(
     name="massspecgym",
     packages=find_packages(),
-    version="1.1.1",
+    version="1.2.0",
     description="MassSpecGym: A benchmark for the discovery and identification of molecules",
     author="MassSpecGym developers",
     author_email="roman.bushuiev@uochb.cas.cz",
