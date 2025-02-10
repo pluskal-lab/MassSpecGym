@@ -16,17 +16,13 @@ def simulation_baseline_training():
     from massspecgym.models.simulation.prec_only import PrecOnlySimulationMassSpecGymModel
     from massspecgym.simulation_utils.run_utils import load_config, get_split_ss
 
-
-
     # default settings for simulation runs
-    template_fp = "../config/simulation/template.yml"
+    template_fp = "config/simulation/template.yml"
     # special settings for this demo
-    custom_fp = "../config/simulation/demo.yml"
+    custom_fp = "config/simulation/demo.yml"
 
     # W&B logging is disabled
     wandb_mode = "disabled"
-    # directory for saving model checkpoints
-    checkpoint_dp = "../checkpoint/simulation"
 
     config_d = load_config(template_fp,custom_fp)
 
@@ -58,8 +54,7 @@ def simulation_baseline_training():
         project=config_d["wandb_project"],
         entity=config_d["wandb_entity"],
         name=config_d["wandb_name"],
-        mode=wandb_mode,
-        dir=checkpoint_dp,
+        mode=wandb_mode
     )
     logger = pl.loggers.WandbLogger(
         entity=config_d["wandb_entity"],
