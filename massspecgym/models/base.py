@@ -29,6 +29,7 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         lr: float = 1e-4,
         weight_decay: float = 0.0,
         log_only_loss_at_stages: T.Sequence[Stage | str] = (),
+        no_mces_metrics_at_stages: T.Sequence[Stage | str] = (),
         bootstrap_metrics: bool = False,
         df_test_path: T.Optional[str | Path] = None,
         **kwargs
@@ -40,6 +41,11 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         self.log_only_loss_at_stages = [
             Stage(s) if isinstance(s, str) else s for s in log_only_loss_at_stages
         ]
+
+        self.no_mces_metrics_at_stages = [
+            Stage(s) if isinstance(s, str) else s for s in no_mces_metrics_at_stages
+        ]
+        self.bootstrap_metrics = bootstrap_metrics
 
         # Init dictionary to store dataframe columns where rows correspond to samples
         # (for constructing test dataframe with predictions and metrics for each sample)

@@ -31,6 +31,7 @@ class MassSpecDataset(Dataset):
         pth: T.Optional[Path] = None,
         return_mol_freq: bool = True,
         return_identifier: bool = True,
+        identifiers_subset: T.Optional[T.List[str]] = None,
         dtype: T.Type = torch.float32
     ):
         """
@@ -73,9 +74,13 @@ class MassSpecDataset(Dataset):
             self.metadata = pd.DataFrame([s.metadata for s in self.spectra])
         else:
             raise ValueError(f"{self.pth.suffix} file format not supported.")
+        
+        if identifiers_subset is not None:
+            self.metadata = self.metadata[self.metadata["identifier"].isin(identifiers_subset)]
+            self.spectra = self.spectra[self.metadata.index].reset_index(drop=True)
+            self.metadata = self.metadata.reset_index(drop=True)
 
     def compute_mol_freq(self):
-
         if self.return_mol_freq:
             if "inchikey" not in self.metadata.columns:
                 self.metadata["inchikey"] = self.metadata["smiles"].apply(utils.smiles_to_inchi_key)
@@ -213,8 +218,9 @@ class RetrievalDataset(MassSpecDataset):
             )
 
         # Transform the query and candidate molecules
-        item["mol"] = self.mol_transform(item["mol"])
-        item["candidates"] = [self.mol_transform(c) for c in item["candidates"]]
+        if self.mol_transform:
+            item["mol"] = self.mol_transform(item["mol"])
+            item["candidates"] = [self.mol_transform(c) for c in item["candidates"]]
         if isinstance(item["mol"], np.ndarray):
             item["mol"] = torch.as_tensor(item["mol"], dtype=self.dtype)
             item["candidates"] = torch.as_tensor(np.stack(item["candidates"]), dtype=self.dtype)

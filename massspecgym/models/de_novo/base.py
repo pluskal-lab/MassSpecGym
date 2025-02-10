@@ -129,33 +129,34 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
             # Calculate MCES distance between top-k predicted molecules and ground truth and
             # report the minimum distance. The minimum distances for each sample in the batch are
             # averaged across the epoch.
-            min_mces_dists = []
-            mces_thld = 100
-            # Iterate over batch
-            for preds, true in zip(smiles_pred_top_k, smile_true):
-                # Iterate over top-k predicted molecule samples
-                dists = []
-                for pred in preds:
-                    if pred is None:
-                        dists.append(mces_thld)
-                    else:
-                        if (true, pred) not in self.mces_cache:
-                            mce_val = self.myopic_mces(true, pred)
-                            self.mces_cache[(true, pred)] = mce_val
-                        dists.append(self.mces_cache[(true, pred)])
-                min_mces_dists.append(min(min(dists), mces_thld))
-            min_mces_dists = torch.tensor(min_mces_dists, device=self.device)
+            if stage not in self.no_mces_metrics_at_stages:
+                min_mces_dists = []
+                mces_thld = 100
+                # Iterate over batch
+                for preds, true in zip(smiles_pred_top_k, smile_true):
+                    # Iterate over top-k predicted molecule samples
+                    dists = []
+                    for pred in preds:
+                        if pred is None:
+                            dists.append(mces_thld)
+                        else:
+                            if (true, pred) not in self.mces_cache:
+                                mce_val = self.myopic_mces(true, pred)
+                                self.mces_cache[(true, pred)] = mce_val
+                            dists.append(self.mces_cache[(true, pred)])
+                    min_mces_dists.append(min(min(dists), mces_thld))
+                min_mces_dists = torch.tensor(min_mces_dists, device=self.device)
 
-            # Log
-            metric_name = stage.to_pref() + f"top_{top_k}_mces_dist"
-            self._update_metric(
-                metric_name,
-                MeanMetric,
-                (min_mces_dists,),
-                batch_size=len(min_mces_dists),
-                bootstrap=stage == Stage.TEST
-            )
-            metric_vals[metric_name] = min_mces_dists
+                # Log
+                metric_name = stage.to_pref() + f"top_{top_k}_mces_dist"
+                self._update_metric(
+                    metric_name,
+                    MeanMetric,
+                    (min_mces_dists,),
+                    batch_size=len(min_mces_dists),
+                    bootstrap=stage == Stage.TEST
+                )
+                metric_vals[metric_name] = min_mces_dists
 
             # 2. Evaluate Tanimoto similarity:
             # Calculate Tanimoto similarity between top-k predicted molecules and ground truth and

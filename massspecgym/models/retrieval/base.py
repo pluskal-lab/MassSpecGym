@@ -48,14 +48,16 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
             batch["batch_ptr"],
             stage=stage,
         )
-        metric_vals |= self.evaluate_mces_at_1(
-            outputs["scores"],
-            batch["labels"],
-            batch["smiles"],
-            batch["candidates_smiles"],
-            batch["batch_ptr"],
-            stage=stage,
-        )
+
+        if stage not in self.no_mces_metrics_at_stages:
+            metric_vals |= self.evaluate_mces_at_1(
+                outputs["scores"],
+                batch["labels"],
+                batch["smiles"],
+                batch["candidates_smiles"],
+                batch["batch_ptr"],
+                stage=stage,
+            )
         if stage == Stage.TEST and self.df_test_path is not None:
             self._update_df_test(metric_vals)
 
