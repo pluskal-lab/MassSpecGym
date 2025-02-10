@@ -28,8 +28,8 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         self,
         lr: float = 1e-4,
         weight_decay: float = 0.0,
-        log_only_loss_at_stages: T.Sequence[Stage | str] = (Stage.TRAIN),
-        no_mces_metrics_at_stages: T.Sequence[Stage | str] = (Stage.VAL),
+        log_only_loss_at_stages: T.Sequence[Stage | str] = (Stage.TRAIN,),
+        no_mces_metrics_at_stages: T.Sequence[Stage | str] = (Stage.VAL,),
         bootstrap_metrics: bool = False,
         df_test_path: T.Optional[str | Path] = None,
         **kwargs
