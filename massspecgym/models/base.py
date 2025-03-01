@@ -128,7 +128,7 @@ class MassSpecGymModel(pl.LightningModule, ABC):
         model.
         """
         # Process arguments
-        bootstrap = bootstrap and self.hparams.bootstrap_metrics
+        bootstrap = bootstrap and 'bootstrap_metrics' in self.hparams and self.hparams.bootstrap_metrics
 
         # Log total number of samples (useful for debugging)
         if log_n_samples:
