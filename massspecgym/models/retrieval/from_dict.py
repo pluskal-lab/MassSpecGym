@@ -43,7 +43,7 @@ class FromDictRetrieval(RetrievalMassSpecGymModel):
         # Unpack inputs
         ids = batch["identifier"]
         fp_true = batch["mol"]
-        cands = batch["candidates"]
+        cands = batch["candidates_mol"]
         batch_ptr = batch["batch_ptr"]
 
         # Read predicted fingerprints from dictionary

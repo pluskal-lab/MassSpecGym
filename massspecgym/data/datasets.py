@@ -1,18 +1,16 @@
 import pandas as pd
 import json
+import os
 import typing as T
 import numpy as np
 import torch
 import matchms
-import massspecgym.utils as utils
 from pathlib import Path
-from rdkit import Chem
 from torch.utils.data.dataset import Dataset
 from torch.utils.data.dataloader import default_collate
-from copy import deepcopy
-import os
 from matchms.importing import load_from_mgf
 
+import massspecgym.utils as utils
 from massspecgym.data.transforms import SpecTransform, MolTransform, MolToInChIKey, MetaTransform
 from massspecgym.simulation_utils.misc_utils import flatten_lol
 
@@ -218,38 +216,65 @@ class RetrievalDataset(MassSpecDataset):
                 f'Query molecule {item["mol"]} not found in the candidates list.'
             )
 
+        # TODO: it should be refactored this way to a dict in the MassSpecDataset constructor
+        #       we don't refactor it now to avoid breaking changes
+        if not isinstance(self.mol_transform, dict):
+            mol_transform = {"mol": self.mol_transform}
+        else:
+            mol_transform = self.mol_transform
+
         # Transform the query and candidate molecules
-        if self.mol_transform:
-            item["mol"] = self.mol_transform(item["mol"])
-            item["candidates"] = [self.mol_transform(c) for c in item["candidates"]]
-        if isinstance(item["mol"], np.ndarray):
-            item["mol"] = torch.as_tensor(item["mol"], dtype=self.dtype)
-            item["candidates"] = torch.as_tensor(np.stack(item["candidates"]), dtype=self.dtype)
+        for key, transform in mol_transform.items():
+            item[key] = transform(item["mol"]) if transform is not None else item["mol"]
+            item["candidates_"+key] = [transform(c) if transform is not None else c for c in item["candidates"]]
+            if isinstance(item[key], np.ndarray):
+                item[key] = torch.as_tensor(item[key], dtype=self.dtype)
+                item["candidates_"+key] = torch.as_tensor(np.stack(item["candidates_"+key]), dtype=self.dtype)
+        del item["candidates"]
 
         return item
+
+    @staticmethod
+    def _collate_fn_variable_size(batch: T.Iterable[dict], key: str) -> T.Union[torch.Tensor, list]:
+
+        # Flatten the list of lists
+        if isinstance(batch[0][key], list):
+            collated_item = sum([item[key] for item in batch], start=[])
+
+            # Convert to tensor if it's not a list of strings
+            if not isinstance(batch[0][key][0], str):
+                collated_item = torch.as_tensor(collated_item)
+        
+        # Concatenate the tensors
+        elif isinstance(batch[0][key], torch.Tensor):
+            collated_item = torch.cat([item[key] for item in batch], dim=0)
+        
+        # Raise an error if the type is not supported
+        else:
+            raise ValueError(f"Unsupported type: {type(batch[0][key])}")
+        
+        return collated_item
+
 
     @staticmethod
     def collate_fn(batch: T.Iterable[dict]) -> dict:
         # Standard collate for everything except candidates and their labels (which may have different length per sample)
         collated_batch = {}
         for k in batch[0].keys():
-            if k not in ["candidates", "labels", "candidates_smiles"]:
+            if k.startswith("candidates") or k == "labels":
+                # Handle candidates and labels of variable size per sample
+                collated_batch[k] = RetrievalDataset._collate_fn_variable_size(batch, k)
+            else:
+                # Standard collate for everything else
                 collated_batch[k] = default_collate([item[k] for item in batch])
 
-        # Collate candidates and labels by concatenating and storing sizes of each list
-        collated_batch["candidates"] = torch.as_tensor(
-            torch.concatenate([item["candidates"] for item in batch])
-        )
-        collated_batch["labels"] = torch.as_tensor(
-            sum([item["labels"] for item in batch], start=[])
-        )
+        # Store the batch pointer reflecting the number of candidates per sample
         collated_batch["batch_ptr"] = torch.as_tensor(
-            [len(item["candidates"]) for item in batch]
+            [len(item["candidates_smiles"]) for item in batch]
         )
-        collated_batch["candidates_smiles"] = \
-            sum([item["candidates_smiles"] for item in batch], start=[])
 
         return collated_batch
+
 
 class SimulationDataset(MassSpecDataset):
 
@@ -490,4 +515,5 @@ class RetrievalSimulationDataset(SimulationDataset):
         collate_data["candidates_data"] = c_collate_data
         return collate_data
 
-# TODO: Datasets for unlabeled data.
+
+# TODO: Dataset for unlabeled spectra.
