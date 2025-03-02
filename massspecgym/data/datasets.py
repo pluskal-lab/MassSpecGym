@@ -8,6 +8,7 @@ import matchms
 from pathlib import Path
 from torch.utils.data.dataset import Dataset
 from torch.utils.data.dataloader import default_collate
+from torch_geometric.data import Data, Batch
 from matchms.importing import load_from_mgf
 
 import massspecgym.utils as utils
@@ -243,7 +244,12 @@ class RetrievalDataset(MassSpecDataset):
 
             # Convert to tensor if it's not a list of strings
             if not isinstance(batch[0][key][0], str):
-                collated_item = torch.as_tensor(collated_item)
+                if isinstance(batch[0][key][0], Data):
+                    # PyG Data object
+                    collated_item = Batch.from_data_list(collated_item)
+                else:
+                    # Standard torch tensor
+                    collated_item = torch.as_tensor(collated_item)
         
         # Concatenate the tensors
         elif isinstance(batch[0][key], torch.Tensor):
@@ -265,8 +271,13 @@ class RetrievalDataset(MassSpecDataset):
                 # Handle candidates and labels of variable size per sample
                 collated_batch[k] = RetrievalDataset._collate_fn_variable_size(batch, k)
             else:
-                # Standard collate for everything else
-                collated_batch[k] = default_collate([item[k] for item in batch])
+                # Standard torch or PyG collate for everything else
+                print(f"Collating {k} of type {type(batch[0][k])}")
+                print(batch[0][k])
+                if isinstance(batch[0][k], Data):
+                    collated_batch[k] = Batch.from_data_list([item[k] for item in batch])
+                else:
+                    collated_batch[k] = default_collate([item[k] for item in batch])
 
         # Store the batch pointer reflecting the number of candidates per sample
         collated_batch["batch_ptr"] = torch.as_tensor(
