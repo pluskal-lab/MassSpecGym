@@ -188,13 +188,17 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
             scores = unbatch(outputs['scores'], indexes)
             candidates_smiles = utils.unbatch_list(batch['candidates_smiles'], indexes)
             sorted_candidate_smiles = []
+            sorted_scores = []
             for scores_sample, candidates_smiles_sample in zip(scores, candidates_smiles):
-                candidates_smiles_sample = [
-                    x for _, x in sorted(zip(scores_sample, candidates_smiles_sample), reverse=True)
-                ]
-                sorted_candidate_smiles.append(candidates_smiles_sample)
+                scores_sample = scores_sample.cpu().tolist()
+                sorted_scores_sample, sorted_candidates_smiles_sample = zip(
+                    *sorted(zip(scores_sample, candidates_smiles_sample), reverse=True)
+                )
+                sorted_candidate_smiles.append(list(sorted_candidates_smiles_sample))
+                sorted_scores.append(list(sorted_scores_sample))
             self._update_df_test({
                 'identifier': batch['identifier'],
+                'sorted_scores': sorted_scores,
                 'sorted_candidate_smiles': sorted_candidate_smiles
             })
 
