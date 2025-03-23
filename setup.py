@@ -32,7 +32,8 @@ setup(
         "chemparse==0.3.1",
         "chemformula==1.3.1",
         "networkx==3.3",
-        "selfies==2.1.2"
+        "selfies==2.1.2",
+        "pulp==2.9.0"  # for myopic-mces
     ],
     extras_require={
         "dev": [
