@@ -527,91 +527,91 @@ class RetrievalSimulationDataset(SimulationDataset):
 
 # TODO: Dataset for unlabeled spectra.
 
+# WIP
+# import h5py
+# from tqdm import tqdm
+# from torch_geometric.data import InMemoryDataset, download_url
+# from torch_geometric.data import Batch
 
-import h5py
-from tqdm import tqdm
-from torch_geometric.data import InMemoryDataset, download_url
-from torch_geometric.data import Batch
+# class MoleculeDataset(InMemoryDataset):
+#     def __init__(
+#             self,
+#             root: str,
+#             pre_transform: MolTransform,
+#             pre_filter: T.Callable = lambda x: x is not None,
+#             url: str = "https://huggingface.co/datasets/roman-bushuiev/MassSpecGym/resolve/main/data/molecules/MassSpecGym_molecules_MCES2_disjoint_with_test_fold_4M.tsv",
+#             mol_col: str = "smiles",
+#             verbose: bool = True
+#         ):
+#         """
+#         Args:
+#             root (str): Root directory where the dataset should be saved.
+#             pre_transform (MolTransform): Pre-transformation to apply to the molecules.
+#             pre_filter (Callable, optional): Pre-filter to apply to the pre-transformed molecules. Defaults to lambda x: x is not None.
+#             url (str, optional): URL to download the .tsv dataset from. Defaults to "https://huggingface.co/datasets/roman-bushuiev/MassSpecGym/resolve/main/data/molecules/MassSpecGym_molecules_MCES2_disjoint_with_test_fold_4M.tsv".
+#             mol_col (str, optional): Column name of the molecules in the dataset. Defaults to "smiles".
+#             verbose (bool, optional): Whether to print verbose output. Defaults to True.
 
-class MoleculeDataset(InMemoryDataset):
-    def __init__(
-            self,
-            root: str,
-            pre_transform: MolTransform,
-            pre_filter: T.Callable = lambda x: x is not None,
-            url: str = "https://huggingface.co/datasets/roman-bushuiev/MassSpecGym/resolve/main/data/molecules/MassSpecGym_molecules_MCES2_disjoint_with_test_fold_4M.tsv",
-            mol_col: str = "smiles",
-            verbose: bool = True
-        ):
-        """
-        Args:
-            root (str): Root directory where the dataset should be saved.
-            pre_transform (MolTransform): Pre-transformation to apply to the molecules.
-            pre_filter (Callable, optional): Pre-filter to apply to the pre-transformed molecules. Defaults to lambda x: x is not None.
-            url (str, optional): URL to download the .tsv dataset from. Defaults to "https://huggingface.co/datasets/roman-bushuiev/MassSpecGym/resolve/main/data/molecules/MassSpecGym_molecules_MCES2_disjoint_with_test_fold_4M.tsv".
-            mol_col (str, optional): Column name of the molecules in the dataset. Defaults to "smiles".
-            verbose (bool, optional): Whether to print verbose output. Defaults to True.
+#         TODO: splits
+#         """
+#         self.url = url
+#         self.mol_col = mol_col
+#         self.verbose = verbose
+#         self.file_name = Path(url).name
+#         super().__init__(root, None, pre_transform, pre_filter)
+#         self.data, self.slices = torch.load(self.processed_paths[0])
 
-        TODO: splits
-        """
-        self.url = url
-        self.mol_col = mol_col
-        self.verbose = verbose
-        self.file_name = Path(url).name
-        super().__init__(root, None, pre_transform, pre_filter)
-        self.data, self.slices = torch.load(self.processed_paths[0])
+#     @property
+#     def raw_file_names(self):
+#         return [self.file_name]
 
-    @property
-    def raw_file_names(self):
-        return [self.file_name]
+#     @property
+#     def processed_file_names(self):
+#         return [Path(self.file_name).with_suffix(".pt")]
 
-    @property
-    def processed_file_names(self):
-        return [Path(self.file_name).with_suffix(".pt")]
+#     def download(self):
+#         download_url(self.url, self.raw_dir)
 
-    def download(self):
-        download_url(self.url, self.raw_dir)
-
-    def process(self):
-        # Read data
-        df = pd.read_csv(self.raw_paths[0], sep="\t")
+#     def process(self):
+#         # Read data
+#         df = pd.read_csv(self.raw_paths[0], sep="\t")
         
-        # Process all SMILES strings
-        smiles_list = df[self.mol_col].tolist()
-        data_list = []
+#         # Process all SMILES strings
+#         smiles_list = df[self.mol_col].tolist()
+#         data_list = []
         
-        # Process each SMILES string
-        for smiles in tqdm(smiles_list, desc="Processing molecules"):
-            # Pre-transform
-            if self.pre_transform is not None:
-                data = self.pre_transform(smiles)
-            else:
-                data = smiles
+#         # Process each SMILES string
+#         for smiles in tqdm(smiles_list, desc="Processing molecules"):
+#             # Pre-transform
+#             if self.pre_transform is not None:
+#                 data = self.pre_transform(smiles)
+#             else:
+#                 data = smiles
 
-            # Pre-filter
-            if self.pre_filter is not None:
-                if not self.pre_filter(data):
-                    continue
+#             # Pre-filter
+#             if self.pre_filter is not None:
+#                 if not self.pre_filter(data):
+#                     continue
                     
-            data_list.append(data)
+#             data_list.append(data)
 
-        # Collate all molecules into single batch
-        if self.verbose:
-            print('Collating...')
-        processed_data = Batch.from_data_list(data_list)
-        del data_list
+#         # Collate all molecules into single batch
+#         if self.verbose:
+#             print('Collating...')
+#         processed_data = Batch.from_data_list(data_list)
+#         del data_list
 
-        if self.verbose:
-            print(f'Total processed molecules: {len(processed_data.x):,}')
-            print(f'Saving to {h5_path}...')
+#         if self.verbose:
+#             print(f'Total processed molecules: {len(processed_data.x):,}')
+#             print(f'Saving to {h5_path}...')
         
-        h5_path = str(Path(self.processed_paths[0]).with_suffix('.hdf5'))
-        with h5py.File(h5_path, 'w') as f:
-            # Save all attributes with compression
-            for key in processed_data.keys():  # ['x', 'edge_index', 'edge_attr', 'batch', 'ptr']
-                data = processed_data[key]
-                if torch.is_tensor(data) and data is not None:
-                    f.create_dataset(key, data=data.numpy(), compression='gzip', compression_opts=5)
+#         h5_path = str(Path(self.processed_paths[0]).with_suffix('.hdf5'))
+#         with h5py.File(h5_path, 'w') as f:
+#             # Save all attributes with compression
+#             for key in processed_data.keys():  # ['x', 'edge_index', 'edge_attr', 'batch', 'ptr']
+#                 data = processed_data[key]
+#                 if torch.is_tensor(data) and data is not None:
+#                     f.create_dataset(key, data=data.numpy(), compression='gzip', compression_opts=5)
 
-        # Store final result 
-        self.save(processed_data, self.processed_paths[0])
+#         # Store final result 
+#         self.save(processed_data, self.processed_paths[0])
