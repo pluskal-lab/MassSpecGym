@@ -213,7 +213,9 @@ trainer.test(model, datamodule=data_module)
 
 ## 🏅 Submit your results to the leaderboard
 
-The MassSpecGym leaderboard is available on the [Papers with Code website](https://paperswithcode.com/dataset/massspecgym). To submit your results, please see the [following tutorial](https://github.com/paperswithcode/tutorials/blob/main/add_results.md).
+We are currently working on a custom leaderboard that will be hosted on this GitHub page starting around October, since the Papers with Code platform was recently shut down.
+
+~~The MassSpecGym leaderboard is available on the [Papers with Code website](https://paperswithcode.com/dataset/massspecgym). To submit your results, please see the [following tutorial](https://github.com/paperswithcode/tutorials/blob/main/add_results.md).~~
 
 ## 🔗 References
 
