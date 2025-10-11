@@ -1,0 +1,5 @@
+pandas==2.2.2
+plotly==6.3.0
+dash==3.2.0
+dash_ag_grid==32.3.2
+gunicorn==23.0.0
