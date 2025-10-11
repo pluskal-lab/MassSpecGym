@@ -480,6 +480,7 @@ app = dash.Dash(__name__, external_stylesheets=[
     "https://unpkg.com/ag-grid-community/styles/ag-theme-alpine.css",
     "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
 ])
+app.title = "MassSpecGym leaderboard"
 server = app.server
 
 # Add custom CSS for table styling
