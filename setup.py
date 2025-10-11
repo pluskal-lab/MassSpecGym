@@ -48,6 +48,11 @@ setup(
             "scikit-learn==1.5.0",
             "pandarallel==1.6.5",
         ],
+        "leaderboard": [
+            "plotly==6.3.0",
+            "dash==3.2.0",
+            "dash_ag_grid==32.3.2"
+        ],
     },
     python_requires='>=3.11',
     classifiers=[
