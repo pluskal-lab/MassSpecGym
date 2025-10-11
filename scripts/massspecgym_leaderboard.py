@@ -119,6 +119,23 @@ def _fmt_val(v) -> str:
         return f"{fv:.4f}".rstrip("0").rstrip(".")
     return f"{fv:.2f}".rstrip("0").rstrip(".")
 
+def add_arrow_to_metric(metric: str, bench: str) -> str:
+    """Add arrow indicator to metric name showing if higher (↑) or lower (↓) is better."""
+    # Check if this metric should be minimized (lower is better)
+    # First check SORT_SPECS for explicit specification
+    minimize = any(col == metric and asc for col, asc in SORT_SPECS.get(bench, []))
+    
+    # If not in SORT_SPECS, infer from metric name
+    # Metrics with these keywords typically mean lower is better
+    if not any(col == metric for col, _ in SORT_SPECS.get(bench, [])):
+        lower_is_better_keywords = ["MCES", "mces", "Error", "error", "Loss", "loss", "Distance", "distance"]
+        minimize = any(keyword in metric for keyword in lower_is_better_keywords)
+    
+    if minimize:
+        return f"{metric} (↓)"
+    else:
+        return f"{metric} (↑)"
+
 def build_display_table(df: pd.DataFrame, bench: str) -> Tuple[List[dict], List[dict]]:
     """
     Build a compact table for AG Grid with CI in brackets and proper sorting.
@@ -197,7 +214,7 @@ def build_display_table(df: pd.DataFrame, bench: str) -> Tuple[List[dict], List[
             column_defs.append({
                 "field": m,
                 "colId": m,
-                "headerName": m,
+                "headerName": add_arrow_to_metric(m, bench),
                 "sortable": True,
                 "filter": True,
                 "type": "numericColumn",
@@ -228,7 +245,7 @@ def build_display_table(df: pd.DataFrame, bench: str) -> Tuple[List[dict], List[
             column_defs.append({
                 "field": m,
                 "colId": m,
-                "headerName": m,
+                "headerName": add_arrow_to_metric(m, bench),
                 "sortable": True,
                 "filter": True,
                 "type": "numericColumn",
@@ -326,27 +343,63 @@ def build_figure(bench: str, metric: str) -> go.Figure:
 
     fig = go.Figure()
 
-    # --- Compute best method per date (draw first so it's behind) ---
+    # --- Compute improving frontier (draw first so it's behind) ---
     # Check if metric should be minimized based on SORT_SPECS
     minimize = any(col == metric and asc for col, asc in SORT_SPECS.get(bench, []))
     
-    best_per_date = (
-        df_sorted.dropna(subset=[metric])
-        .sort_values(metric, ascending=minimize)  # Sort ascending if minimize=True
-        .groupby(date_col, as_index=False)
-        .first()
-    )
-    if not best_per_date.empty:
-        fig.add_trace(
-            go.Scatter(
-                x=best_per_date[date_col],
-                y=best_per_date[metric],
-                mode="lines",
-                line=dict(color="#888", width=1),  # mid-grey guide line
-                hoverinfo="skip",
-                showlegend=False,
+    # Build a list of progressively improving points
+    df_clean = df_sorted.dropna(subset=[metric]).copy()
+    improving_points = []
+    
+    if not df_clean.empty:
+        best_so_far = None
+        last_date = None
+        
+        # Group by date and get best method per date
+        for date, group in df_clean.groupby(date_col):
+            # Find best value for this date
+            if minimize:
+                best_idx = group[metric].idxmin()
+            else:
+                best_idx = group[metric].idxmax()
+            
+            best_row = group.loc[best_idx]
+            current_value = best_row[metric]
+            
+            # Check if this is an improvement over previous dates
+            if best_so_far is None:
+                is_improvement = True
+                best_so_far = current_value
+            else:
+                if minimize:
+                    is_improvement = current_value < best_so_far
+                else:
+                    is_improvement = current_value > best_so_far
+                
+                if is_improvement:
+                    best_so_far = current_value
+            
+            # Only add if it's an improvement and not the same date as last point
+            if is_improvement:
+                improving_points.append({
+                    'date': date,
+                    'value': current_value,
+                    'method': best_row['Method']
+                })
+                last_date = date
+        
+        if improving_points:
+            improving_df = pd.DataFrame(improving_points)
+            fig.add_trace(
+                go.Scatter(
+                    x=improving_df['date'],
+                    y=improving_df['value'],
+                    mode="lines",
+                    line=dict(color="black", width=1),  # black guide line
+                    hoverinfo="skip",
+                    showlegend=False,
+                )
             )
-        )
 
     # --- Plot all methods (on top, with bigger points) ---
     for method, dfm in df_sorted.groupby("Method", dropna=False):
@@ -403,7 +456,7 @@ def build_figure(bench: str, metric: str) -> go.Figure:
     fig.update_layout(
         template="plotly_white",
         xaxis_title=date_col,
-        yaxis_title=metric,
+        yaxis_title=add_arrow_to_metric(metric, bench),
         xaxis=dict(type="date", tickformat="%d %b %Y", range=x_range),
         legend=dict(
             title="Method",
@@ -608,7 +661,7 @@ app.layout = html.Div(
 )
 def update_metric_options(bench: str, current_metric: str):
     metrics = METRICS_BY_BENCH[bench]
-    options = [{"label": m, "value": m} for m in metrics]
+    options = [{"label": add_arrow_to_metric(m, bench), "value": m} for m in metrics]
     if current_metric in metrics:
         return options, current_metric
     return options, (metrics[0] if metrics else None)
