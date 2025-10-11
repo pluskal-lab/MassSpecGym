@@ -51,7 +51,8 @@ setup(
         "leaderboard": [
             "plotly==6.3.0",
             "dash==3.2.0",
-            "dash_ag_grid==32.3.2"
+            "dash_ag_grid==32.3.2",
+            "gunicorn==23.0.0"
         ],
     },
     python_requires='>=3.11',
