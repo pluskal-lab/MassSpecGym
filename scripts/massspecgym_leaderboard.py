@@ -630,11 +630,6 @@ app.layout = html.Div(
                     style={
                         "width": "100%",
                         "marginBottom": "24px",
-                        "padding": "20px 24px",
-                        "backgroundColor": "#f8f9fa",
-                        "borderRadius": "8px",
-                        "border": "1px solid #e0e0e0",
-                        "boxSizing": "border-box",
                     },
                     children=[
                         html.P(
