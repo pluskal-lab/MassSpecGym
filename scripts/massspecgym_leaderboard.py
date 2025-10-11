@@ -477,7 +477,8 @@ def build_figure(bench: str, metric: str) -> go.Figure:
 # ---------------------------
 app = dash.Dash(__name__, external_stylesheets=[
     "https://unpkg.com/ag-grid-community/styles/ag-grid.css",
-    "https://unpkg.com/ag-grid-community/styles/ag-theme-alpine.css"
+    "https://unpkg.com/ag-grid-community/styles/ag-theme-alpine.css",
+    "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
 ])
 server = app.server
 
@@ -491,6 +492,11 @@ app.index_string = '''
         {%favicon%}
         {%css%}
         <style>
+            /* Hover effect for icon links */
+            a.icon-link:hover {
+                text-decoration: underline !important;
+                opacity: 0.8;
+            }
             .best-value {
                 font-weight: bold !important;
             }
@@ -560,10 +566,100 @@ app.layout = html.Div(
                     style={
                         "textAlign": "center",
                         "marginTop": 0,
-                        "marginBottom": "20px",
+                        "marginBottom": "16px",
                         "fontFamily": "Work Sans, sans-serif",
                         "color": "#222",
                     },
+                ),
+                html.Div(
+                    style={
+                        "display": "flex",
+                        "justifyContent": "center",
+                        "gap": "24px",
+                        "marginBottom": "20px",
+                    },
+                    children=[
+                        html.A(
+                            [html.I(className="fas fa-file-alt"), " Paper"],
+                            href="https://doi.org/10.48550/arXiv.2410.23326",
+                            target="_blank",
+                            className="icon-link",
+                            style={
+                                "display": "flex",
+                                "alignItems": "center",
+                                "gap": "6px",
+                                "textDecoration": "none",
+                                "color": "#0066cc",
+                                "fontSize": "16px",
+                                "fontWeight": "500",
+                            },
+                        ),
+                        html.A(
+                            [html.I(className="fas fa-database"), " Hugging Face"],
+                            href="https://huggingface.co/datasets/roman-bushuiev/MassSpecGym",
+                            target="_blank",
+                            className="icon-link",
+                            style={
+                                "display": "flex",
+                                "alignItems": "center",
+                                "gap": "6px",
+                                "textDecoration": "none",
+                                "color": "#0066cc",
+                                "fontSize": "16px",
+                                "fontWeight": "500",
+                            },
+                        ),
+                        html.A(
+                            [html.I(className="fab fa-github"), " GitHub"],
+                            href="https://github.com/pluskal-lab/MassSpecGym",
+                            target="_blank",
+                            className="icon-link",
+                            style={
+                                "display": "flex",
+                                "alignItems": "center",
+                                "gap": "6px",
+                                "textDecoration": "none",
+                                "color": "#0066cc",
+                                "fontSize": "16px",
+                                "fontWeight": "500",
+                            },
+                        ),
+                    ],
+                ),
+                html.Div(
+                    style={
+                        "width": "100%",
+                        "marginBottom": "24px",
+                        "padding": "20px 24px",
+                        "backgroundColor": "#f8f9fa",
+                        "borderRadius": "8px",
+                        "border": "1px solid #e0e0e0",
+                        "boxSizing": "border-box",
+                    },
+                    children=[
+                        html.P(
+                            [
+                                "MassSpecGym benchmarks machine learning models for discovering molecules from tandem mass spectrometry data. ",
+                                "It evaluates models on three core tasks: ",
+                                html.B("molecule retrieval"),
+                                " (identifying molecules from spectra), ",
+                                html.B("de novo molecule generation"),
+                                " (generating molecular structures from spectra), and ",
+                                html.B("spectrum simulation"),
+                                " (predicting spectra from molecular structures). ",
+                                "Each task has a bonus challenge which assumes knowledge of the chemical formulae. ",
+                                "This leaderboard tracks the state-of-the-art performance across these tasks.",
+                            ],
+                            style={
+                                "textAlign": "justify",
+                                "fontSize": "14px",
+                                "lineHeight": "1.7",
+                                "color": "#333",
+                                "marginBottom": "0",
+                                "marginTop": "0",
+                            },
+                        ),
+                    ],
                 ),
                 html.Div(
                     style={
