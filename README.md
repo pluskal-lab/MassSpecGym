@@ -3,11 +3,11 @@
 <p>
   <a href="https://huggingface.co/datasets/roman-bushuiev/MassSpecGym"><img alt="Dataset on Hugging Face" src="https://huggingface.co/datasets/huggingface/badges/resolve/main/dataset-on-hf-md-dark.svg" height="22px"></a>
   <a href="https://doi.org/10.48550/arXiv.2410.23326"><img alt="arXiv badge" src="https://img.shields.io/badge/arXiv-2410.23326-b31b1b.svg" height="22px"></a>
+  <a href="https://massspecgym.onrender.com/"><img src="https://img.shields.io/badge/Leaderboard-gold.svg" height="22px"></a>
   <a href="https://pypi.org/project/massspecgym"><img alt="Dataset on Hugging Face" src="https://img.shields.io/pypi/v/massspecgym" height="22px"></a>
   <a href="https://github.com/pytorch/pytorch"> <img src="https://img.shields.io/badge/PyTorch-%23EE4C2C.svg?style=for-the-badge&logo=PyTorch&logoColor=white" height="22px"></a>
   <a href="https://github.com/Lightning-AI/pytorch-lightning"> <img src="https://img.shields.io/badge/-Lightning-792ee5?logo=pytorchlightning&logoColor=white" height="22px"></a>
   <a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg" height="22px"></a>
-  <a href="https://paperswithcode.com/sota/de-novo-molecule-generation-from-ms-ms?p=massspecgym-a-benchmark-for-the-discovery-and"><img alt="PWC" src="https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/massspecgym-a-benchmark-for-the-discovery-and/de-novo-molecule-generation-from-ms-ms" height="22px"></a>
 <p>
 
 <p align="center">
@@ -28,6 +28,10 @@ The provided challenges abstract the process of scientific discovery from biolog
 <!-- [![Dataset on Hugging Face](https://huggingface.co/datasets/huggingface/badges/resolve/main/dataset-on-hf-md-dark.svg)](https://huggingface.co/datasets/roman-bushuiev/MassSpecGym)   -->
 
 📚 Please see more details in our [NeurIPS 2024 Spotlight paper](https://arxiv.org/abs/2410.23326).
+
+## 🏅 MassSpecGym leaderboard
+
+The MassSpecGym leaderboard is available at [https://massspecgym.onrender.com](https://massspecgym.onrender.com), providing an interactive web to track state-of-the-art results across the MassSpecGym challenges. To submit new results from your paper, please open a pull request that updates the results tables in the `results` folder.
 
 ## 📦 Installation
 
@@ -210,12 +214,6 @@ trainer.fit(model, datamodule=data_module)
 # Test
 trainer.test(model, datamodule=data_module)
 ```
-
-## 🏅 Submit your results to the leaderboard
-
-We are currently working on a custom leaderboard that will be hosted on this GitHub page starting around October, since the Papers with Code platform was recently shut down.
-
-~~The MassSpecGym leaderboard is available on the [Papers with Code website](https://paperswithcode.com/dataset/massspecgym). To submit your results, please see the [following tutorial](https://github.com/paperswithcode/tutorials/blob/main/add_results.md).~~
 
 ## 🔗 References
 

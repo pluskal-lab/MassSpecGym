@@ -47,7 +47,7 @@ setup(
             "h5py==3.11.0",
             "scikit-learn==1.5.0",
             "pandarallel==1.6.5",
-        ],
+        ]
     },
     python_requires='>=3.11',
     classifiers=[

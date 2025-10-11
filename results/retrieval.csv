@@ -1,0 +1,8 @@
+Method,Hit rate @ 1,Hit rate @ 1 CI Low,Hit rate @ 1 CI High,Hit rate @ 5,Hit rate @ 5 CI Low,Hit rate @ 5 CI High,Hit rate @ 20,Hit rate @ 20 CI Low,Hit rate @ 20 CI High,MCES @ 1,MCES @ 1 CI Low,MCES @ 1 CI High,Paper,DOI,Comment,Publication date
+Random,0.37,0.24,0.54,2.01,1.68,2.39,8.22,7.53,8.89,30.81,30.40,31.21,MassSpecGym: A benchmark for the discovery and identification of molecules,https://doi.org/10.48550/arXiv.2410.23326,,2025-01-14
+DeepSets,1.47,1.18,1.77,6.21,5.64,6.82,19.23,18.24,20.26,25.11,24.84,25.39,MassSpecGym: A benchmark for the discovery and identification of molecules,https://doi.org/10.48550/arXiv.2410.23326,,2025-01-14
+Fingerprint FFN,2.54,2.17,2.99,7.59,6.96,8.28,20.80,19.01,20.98,24.66,24.38,24.94,MassSpecGym: A benchmark for the discovery and identification of molecules,https://doi.org/10.48550/arXiv.2410.23326,,2025-01-14
+DeepSets + Fourier features,5.24,4.71,5.83,12.58,11.80,13.42,28.21,27.10,29.36,22.13,21.85,22.43,MassSpecGym: A benchmark for the discovery and identification of molecules,https://doi.org/10.48550/arXiv.2410.23326,,2025-01-14
+MIST,14.64,13.82,15.54,34.87,33.69,36.10,59.15,57.89,60.39,15.37,15.12,15.62,MassSpecGym: A benchmark for the discovery and identification of molecules,https://doi.org/10.48550/arXiv.2410.23326,,2025-01-14
+ESP,10.71,,,24.84,,,42.66,,,,,,JESTR: Joint Embedding Space Technique for Ranking Candidate Molecules for the Annotation of Untargeted Metabolomics Data,https://doi.org/10.48550/arXiv.2411.14464,,2025-06-10
+JESTR,15.13,,,36.75,,,60.32,,,,,,JESTR: Joint Embedding Space Technique for Ranking Candidate Molecules for the Annotation of Untargeted Metabolomics Data,https://doi.org/10.48550/arXiv.2411.14464,,2025-06-10
