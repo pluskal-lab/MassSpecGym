@@ -170,9 +170,22 @@ def build_display_table(df: pd.DataFrame, bench: str) -> Tuple[List[dict], List[
     metrics.extend([m for m in all_metrics if m not in metrics])
     
     disp = pd.DataFrame()
-    disp["Method"] = df_work["Method"].astype(str)
     
-    column_defs = [{"field": "Method", "colId": "Method", "pinned": "left", "width": 200}]
+    # Create Method column with paper icons using markdown
+    def create_method_with_icon(method, doi):
+        if pd.isna(doi) or str(doi) == 'nan' or str(doi) == '':
+            return method
+        return f'[📄]({doi}) {method}'
+    
+    disp["Method"] = [create_method_with_icon(method, doi) for method, doi in zip(df_work["Method"].astype(str), df_work.get("DOI", [""] * len(df_work)))]
+    
+    column_defs = [{
+        "field": "Method", 
+        "colId": "Method", 
+        "pinned": "left", 
+        "width": 200,
+        "cellRenderer": "markdown"
+    }]
 
     # Calculate best and second-best for each metric
     for m in metrics:
@@ -713,6 +726,7 @@ app.layout = html.Div(
                                 "sortable": True,
                                 "filter": False,
                             },
+                            dangerously_allow_code=True,
                             dashGridOptions={
                                 "pagination": True,
                                 "paginationPageSize": 20,
@@ -721,8 +735,11 @@ app.layout = html.Div(
                                 "rowHeight": 42,
                                 "tooltipShowDelay": 500,
                                 "suppressSanitizeHtml": True,
+                                "suppressHtmlEncode": True,
                                 "suppressColumnVirtualisation": True,
                                 "suppressFieldDotNotation": True,
+                                "enableBrowserTooltips": True,
+                                "allowContextMenuWithControlKey": True,
                                 "onGridReady": {
                                     "function": """
                                     function(params) {
