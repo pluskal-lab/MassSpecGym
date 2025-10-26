@@ -154,10 +154,10 @@ def build_display_table(df: pd.DataFrame, bench: str) -> Tuple[List[dict], List[
             sort_cols.append(col)
             ascending_flags.append(asc)
     if sort_cols:
-        df_work = df_work.sort_values(sort_cols, ascending=ascending_flags, na_position="last")
+        df_work = df_work.sort_values(sort_cols, ascending=ascending_flags, na_position="last").reset_index(drop=True)
     else:
         # fallback: sort by date descending
-        df_work = df_work.sort_values(date_col, ascending=False)
+        df_work = df_work.sort_values(date_col, ascending=False).reset_index(drop=True)
 
     # Build display columns per metric
     all_metrics = list_metrics(df_work)
