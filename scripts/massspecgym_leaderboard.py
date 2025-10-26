@@ -103,6 +103,8 @@ SORT_SPECS: Dict[str, List[Tuple[str, bool]]] = {
         ("Hit rate @ 20", False),
     ],
     "Spectrum simulation (bonus)": [
+        ("Cosine Similarity", False),
+        ("Jensen-Shannon Similarity", False),
         ("Hit rate @ 1", False),
         ("Hit rate @ 5", False),
         ("Hit rate @ 20", False),
