@@ -33,6 +33,8 @@ The provided challenges abstract the process of scientific discovery from biolog
 
 The MassSpecGym leaderboard is available at [https://massspecgym.onrender.com](https://massspecgym.onrender.com), providing an interactive web to track state-of-the-art results across the MassSpecGym challenges. To submit new results from your paper, please open a pull request that updates the results tables in the `results` folder.
 
+Update 10/27/2025: For the spectrum simulation challenge, the latest state-of-the-art model, ICEBERG, now has MassSpecGym-compatible [weights](https://www.dropbox.com/scl/fo/d73o0o4u5ymr9ubtp3m7j/AL4r7e3p9ElV0ewBwDCScbM?rlkey=tr99zkzy208ol8aw0pfsdsf5v&st=2zg9n01y&dl=0) and [codebase](https://github.com/coleygroup/ms-pred) available. If you have any questions regarding usage, please open an issue in the [`ms-pred`](https://github.com/coleygroup/ms-pred) repository. 
+
 ## 📦 Installation
 
 Installation is available via [pip](https://pypi.org/project/massspecgym):
