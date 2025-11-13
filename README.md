@@ -81,7 +81,7 @@ Second, MassSpecGym provides [a set of transforms](https://github.com/pluskal-la
 
 ```python
 from massspecgym.data import MassSpecDataset
-from massspecgym.transforms import SpecTokenizer, MolFingerprinter
+from massspecgym.data.transforms import SpecTokenizer, MolFingerprinter
 
 dataset = MassSpecDataset(
     spec_transform=SpecTokenizer(n_peaks=60),
