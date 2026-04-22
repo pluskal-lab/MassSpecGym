@@ -76,7 +76,7 @@ class MistCFFormulaTransformer(nn.Module):
 
         self.form_encoder_mod = get_embedder(form_encoder)
         self.formula_dim = self.form_encoder_mod.full_dim
-        self.cls_type = 3
+        self.cls_type = 1  # matches mist_cf_data.cls_type in original
 
         input_dim = self.formula_dim * 2 + 1 + 1 + 1 + 1  # form, diff, cls_flag, inten, num_peak, rel_mass_diff
         if ion_info:
@@ -175,7 +175,17 @@ class MistCFFormulaTransformer(nn.Module):
 
     def _pool_out(self, peak_tensor, inten_tensor, rel_mass_diff_tensor,
                   peak_types, attn_mask, batch_size):
-        EPS = 1e-9
+
+        """_pool_out.
+
+        pool the output of the network
+
+        Return:
+            (output (B x H), peak_tensor : L x B x H)
+
+        """
+        EPS = 1e-22
+
         zero_mask = attn_mask[:, :, None].repeat(1, 1, self.hidden_size).transpose(0, 1)
         peak_tensor[zero_mask] = 0
 
@@ -188,6 +198,12 @@ class MistCFFormulaTransformer(nn.Module):
         elif self.set_pooling == "mean":
             inten_flat = inten_tensor.reshape(batch_size, -1)
             pool_factor = torch.clone(inten_flat).fill_(1)
+            pool_factor = pool_factor * ~attn_mask
+            pool_factor[pool_factor == 0] = 1
+            pool_factor = pool_factor / pool_factor.sum(1).reshape(-1, 1)
+        elif self.set_pooling == "rel_mass_diff":
+            rel_mass_diff_tensor = rel_mass_diff_tensor.reshape(batch_size, -1)
+            pool_factor = torch.clone(rel_mass_diff_tensor).fill_(1)
             pool_factor = pool_factor * ~attn_mask
             pool_factor[pool_factor == 0] = 1
             pool_factor = pool_factor / pool_factor.sum(1).reshape(-1, 1)
@@ -257,8 +273,59 @@ class MistCFNet(nn.Module):
             Tensor of shape [batch] with scores for each candidate.
         """
         output = self.xformer(
-            num_peaks, peak_types, form_vec, ion_vec,
-            instrument_vec, intens, rel_mass_diffs,
+            num_peaks, 
+            peak_types, 
+            form_vec, 
+            ion_vec, 
+            instrument_vec, 
+            intens, 
+            rel_mass_diffs,
             return_aux=False,
         )
         return self.output_layer(output)
+
+    @classmethod
+    def from_pretrained(cls, checkpoint_path: str, **kwargs) -> "MistCFNet":
+        """Load MistCFNet from a checkpoint.
+
+        Handles both plain state_dict files and PyTorch Lightning
+        checkpoint format (which wraps the state dict under a state_dict
+        key and prefixes keys with model. or xformer.).
+
+        Args:
+            checkpoint_path: Path to the checkpoint file.
+            **kwargs: Forwarded to MistCFNet.__init__ when hparams are
+                not available in the checkpoint.
+
+        Returns:
+            MistCFNet with loaded weights in eval mode.
+        """
+        ckpt = torch.load(checkpoint_path, map_location="cpu")
+
+        # Extract hparams if saved by Lightning
+        hparams = ckpt.get("hyper_parameters", {})
+        hparams.update(kwargs)
+
+        model = cls(**hparams)
+
+        state_dict = ckpt.get("state_dict", ckpt)
+        # Lightning prefixes keys with the attribute name (e.g. "xformer.")
+        # but may also have a top-level "model." prefix — strip both.
+        stripped = {}
+        for k, v in state_dict.items():
+            # Remove leading "model." if present
+            new_k = k[len("model."):] if k.startswith("model.") else k
+            stripped[new_k] = v
+
+        missing, unexpected = model.load_state_dict(stripped, strict=False)
+        if missing:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"MistCFNet.from_pretrained: missing keys: {missing}"
+            )
+        if unexpected:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"MistCFNet.from_pretrained: unexpected keys: {unexpected}"
+            )
+        return model.eval()
