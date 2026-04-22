@@ -76,6 +76,11 @@ parser.add_argument('--weight_decay', type=float, default=0.0)
 
 # Task and model
 parser.add_argument('--task', type=str, choices=['retrieval', 'de_novo', 'simulation'], required=True)
+# NEW: add formula toggle to use inferred formula (applicable to retrieval and de novo tasks)
+parser.add_argument('--inferred_formula', action='store_true',
+    help='Use inferred formula for retrieval.')
+parser.add_argument('--inferred_formula_pth', type=str, default=None,
+    help='Path to JSON mapping identifier -> formula string. Required when --inferred_formula is True.')
 parser.add_argument('--model', type=str, required=True)
 parser.add_argument('--log_only_loss_at_stages', default=(),
     type=lambda stages: [Stage(s) for s in stages.strip().replace(' ', '').split(',')])
@@ -141,7 +146,8 @@ def main(args):
 
     # Process args
     if args.df_test_pth is None and args.devices == 1:
-        args.df_test_pth = MASSSPECGYM_TEST_RESULTS_DIR / f"{args.task}/{args.run_name}_{now_formatted}.pkl"
+        formula_tag = "_inferred_formula" if args.inferred_formula else ""
+        args.df_test_pth = MASSSPECGYM_TEST_RESULTS_DIR / f"{args.task}/{args.run_name}{formula_tag}_{now_formatted}.pkl"
 
     # Init paths to data files
     if args.debug:
@@ -160,6 +166,8 @@ def main(args):
             spec_transform=spec_transform,
             mol_transform=MolFingerprinter(fp_size=args.fp_size),
             candidates_pth=args.candidates_pth,
+            inferred_formula=args.inferred_formula,
+            inferred_formula_pth=args.inferred_formula_pth,
         )
     elif args.task == 'de_novo':
         if args.training_mode == 'fp2mol_pretrain' and args.molecule_library is not None:
@@ -173,7 +181,9 @@ def main(args):
             dataset = MassSpecDataset(
                 pth=args.dataset_pth,
                 spec_transform=SpecTokenizer(n_peaks=args.n_peaks, matchms_kwargs=dict(mz_to=args.max_mz)),
-                mol_transform={'formula': MolToFormulaVector(), 'mol': None} if args.use_chemical_formula else None
+                mol_transform={'formula': MolToFormulaVector(), 'mol': None} if args.use_chemical_formula else None,
+                inferred_formula=args.inferred_formula,
+                inferred_formula_pth=args.inferred_formula_pth,
             )
     else:
         raise NotImplementedError(f"Task {args.task} not implemented.")
