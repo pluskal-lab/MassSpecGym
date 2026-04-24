@@ -3,6 +3,7 @@ import datetime
 import typing as T
 from pathlib import Path
 
+import pandas as pd
 from rdkit import RDLogger
 import pytorch_lightning as pl
 from pytorch_lightning import Trainer
@@ -42,6 +43,11 @@ parser.add_argument('--no_wandb', action='store_true')
 parser.add_argument('--seed', type=int, default=0)
 parser.add_argument('--debug', action='store_true')
 parser.add_argument('--test_only', action='store_true')
+parser.add_argument(
+    '--skip_mces_test',
+    action='store_true',
+    help='Skip MCES@1 on the test set (much faster; hit-rate metrics still run).',
+)
 
 # Data paths
 parser.add_argument('--candidates_pth', type=str, default=None)
@@ -127,6 +133,12 @@ parser.add_argument('--exclude_inchikeys', type=str, default=None,
     help='Path to InChIKey exclusion list for data safety')
 parser.add_argument('--encoder_checkpoint', type=str, default=None,
     help='Path to pretrained MIST encoder checkpoint')
+parser.add_argument('--subform_folder', type=str, default=None,
+    help='Subformulae JSON folder for MIST retrieval (e.g. data/msg/subformulae/default_subformulae).')
+parser.add_argument('--fp_save_path', type=str, default=None,
+    help='If set, save raw predicted fingerprints (float32) to this .pt path during test.')
+parser.add_argument('--fp_similarity', type=str, default='cosine', choices=['cosine', 'tanimoto'],
+    help='Similarity metric for MIST fingerprint retrieval.')
 parser.add_argument('--decoder_checkpoint', type=str, default=None,
     help='Path to pretrained decoder checkpoint')
 parser.add_argument('--num_generation_samples', type=int, default=10,
@@ -134,6 +146,51 @@ parser.add_argument('--num_generation_samples', type=int, default=10,
 parser.add_argument('--mol_repr', type=str, default='smiles',
     choices=['smiles', 'selfies', 'safe'],
     help='Molecular representation for FP2Mol training data')
+
+
+def _parse_split_tsv_roles(
+    split_pth: T.Optional[str],
+) -> tuple[T.Optional[str], T.Optional[str]]:
+    """Return (mist_split_pth, datamodule_split_pth) for MSG vs standard split files."""
+    if not split_pth:
+        return None, None
+    cols = set(pd.read_csv(split_pth, sep="\t", nrows=0).columns)
+    if cols == {"name", "split"}:
+        return split_pth, None
+    if cols == {"identifier", "fold"}:
+        return None, split_pth
+    raise ValueError(
+        "split TSV must have columns (name, split) or (identifier, fold); "
+        f"got {sorted(cols)}"
+    )
+
+
+def _load_test_identifiers(
+    dataset_pth: T.Optional[str],
+    mist_split_pth: T.Optional[str],
+    datamodule_split_pth: T.Optional[str],
+) -> T.List[str]:
+    """Identifiers in the test fold (for --test_only subset loading)."""
+    if datamodule_split_pth is not None:
+        df = pd.read_csv(datamodule_split_pth, sep="\t")
+        return df.loc[df["fold"] == "test", "identifier"].astype(str).tolist()
+    if mist_split_pth is not None:
+        df = pd.read_csv(mist_split_pth, sep="\t")
+        df = df.rename(columns={"name": "identifier", "split": "fold"})
+        return df.loc[df["fold"] == "test", "identifier"].astype(str).tolist()
+    pth = dataset_pth
+    if pth is None:
+        pth = str(utils.hugging_face_download("MassSpecGym.tsv"))
+    try:
+        fold_df = pd.read_csv(
+            pth, sep="\t", usecols=lambda c: c in ("identifier", "fold")
+        )
+    except ValueError as err:
+        raise ValueError(
+            "test_only requires --split_pth when the dataset TSV has no "
+            "identifier/fold columns (e.g. MIST labels.tsv)."
+        ) from err
+    return fold_df.loc[fold_df["fold"] == "test", "identifier"].astype(str).tolist()
 
 
 def main(args):
@@ -155,20 +212,50 @@ def main(args):
         args.candidates_pth = "../data/debug/example_5_spectra_candidates.json"
         args.split_pth="../data/debug/example_5_spectra_split.tsv"
 
+    mist_split_pth, datamodule_split_pth = _parse_split_tsv_roles(args.split_pth)
+    datamodule_split_effective = None if args.test_only else datamodule_split_pth
+
+    identifiers_subset: T.Optional[T.List[str]] = None
+    if args.test_only and args.task in ("retrieval", "de_novo"):
+        if (
+            args.task == "de_novo"
+            and args.training_mode == "fp2mol_pretrain"
+            and args.molecule_library is not None
+        ):
+            pass
+        else:
+            identifiers_subset = _load_test_identifiers(
+                args.dataset_pth, mist_split_pth, datamodule_split_pth
+            )
+
     # Load dataset
     if args.task == 'retrieval':
-        if args.model == 'fingerprint_ffn':
-            spec_transform = SpecBinner(max_mz=args.max_mz, bin_width=args.bin_width)
+        if args.model == 'mist_fingerprint':
+            from massspecgym.data.mist_dataset import MISTRetrievalDataset
+            dataset = MISTRetrievalDataset(
+                subform_folder=args.subform_folder,
+                mist_split_pth=mist_split_pth,
+                pth=args.dataset_pth,
+                fp_size=args.fp_size,
+                candidates_pth=args.candidates_pth,
+                inferred_formula=args.inferred_formula,
+                inferred_formula_pth=args.inferred_formula_pth,
+                identifiers_subset=identifiers_subset,
+            )
         else:
-            spec_transform = SpecTokenizer(n_peaks=args.n_peaks, matchms_kwargs=dict(mz_to=args.max_mz))
-        dataset = RetrievalDataset(
-            pth=args.dataset_pth,
-            spec_transform=spec_transform,
-            mol_transform=MolFingerprinter(fp_size=args.fp_size),
-            candidates_pth=args.candidates_pth,
-            inferred_formula=args.inferred_formula,
-            inferred_formula_pth=args.inferred_formula_pth,
-        )
+            if args.model == 'fingerprint_ffn':
+                spec_transform = SpecBinner(max_mz=args.max_mz, bin_width=args.bin_width)
+            else:
+                spec_transform = SpecTokenizer(n_peaks=args.n_peaks, matchms_kwargs=dict(mz_to=args.max_mz))
+            dataset = RetrievalDataset(
+                pth=args.dataset_pth,
+                spec_transform=spec_transform,
+                mol_transform=MolFingerprinter(fp_size=args.fp_size),
+                candidates_pth=args.candidates_pth,
+                inferred_formula=args.inferred_formula,
+                inferred_formula_pth=args.inferred_formula_pth,
+                identifiers_subset=identifiers_subset,
+            )
     elif args.task == 'de_novo':
         if args.training_mode == 'fp2mol_pretrain' and args.molecule_library is not None:
             dataset = FP2MolDataset(
@@ -184,6 +271,7 @@ def main(args):
                 mol_transform={'formula': MolToFormulaVector(), 'mol': None} if args.use_chemical_formula else None,
                 inferred_formula=args.inferred_formula,
                 inferred_formula_pth=args.inferred_formula_pth,
+                identifiers_subset=identifiers_subset,
             )
     else:
         raise NotImplementedError(f"Task {args.task} not implemented.")
@@ -191,16 +279,21 @@ def main(args):
     # Init data module
     data_module = MassSpecDataModule(
         dataset=dataset,
-        split_pth=args.split_pth,
+        split_pth=datamodule_split_effective,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
     )
 
     # Init model
+    no_mces_metrics_at_stages: T.List[Stage] = [Stage.VAL]
+    if args.skip_mces_test:
+        no_mces_metrics_at_stages = [*no_mces_metrics_at_stages, Stage.TEST]
+
     common_kwargs = dict(
         lr=args.lr,
         weight_decay=args.weight_decay,
         log_only_loss_at_stages=args.log_only_loss_at_stages,
+        no_mces_metrics_at_stages=no_mces_metrics_at_stages,
         df_test_path=args.df_test_pth,
     )
     if args.task == 'retrieval':
@@ -225,10 +318,20 @@ def main(args):
         elif args.model == 'from_dict':
             model = FromDictRetrieval(
                 dct_path=args.dct_path,
+                similarity=args.fp_similarity,
                 **common_kwargs
             )
         elif args.model == 'random':
             model = RandomRetrieval(
+                **common_kwargs
+            )
+        elif args.model == 'mist_fingerprint':
+            from massspecgym.models.retrieval import MISTFingerprintRetrieval
+            model = MISTFingerprintRetrieval(
+                encoder_checkpoint=args.encoder_checkpoint,
+                fp_bits=args.fp_size,
+                similarity=args.fp_similarity,
+                fp_save_path=args.fp_save_path,
                 **common_kwargs
             )
         else:
@@ -291,7 +394,8 @@ def main(args):
         model = type(model).load_from_checkpoint(
             args.checkpoint_pth,
             log_only_loss_at_stages=args.log_only_loss_at_stages,
-            df_test_path=args.df_test_pth
+            no_mces_metrics_at_stages=no_mces_metrics_at_stages,
+            df_test_path=args.df_test_pth,
         )
 
     # Init logger
