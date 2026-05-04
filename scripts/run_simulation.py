@@ -12,6 +12,7 @@ from massspecgym.data.transforms import SpecToMzsInts, MolToPyG, StandardMeta, M
 from massspecgym.models.simulation.fp import FPSimulationMassSpecGymModel
 from massspecgym.models.simulation.gnn import GNNSimulationMassSpecGymModel
 from massspecgym.models.simulation.prec_only import PrecOnlySimulationMassSpecGymModel
+from massspecgym.models.simulation.iceberg.adapter import IcebergSimulationMassSpecGymModel
 from massspecgym.simulation_utils.run_utils import load_config, get_split_ss
 
 
@@ -28,7 +29,7 @@ def init_run(template_fp, custom_fp, checkpoint_dp, wandb_mode):
         mz_from=config_d["mz_from"],
         mz_to=config_d["mz_to"],
     )
-    if config_d["model_type"] in ["fp", "prec_only"]:
+    if config_d["model_type"] in ["fp", "prec_only", "iceberg"]:
         mol_transform = MolToFingerprints(
             fp_types=config_d["fp_types"]
         )
@@ -73,6 +74,8 @@ def init_run(template_fp, custom_fp, checkpoint_dp, wandb_mode):
         pl_model = PrecOnlySimulationMassSpecGymModel(**config_d)
     elif config_d["model_type"] == "gnn":
         pl_model = GNNSimulationMassSpecGymModel(**config_d)
+    elif config_d["model_type"] == "iceberg":
+        pl_model = IcebergSimulationMassSpecGymModel(**config_d)
     else:
         raise ValueError(f"model_type {config_d['model_type']} not supported")
     # print(pl_model)

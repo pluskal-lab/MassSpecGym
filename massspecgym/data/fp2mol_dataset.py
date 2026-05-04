@@ -64,6 +64,7 @@ class FP2MolDataset(Dataset):
         exclude_inchikeys: Union[str, Path, bool, None] = None,
         max_molecules: Optional[int] = None,
         cache_fingerprints: bool = True,
+        graph_max_nodes: int = 50,
     ):
         super().__init__()
         self.mol_repr = mol_repr
@@ -71,6 +72,7 @@ class FP2MolDataset(Dataset):
         self.fp_bits = fp_bits
         self.fp_radius = fp_radius
         self.cache_fingerprints = cache_fingerprints
+        self.graph_max_nodes = graph_max_nodes
 
         from massspecgym.models.de_novo.fp2mol.formula_utils import FormulaEncoder
         self.formula_encoder = FormulaEncoder(normalize="none")
@@ -84,6 +86,12 @@ class FP2MolDataset(Dataset):
 
         self.smiles = df["smiles"].tolist()
         self.formulas = df["formula"].tolist()
+        self.metadata = pd.DataFrame({
+            "identifier": [f"FP2Mol{i:08d}" for i in range(len(df))],
+            "smiles": self.smiles,
+            "formula": self.formulas,
+            "fold": df["fold"].tolist() if "fold" in df.columns else self._default_folds(len(df)),
+        })
         self._mol_repr_col = None
         if mol_repr in df.columns and mol_repr != "smiles":
             self._mol_repr_col = df[mol_repr].tolist()
@@ -93,6 +101,17 @@ class FP2MolDataset(Dataset):
         self._fp_cache: dict = {}
         if self.cache_fingerprints:
             self._precompute_fingerprints()
+
+    @staticmethod
+    def _default_folds(n_items: int) -> list[str]:
+        if n_items == 1:
+            return ["train"]
+        if n_items == 2:
+            return ["train", "test"]
+        folds = ["train"] * n_items
+        folds[-2] = "val"
+        folds[-1] = "test"
+        return folds
 
     @staticmethod
     def _load_source(source: Union[str, Path, List[str]], max_molecules) -> pd.DataFrame:
@@ -191,6 +210,45 @@ class FP2MolDataset(Dataset):
                 return smiles
         return smiles
 
+    def _mol_to_diffms_graph(self, smiles: str) -> dict:
+        atom_decoder = ["C", "O", "P", "N", "S", "Cl", "F", "H"]
+        atom_to_idx = {atom: i for i, atom in enumerate(atom_decoder)}
+        bond_to_idx = {
+            Chem.rdchem.BondType.SINGLE: 1,
+            Chem.rdchem.BondType.DOUBLE: 2,
+            Chem.rdchem.BondType.TRIPLE: 3,
+            Chem.rdchem.BondType.AROMATIC: 4,
+        }
+        n_atom_types = len(atom_decoder)
+        n_bond_types = 5
+        mol = Chem.MolFromSmiles(smiles)
+        X = torch.zeros(self.graph_max_nodes, n_atom_types, dtype=torch.float32)
+        E = torch.zeros(self.graph_max_nodes, self.graph_max_nodes, n_bond_types, dtype=torch.float32)
+        E[:, :, 0] = 1.0
+        node_mask = torch.zeros(self.graph_max_nodes, dtype=torch.bool)
+        if mol is None:
+            return {"X": X, "E": E, "node_mask": node_mask}
+
+        atoms = list(mol.GetAtoms())[: self.graph_max_nodes]
+        for i, atom in enumerate(atoms):
+            idx = atom_to_idx.get(atom.GetSymbol())
+            if idx is None:
+                continue
+            X[i, idx] = 1.0
+            node_mask[i] = True
+
+        for bond in mol.GetBonds():
+            begin = bond.GetBeginAtomIdx()
+            end = bond.GetEndAtomIdx()
+            if begin >= self.graph_max_nodes or end >= self.graph_max_nodes:
+                continue
+            bidx = bond_to_idx.get(bond.GetBondType(), 1)
+            E[begin, end, :] = 0.0
+            E[end, begin, :] = 0.0
+            E[begin, end, bidx] = 1.0
+            E[end, begin, bidx] = 1.0
+        return {"X": X, "E": E, "node_mask": node_mask}
+
     def __len__(self) -> int:
         return len(self.smiles)
 
@@ -201,13 +259,16 @@ class FP2MolDataset(Dataset):
         formula_vec = self.formula_encoder.encode(formula)
         target_repr = self._convert_mol_repr(smiles, idx)
 
-        return {
+        item = {
             "fingerprint": fingerprint,
             "formula": formula,
             "formula_vec": formula_vec,
             "mol": smiles,
             "mol_repr": target_repr,
+            "identifier": self.metadata.iloc[idx]["identifier"],
         }
+        item.update(self._mol_to_diffms_graph(smiles))
+        return item
 
     @staticmethod
     def collate_fn(batch: list) -> dict:
@@ -217,4 +278,8 @@ class FP2MolDataset(Dataset):
             "formula": [b["formula"] for b in batch],
             "mol": [b["mol"] for b in batch],
             "mol_repr": [b["mol_repr"] for b in batch],
+            "identifier": [b["identifier"] for b in batch],
+            "X": torch.stack([b["X"] for b in batch]),
+            "E": torch.stack([b["E"] for b in batch]),
+            "node_mask": torch.stack([b["node_mask"] for b in batch]),
         }

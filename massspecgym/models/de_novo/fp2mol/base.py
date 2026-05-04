@@ -148,13 +148,17 @@ class FP2MolDeNovoModel(DeNovoMassSpecGymModel):
                     fp, formula, num_samples=self.num_generation_samples
                 )
         else:
-            loss = self.compute_decoder_loss(batch)
+            fp, _ = self.encode_spectrum(batch)
+            decoder_batch = dict(batch)
+            decoder_batch["fingerprint"] = fp
+            if "formula" not in decoder_batch and "formula_str" in decoder_batch:
+                decoder_batch["formula"] = decoder_batch["formula_str"]
+            loss = self.compute_decoder_loss(decoder_batch)
             if stage in self.log_only_loss_at_stages:
                 mols_pred = None
             else:
-                fp, _ = self.encode_spectrum(batch)
-                formula = batch.get("formula", None)
+                formula = decoder_batch.get("formula", None)
                 mols_pred = self.decode_from_fingerprint(
                     fp, formula, num_samples=self.num_generation_samples
                 )
-        return dict(loss=loss, mols_pred=mols_pred)
+        return dict(loss=loss, mols_pred=mols_pred, processable_mask=batch.get("processable_mask", None))

@@ -29,6 +29,49 @@ The provided challenges abstract the process of scientific discovery from biolog
 
 📚 Please see more details in our [NeurIPS 2024 Spotlight paper](https://arxiv.org/abs/2410.23326).
 
+## 🧪 What's new in v1.5
+
+MassSpecGym v1.5 promotes several state-of-the-art method families to first-class benchmark components:
+
+- **MIST and DreaMS encoders** for spectrum representation learning.
+- **FP2Mol de novo decoders**: FRIGID, MolForge, and DiffMS.
+- **Retrieval baselines from recent systems**: MIST fingerprint retrieval, generative retrieval, and ICEBERG retrieval.
+- **ICEBERG simulation/oracle support** for molecule-to-spectrum prediction.
+- **MIST-format data utilities** for subformula assignment, plus FP2Mol pretraining datasets with mandatory InChIKey leakage checks.
+
+Important evaluation implications:
+
+- **MIST-based de novo and retrieval are formula-challenge methods.** They use the precursor formula to assign subformulae, so `frigid`, `molforge`, `diffms`, `mist_fingerprint`, and `generative_retrieval` are not valid for the mass-based challenge.
+- **ICEBERG retrieval is spectrum-based.** It simulates each candidate spectrum and ranks candidates by cosine similarity to the query spectrum; it does not require precursor formula assignment.
+- **MIST fingerprint retrieval and generative retrieval rank by 2048-bit Morgan radius-2 ECFP4 similarity.**
+- **Filtered or unsupported spectra remain in the denominator.** If a formula/subformula method cannot process a spectrum, retrieval metrics count `R@k = 0`, `MRR = 0`, and `MCES@1 = 15` for that sample.
+
+Example one-command runs:
+
+```bash
+# Formula-based MIST fingerprint retrieval
+python scripts/run.py --job_key=debug --run_name=mist_formula \
+  --task=retrieval --model=mist_fingerprint --challenge=formula \
+  --dataset_pth=data/MassSpecGym.tsv --candidates_pth=bonus --test_only --devices=1
+
+# Formula-based generative retrieval with a FP2Mol decoder
+python scripts/run.py --job_key=debug --run_name=genret_formula \
+  --task=retrieval --model=generative_retrieval --decoder_type=diffms \
+  --challenge=formula --dataset_pth=data/MassSpecGym.tsv --candidates_pth=bonus \
+  --test_only --devices=1
+
+# FP2Mol decoder pretraining with leakage checks
+python scripts/run.py --job_key=debug --run_name=molforge_pretrain \
+  --task=de_novo --model=molforge --training_mode=fp2mol_pretrain \
+  --molecule_library=molecules.parquet --devices=1
+
+# ICEBERG retrieval on the mass-based candidate set
+python scripts/run.py --job_key=debug --run_name=iceberg_mass \
+  --task=retrieval --model=iceberg_retrieval --challenge=mass \
+  --dataset_pth=data/MassSpecGym.tsv --candidates_pth=data/molecules/MassSpecGym_retrieval_candidates_mass.json \
+  --test_only --devices=1
+```
+
 ## 🏅 MassSpecGym leaderboard
 
 The MassSpecGym leaderboard is available at [https://massspecgym.onrender.com](https://massspecgym.onrender.com), providing an interactive web to track state-of-the-art results across the MassSpecGym challenges. To submit new results from your paper, please open a pull request that updates the results tables in the `results` folder.
@@ -225,7 +268,7 @@ MassSpecGym v1.5 extends the benchmark with a comprehensive suite of state-of-th
 
 | Encoder | Description | Output |
 |---------|-------------|--------|
-| **MIST** | FormulaTransformer over subformulae-annotated peaks (Goldman et al., NMI 2023) | 4096-bit Morgan fingerprint |
+| **MIST** | FormulaTransformer over subformulae-annotated peaks (Goldman et al., NMI 2023) | Morgan fingerprint (2048-bit ECFP4 by default for retrieval) |
 | **DreaMS** | BERT-style transformer over (m/z, intensity) tokens (Bushuiev et al., Nat. Biotech. 2025) | 1024-D spectrum embedding |
 
 ### De Novo Models (`massspecgym/models/de_novo/`)
@@ -243,8 +286,8 @@ MassSpecGym v1.5 extends the benchmark with a comprehensive suite of state-of-th
 |-------|----------|-------------|
 | **FingerprintFFN** | Direct | FFN predicts fingerprint from binned spectrum |
 | **DeepSets** | Direct | DeepSets predicts fingerprint from peak list |
-| **MISTFingerprintRetrieval** | Bonus | MIST predicts FP, rank by Tanimoto similarity |
-| **GenerativeRetrieval** | Bonus | Any FP2Mol decoder generates molecule, rank by FP similarity |
+| **MISTFingerprintRetrieval** | Formula bonus only | MIST predicts 2048-bit ECFP4, rank by fingerprint similarity |
+| **GenerativeRetrieval** | Formula bonus only | Any FP2Mol decoder generates molecule, rank by 2048-bit ECFP4 similarity |
 | **IcebergRetrieval** | Bonus | ICEBERG simulates spectra, rank by cosine similarity |
 
 ### Simulation Models (`massspecgym/models/simulation/`)

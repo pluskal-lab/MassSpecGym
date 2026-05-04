@@ -39,7 +39,7 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
         self.log(
             f"{stage.to_pref()}loss",
             outputs['loss'],
-            batch_size=batch['spec'].size(0),
+            batch_size=batch['spec'].size(0) if "spec" in batch else len(batch["mol"]),
             sync_dist=True,
             prog_bar=True,
         )
@@ -50,7 +50,8 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
         metric_vals = self.evaluate_de_novo_step(
             outputs["mols_pred"],  # (bs, k) list of generated rdkit molecules or SMILES strings
             batch["mol"],  # (bs) list of ground truth SMILES strings
-            stage=stage
+            stage=stage,
+            processable_mask=batch.get("processable_mask", outputs.get("processable_mask", None)),
         )
 
         if stage == Stage.TEST and self.df_test_path is not None:
@@ -61,6 +62,7 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
         mols_pred: list[list[T.Optional[Chem.Mol | str]]],
         mol_true: list[str],
         stage: Stage,
+        processable_mask: T.Optional[torch.Tensor] = None,
     ) -> dict[str, torch.Tensor]:
         """
         # TODO: refactor to compute only for max(k) and then use the result to obtain the rest by
@@ -75,6 +77,14 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
         """
         # Initialize return dictionary to store metric values per sample
         metric_vals = {}
+        if processable_mask is None:
+            processable_mask = torch.ones(len(mol_true), dtype=torch.bool, device=self.device)
+        else:
+            processable_mask = torch.as_tensor(processable_mask, dtype=torch.bool, device=self.device)
+        mols_pred = [
+            preds if bool(is_processable) else [None] * max(self.top_ks)
+            for preds, is_processable in zip(mols_pred, processable_mask)
+        ]
 
         # Get SMILES and RDKit molecule objects for all predictions
         if self.mol_pred_kind == "smiles":
@@ -133,7 +143,10 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
                 min_mces_dists = []
                 mces_thld = 100
                 # Iterate over batch
-                for preds, true in zip(smiles_pred_top_k, smile_true):
+                for preds, true, is_processable in zip(smiles_pred_top_k, smile_true, processable_mask):
+                    if not bool(is_processable):
+                        min_mces_dists.append(15)
+                        continue
                     # Iterate over top-k predicted molecule samples
                     dists = []
                     for pred in preds:
@@ -170,7 +183,10 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
 
             max_tanimoto_sims = []
             # Iterate over batch
-            for preds, true in zip(fps_pred_top_k, fp_true):
+            for preds, true, is_processable in zip(fps_pred_top_k, fp_true, processable_mask):
+                if not bool(is_processable):
+                    max_tanimoto_sims.append(0)
+                    continue
                 # Iterate over top-k predicted molecule samples
                 sims = [
                     TanimotoSimilarity(true, pred)
@@ -195,12 +211,12 @@ class DeNovoMassSpecGymModel(MassSpecGymModel, ABC):
             # Calculate if the ground truth molecule is in the top-k predicted molecules and report
             # the average across the epoch.
             in_top_k = [
-                mol_to_inchi_key(true) in [
+                bool(is_processable) and mol_to_inchi_key(true) in [
                     mol_to_inchi_key(pred)
                     if pred is not None else None
                     for pred in preds
                 ]
-                for true, preds in zip(mol_true, mols_pred_top_k)
+                for true, preds, is_processable in zip(mol_true, mols_pred_top_k, processable_mask)
             ]
             in_top_k = torch.tensor(in_top_k, device=self.device)
 

@@ -143,7 +143,7 @@ class DiffMSDecoder(FP2MolDeNovoModel):
 
     def apply_noise(self, X, E, y, node_mask):
         """Apply forward diffusion noise to graph features."""
-        t_int = torch.randint(0, self.T + 1, size=(X.size(0), 1), device=X.device)
+        t_int = torch.randint(1, self.T + 1, size=(X.size(0), 1), device=X.device)
         s_int = t_int - 1
         t_float = t_int / self.T
         s_float = s_int / self.T
@@ -153,8 +153,8 @@ class DiffMSDecoder(FP2MolDeNovoModel):
         alpha_t_bar = self.noise_schedule.get_alpha_bar(t_normalized=t_float)
 
         Qtb = self.transition_model.get_Qt_bar(alpha_t_bar, X.device)
-        prob_X = (X @ Qtb.X).clamp(min=1e-5)
-        prob_E = (E @ Qtb.E).clamp(min=1e-5)
+        prob_X = torch.einsum("bnc,bcd->bnd", X, Qtb.X).clamp(min=1e-5)
+        prob_E = torch.einsum("bijc,bcd->bijd", E, Qtb.E).clamp(min=1e-5)
 
         sampled = sample_discrete_features(prob_X, prob_E, node_mask)
         X_t = F.one_hot(sampled.X, self.num_atom_types).float()
@@ -183,10 +183,10 @@ class DiffMSDecoder(FP2MolDeNovoModel):
 
         noisy = self.apply_noise(X, E, y, node_mask)
 
-        t_emb = noisy["t"].unsqueeze(-1)
-        X_in = torch.cat([noisy["X_t"], t_emb.expand(-1, noisy["X_t"].size(1), -1)], dim=-1)
-        E_in = torch.cat([noisy["E_t"], t_emb.unsqueeze(1).expand(-1, noisy["E_t"].size(1), noisy["E_t"].size(2), -1)], dim=-1)
-        y_in = torch.cat([noisy["y_t"], t_emb.squeeze(-1)], dim=-1)
+        t_emb = noisy["t"]
+        X_in = torch.cat([noisy["X_t"], t_emb[:, None, :].expand(-1, noisy["X_t"].size(1), -1)], dim=-1)
+        E_in = torch.cat([noisy["E_t"], t_emb[:, None, None, :].expand(-1, noisy["E_t"].size(1), noisy["E_t"].size(2), -1)], dim=-1)
+        y_in = torch.cat([noisy["y_t"], t_emb], dim=-1)
 
         pred = self.model(X_in, E_in, y_in, node_mask)
 

@@ -13,7 +13,6 @@ import typing as T
 
 import numpy as np
 import torch
-import torch.nn as nn
 
 from massspecgym.models.base import Stage
 from massspecgym.models.retrieval.base import RetrievalMassSpecGymModel
@@ -84,19 +83,42 @@ class IcebergRetrieval(RetrievalMassSpecGymModel):
     def step(self, batch: dict, stage: Stage = Stage.NONE) -> dict:
         loss = torch.tensor(0.0, device=self.device)
 
-        query_mzs = batch.get("spec_mzs", None)
-        query_ints = batch.get("spec_ints", None)
+        query_spec = batch.get("spec", None)
         cands_smiles = batch.get("candidates_smiles", [])
         batch_ptr = batch["batch_ptr"]
 
         iceberg = self._get_iceberg()
+        iceberg = iceberg.to(self.device)
+
+        query_bins = []
+        if query_spec is not None:
+            for spec in query_spec.detach().cpu().numpy():
+                nonzero = spec[:, 1] > 0
+                mzs = spec[nonzero, 0]
+                intens = spec[nonzero, 1]
+                query_bins.append(self._bin_spectrum(mzs, intens))
+        else:
+            query_bins = [np.zeros(self.num_bins, dtype=np.float32) for _ in range(batch_ptr.size(0))]
+
+        sample_index = torch.repeat_interleave(
+            torch.arange(batch_ptr.size(0), device=batch_ptr.device),
+            batch_ptr,
+        ).cpu().numpy()
+        adducts = batch.get("adduct", ["[M+H]+"] * batch_ptr.size(0))
+        precursor_mzs = batch.get("precursor_mz", [None] * batch_ptr.size(0))
 
         all_scores = []
-        for smiles in cands_smiles:
+        for cand_idx, smiles in enumerate(cands_smiles):
+            sample_idx = int(sample_index[cand_idx])
             try:
                 result = iceberg.predict_mol(
                     smi=smiles,
-                    adduct=batch.get("adduct", ["[M+H]+"])[0] if "adduct" in batch else "[M+H]+",
+                    adduct=adducts[sample_idx] if isinstance(adducts, list) else str(adducts[sample_idx]),
+                    precursor_mz=(
+                        float(precursor_mzs[sample_idx])
+                        if torch.is_tensor(precursor_mzs) else precursor_mzs[sample_idx]
+                    ),
+                    device=str(self.device),
                 )
                 spec = result.get("spec", [])
                 if spec:
@@ -107,8 +129,9 @@ class IcebergRetrieval(RetrievalMassSpecGymModel):
             except Exception:
                 sim_mzs, sim_ints = np.array([]), np.array([])
 
-            score = 0.0
+            sim_bin = self._bin_spectrum(sim_mzs, sim_ints)
+            score = float(np.dot(query_bins[sample_idx], sim_bin))
             all_scores.append(score)
 
         scores = torch.tensor(all_scores, dtype=torch.float32, device=self.device)
-        return dict(loss=loss, scores=scores)
+        return dict(loss=loss, scores=scores, processable_mask=batch.get("processable_mask", None))

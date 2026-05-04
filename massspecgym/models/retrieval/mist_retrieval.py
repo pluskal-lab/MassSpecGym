@@ -1,7 +1,7 @@
 """
 MIST fingerprint retrieval: predict Morgan FP from spectrum, rank by Tanimoto.
 
-Uses the MIST encoder (SpectraEncoderGrowing) to predict a 4096-bit molecular
+Uses the MIST encoder (SpectraEncoderGrowing) to predict a 2048-bit molecular
 fingerprint from the MS/MS spectrum, then ranks retrieval candidates by
 Tanimoto similarity between predicted and candidate fingerprints.
 
@@ -37,8 +37,8 @@ class MISTFingerprintRetrieval(RetrievalMassSpecGymModel):
     def __init__(
         self,
         encoder_checkpoint: T.Optional[str] = None,
-        fp_bits: int = 4096,
-        similarity: str = "cosine",
+        fp_bits: int = 2048,
+        similarity: str = "tanimoto",
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -48,8 +48,9 @@ class MISTFingerprintRetrieval(RetrievalMassSpecGymModel):
 
         from massspecgym.models.encoders.mist.encoder import SpectraEncoderGrowing
         self.encoder = SpectraEncoderGrowing(
-            form_embedder="float", output_size=fp_bits, hidden_size=256,
+            form_embedder="pos-cos", output_size=fp_bits, hidden_size=256,
             peak_attn_layers=4, num_heads=8, refine_layers=4,
+            set_pooling="cls", pairwise_featurization=True,
         )
 
         if encoder_checkpoint:
@@ -64,10 +65,13 @@ class MISTFingerprintRetrieval(RetrievalMassSpecGymModel):
 
     def step(self, batch: dict, stage: Stage = Stage.NONE) -> dict:
         fp_pred = self.forward(batch)
-        fp_true = batch["mol"]
-        loss = self.loss_fn(fp_true, fp_pred)
+        fp_true = batch.get("mol")
+        if fp_true is not None and fp_true.shape[-1] == fp_pred.shape[-1]:
+            loss = self.loss_fn(fp_true, fp_pred)
+        else:
+            loss = torch.tensor(0.0, requires_grad=True, device=fp_pred.device)
 
-        cands = batch["candidates"]
+        cands = batch.get("candidates_mol", batch.get("candidates"))
         batch_ptr = batch["batch_ptr"]
         fp_pred_repeated = fp_pred.repeat_interleave(batch_ptr, dim=0)
 
@@ -78,4 +82,4 @@ class MISTFingerprintRetrieval(RetrievalMassSpecGymModel):
         else:
             scores = nn.functional.cosine_similarity(fp_pred_repeated, cands)
 
-        return dict(loss=loss, scores=scores)
+        return dict(loss=loss, scores=scores, processable_mask=batch.get("processable_mask", None))

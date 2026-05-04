@@ -4,7 +4,7 @@ from abc import ABC
 import pandas as pd
 import torch
 from torchmetrics import CosineSimilarity, MeanMetric
-from torchmetrics.functional.retrieval import retrieval_hit_rate
+from torchmetrics.functional.retrieval import retrieval_hit_rate, retrieval_reciprocal_rank
 from torch_geometric.utils import unbatch
 
 from massspecgym.models.base import MassSpecGymModel, Stage
@@ -24,6 +24,27 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
         self.at_ks = at_ks
         self.myopic_mces = utils.MyopicMCES(**(myopic_mces_kwargs or {}))
 
+    @staticmethod
+    def _batch_size_from_batch(batch: dict) -> int:
+        if "spec" in batch and hasattr(batch["spec"], "size"):
+            return batch["spec"].size(0)
+        if "batch_ptr" in batch:
+            return batch["batch_ptr"].size(0)
+        if "identifier" in batch:
+            return len(batch["identifier"])
+        return 1
+
+    @staticmethod
+    def _processable_mask(batch: dict, outputs: T.Optional[dict] = None) -> T.Optional[torch.Tensor]:
+        mask = None
+        if "processable_mask" in batch:
+            mask = batch["processable_mask"]
+        if outputs is not None and "processable_mask" in outputs:
+            mask = outputs["processable_mask"] if mask is None else (mask & outputs["processable_mask"])
+        if mask is None:
+            return None
+        return torch.as_tensor(mask, dtype=torch.bool)
+
     def on_batch_end(
         self, outputs: T.Any, batch: dict, batch_idx: int, stage: Stage
     ) -> None:
@@ -34,7 +55,7 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
         self.log(
             f"{stage.to_pref()}loss",
             outputs['loss'],
-            batch_size=batch['spec'].size(0),
+            batch_size=self._batch_size_from_batch(batch),
             sync_dist=True,
             prog_bar=True,
         )
@@ -47,6 +68,7 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
             batch["labels"],
             batch["batch_ptr"],
             stage=stage,
+            processable_mask=self._processable_mask(batch, outputs),
         )
 
         if stage not in self.no_mces_metrics_at_stages:
@@ -57,6 +79,7 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
                 batch["candidates_smiles"],
                 batch["batch_ptr"],
                 stage=stage,
+                processable_mask=self._processable_mask(batch, outputs),
             )
         if stage == Stage.TEST and self.df_test_path is not None:
             self._update_df_test(metric_vals)
@@ -67,6 +90,7 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
         labels: torch.Tensor,
         batch_ptr: torch.Tensor,
         stage: Stage,
+        processable_mask: T.Optional[torch.Tensor] = None,
     ) -> dict[str, torch.Tensor]:
         """
         Main evaluation method for the retrieval models. The retrieval step is evaluated by 
@@ -86,11 +110,18 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
         indexes = utils.batch_ptr_to_batch_idx(batch_ptr)
         scores = unbatch(scores, indexes)
         labels = unbatch(labels, indexes)
+        if processable_mask is None:
+            processable_mask = torch.ones(len(scores), dtype=torch.bool, device=batch_ptr.device)
+        else:
+            processable_mask = processable_mask.to(device=batch_ptr.device, dtype=torch.bool)
 
         for at_k in self.at_ks:
             hit_rates = []
-            for scores_sample, labels_sample in zip(scores, labels):
-                hit_rates.append(retrieval_hit_rate(scores_sample, labels_sample, top_k=at_k))
+            for scores_sample, labels_sample, is_processable in zip(scores, labels, processable_mask):
+                if not bool(is_processable):
+                    hit_rates.append(torch.tensor(0.0, device=batch_ptr.device))
+                else:
+                    hit_rates.append(retrieval_hit_rate(scores_sample, labels_sample, top_k=at_k))
             hit_rates = torch.tensor(hit_rates, device=batch_ptr.device)
 
             metric_name = f"{stage.to_pref()}hit_rate@{at_k}"
@@ -103,6 +134,25 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
             )
             metric_vals[metric_name] = hit_rates
 
+        # Evaluate MRR (Mean Reciprocal Rank)
+        mrr_vals = []
+        for scores_sample, labels_sample, is_processable in zip(scores, labels, processable_mask):
+            if not bool(is_processable):
+                mrr_vals.append(torch.tensor(0.0, device=batch_ptr.device))
+            else:
+                mrr_vals.append(retrieval_reciprocal_rank(scores_sample, labels_sample))
+        mrr_vals = torch.tensor(mrr_vals, device=batch_ptr.device)
+
+        metric_name = f"{stage.to_pref()}mrr"
+        self._update_metric(
+            metric_name,
+            MeanMetric,
+            (mrr_vals,),
+            batch_size=batch_ptr.size(0),
+            bootstrap=stage == Stage.TEST
+        )
+        metric_vals[metric_name] = mrr_vals
+
         return metric_vals
 
     def evaluate_mces_at_1(
@@ -113,12 +163,17 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
         candidates_smiles: list[str],
         batch_ptr: torch.Tensor,
         stage: Stage,
+        processable_mask: T.Optional[torch.Tensor] = None,
     ) -> dict[str, torch.Tensor]:
         """
         TODO
         """
         if labels.sum() != len(smiles):
             raise ValueError("MCES@1 evaluation currently supports exactly 1 positive candidate per sample.")
+        if processable_mask is None:
+            processable_mask = torch.ones(len(smiles), dtype=torch.bool, device=scores.device)
+        else:
+            processable_mask = processable_mask.to(device=scores.device, dtype=torch.bool)
         
         # Initialize return dictionary to store metric values per sample
         metric_vals = {}
@@ -126,14 +181,17 @@ class RetrievalMassSpecGymModel(MassSpecGymModel, ABC):
         # Get top-1 predicted molecules for each ground-truth sample
         smiles_pred_top_1 = []
         batch_ptr = torch.cumsum(batch_ptr, dim=0)
-        for i, j in zip(torch.cat([torch.tensor([0], device=batch_ptr.device), batch_ptr]), batch_ptr):
+        for is_processable, i, j in zip(processable_mask, torch.cat([torch.tensor([0], device=batch_ptr.device), batch_ptr]), batch_ptr):
+            if not bool(is_processable):
+                smiles_pred_top_1.append(None)
+                continue
             scores_sample = scores[i:j]
             top_1_idx = i + torch.argmax(scores_sample)
             smiles_pred_top_1.append(candidates_smiles[top_1_idx])
 
         # Calculate MCES distance between top-1 predicted molecules and ground truth
         mces_dists = [
-            self.myopic_mces(sm, sm_pred)
+            15 if sm_pred is None else self.myopic_mces(sm, sm_pred)
             for sm, sm_pred in zip(smiles, smiles_pred_top_1)
         ]
         mces_dists = torch.tensor(mces_dists, device=scores.device)

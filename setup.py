@@ -33,7 +33,8 @@ setup(
         "chemformula==1.3.1",
         "networkx==3.3",
         "selfies==2.1.2",
-        "pulp==2.9.0"  # for myopic-mces
+        "pulp==2.9.0",  # for myopic-mces
+        "pyarrow>=15.0.0",  # for FP2Mol parquet molecule libraries
     ],
     extras_require={
         "dev": [

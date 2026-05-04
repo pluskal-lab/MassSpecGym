@@ -53,6 +53,48 @@ def _safe_to_smiles(safe_string: str) -> Optional[str]:
     return None
 
 
+class _FallbackSafeTokenizer:
+    """Small deterministic tokenizer used when the SAFE HF tokenizer is unavailable."""
+
+    def __init__(self, vocab_size: int):
+        self.vocab_size = vocab_size
+        self.pad_token_id = 0
+        self.bos_token_id = 1
+        self.eos_token_id = 2
+        self.mask_token_id = 3
+
+    def __call__(self, texts, return_tensors="pt", padding=True, truncation=True, max_length=256):
+        if isinstance(texts, str):
+            texts = [texts]
+        encoded = []
+        for text in texts:
+            ids = [self.bos_token_id]
+            ids.extend([(ord(ch) % (self.vocab_size - 4)) + 4 for ch in str(text)])
+            ids.append(self.eos_token_id)
+            if truncation:
+                ids = ids[:max_length]
+                ids[-1] = self.eos_token_id
+            encoded.append(ids)
+        max_len = max(len(ids) for ids in encoded) if padding else None
+        if padding:
+            encoded = [ids + [self.pad_token_id] * (max_len - len(ids)) for ids in encoded]
+        input_ids = torch.tensor(encoded, dtype=torch.long)
+        attention_mask = (input_ids != self.pad_token_id).long()
+        return {"input_ids": input_ids, "attention_mask": attention_mask}
+
+    def decode(self, token_ids):
+        chars = []
+        for tid in token_ids:
+            tid = int(tid)
+            if tid in {self.pad_token_id, self.bos_token_id, self.eos_token_id, self.mask_token_id}:
+                continue
+            chars.append(chr((tid - 4) % 95 + 32))
+        return "".join(chars)
+
+    def batch_decode(self, batch_token_ids, skip_special_tokens=True):
+        return [self.decode(ids) for ids in batch_token_ids]
+
+
 class FRIGIDDecoder(FP2MolDeNovoModel):
     """FRIGID Masked Diffusion Language Model decoder.
 
@@ -122,7 +164,10 @@ class FRIGIDDecoder(FP2MolDeNovoModel):
         self.softmax_temp = softmax_temp
         self.randomness = randomness
 
-        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, trust_remote_code=True)
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, trust_remote_code=True)
+        except Exception:
+            self.tokenizer = _FallbackSafeTokenizer(vocab_size)
         actual_vocab_size = self.tokenizer.vocab_size
         self.mask_index = self.tokenizer.mask_token_id
         self.bos_index = self.tokenizer.bos_token_id

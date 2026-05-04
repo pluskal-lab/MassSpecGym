@@ -64,7 +64,11 @@ class MassSpecDataset(Dataset):
                     intensities=np.array(
                         [float(i) for i in row["intensities"].split(",")]
                     ),
-                    metadata={"precursor_mz": row["precursor_mz"]},
+                    metadata={
+                        k: row[k]
+                        for k in row.index
+                        if k not in {"mzs", "intensities"}
+                    },
                 ),
                 axis=1,
             )
@@ -103,7 +107,11 @@ class MassSpecDataset(Dataset):
                 for key, transform in self.spec_transform.items():
                     item[key] = transform(spec) if transform is not None else spec
             else:
-                item["spec"] = self.spec_transform(spec)
+                spec_item = self.spec_transform(spec)
+                if isinstance(spec_item, dict):
+                    item.update(spec_item)
+                else:
+                    item["spec"] = spec_item
         else:
             item["spec"] = spec
 
@@ -121,6 +129,8 @@ class MassSpecDataset(Dataset):
         item.update({
             k: metadata[k] for k in ["precursor_mz", "adduct"]
         })
+        if "formula" in metadata.index:
+            item.setdefault("formula_str", metadata["formula"])
 
         if self.return_mol_freq:
             item["mol_freq"] = metadata["mol_freq"]
@@ -130,7 +140,9 @@ class MassSpecDataset(Dataset):
 
         # TODO: this should be refactored
         for k, v in item.items():
-            if not isinstance(v, str):
+            if isinstance(v, torch.Tensor):
+                item[k] = v
+            elif not isinstance(v, str):
                 item[k] = torch.as_tensor(v, dtype=self.dtype)
 
         return item

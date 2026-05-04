@@ -43,7 +43,7 @@ class GenerativeRetrieval(RetrievalMassSpecGymModel):
         decoder_type: str = "frigid",
         decoder_checkpoint: T.Optional[str] = None,
         encoder_checkpoint: T.Optional[str] = None,
-        fp_bits: int = 4096,
+        fp_bits: int = 2048,
         fp_radius: int = 2,
         **kwargs,
     ):
@@ -62,19 +62,40 @@ class GenerativeRetrieval(RetrievalMassSpecGymModel):
 
         if self.decoder_type == "frigid":
             from massspecgym.models.de_novo.fp2mol.frigid import FRIGIDDecoder
+            from massspecgym.models.encoders.mist.encoder import SpectraEncoderGrowing
+            encoder = SpectraEncoderGrowing(
+                form_embedder="pos-cos", output_size=4096, hidden_size=256,
+                peak_attn_layers=4, num_heads=8, refine_layers=4,
+                set_pooling="cls", pairwise_featurization=True,
+            )
             self._decoder = FRIGIDDecoder(
+                encoder=encoder,
                 encoder_checkpoint=self._encoder_checkpoint,
                 training_mode="spec2mol",
             )
         elif self.decoder_type == "molforge":
             from massspecgym.models.de_novo.fp2mol.molforge import MolForgeDecoder
+            from massspecgym.models.encoders.mist.encoder import SpectraEncoderGrowing
+            encoder = SpectraEncoderGrowing(
+                form_embedder="pos-cos", output_size=2048, hidden_size=256,
+                peak_attn_layers=4, num_heads=8, refine_layers=4,
+                set_pooling="cls", pairwise_featurization=True,
+            )
             self._decoder = MolForgeDecoder(
+                encoder=encoder,
                 encoder_checkpoint=self._encoder_checkpoint,
                 training_mode="spec2mol",
             )
         elif self.decoder_type == "diffms":
             from massspecgym.models.de_novo.fp2mol.diffms import DiffMSDecoder
+            from massspecgym.models.encoders.mist.encoder import SpectraEncoderGrowing
+            encoder = SpectraEncoderGrowing(
+                form_embedder="pos-cos", output_size=2048, hidden_size=256,
+                peak_attn_layers=4, num_heads=8, refine_layers=4,
+                set_pooling="cls", pairwise_featurization=True,
+            )
             self._decoder = DiffMSDecoder(
+                encoder=encoder,
                 encoder_checkpoint=self._encoder_checkpoint,
                 training_mode="spec2mol",
             )
@@ -85,6 +106,7 @@ class GenerativeRetrieval(RetrievalMassSpecGymModel):
             ckpt = torch.load(self._decoder_checkpoint, map_location="cpu")
             self._decoder.load_state_dict(ckpt.get("state_dict", ckpt), strict=False)
 
+        self._decoder = self._decoder.to(self.device)
         return self._decoder
 
     def _smiles_to_fp(self, smiles: str) -> torch.Tensor:
@@ -99,17 +121,20 @@ class GenerativeRetrieval(RetrievalMassSpecGymModel):
 
     def step(self, batch: dict, stage: Stage = Stage.NONE) -> dict:
         loss = torch.tensor(0.0, device=self.device)
-        batch_size = batch["spec"].size(0)
-        cands = batch["candidates"]
+        batch_size = batch["batch_ptr"].size(0)
+        cands = batch.get("candidates_mol", batch.get("candidates"))
         batch_ptr = batch["batch_ptr"]
 
         generated_fps = []
+        decoder = self._get_decoder()
+        with torch.no_grad():
+            encoded_fp, _ = decoder.encode_spectrum(batch)
+        formula = batch.get("formula_str", batch.get("formula", None))
         for i in range(batch_size):
             try:
-                decoder = self._get_decoder()
                 mols_pred = decoder.decode_from_fingerprint(
-                    batch.get("fingerprint", torch.zeros(1, self.fp_bits))[i:i+1],
-                    formula=batch.get("formula", [None])[i:i+1] if "formula" in batch else None,
+                    encoded_fp[i:i+1],
+                    formula=[formula[i]] if formula is not None else None,
                     num_samples=1,
                 )
                 top1_smiles = mols_pred[0][0] if mols_pred and mols_pred[0] else None
@@ -124,4 +149,4 @@ class GenerativeRetrieval(RetrievalMassSpecGymModel):
         union = gen_fps_repeated.sum(dim=-1) + cands.sum(dim=-1) - intersection
         scores = intersection / union.clamp(min=1e-8)
 
-        return dict(loss=loss, scores=scores)
+        return dict(loss=loss, scores=scores, processable_mask=batch.get("processable_mask", None))

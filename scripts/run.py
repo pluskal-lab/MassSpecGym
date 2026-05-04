@@ -11,13 +11,16 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 import massspecgym.utils as utils
 from massspecgym.data import RetrievalDataset, MassSpecDataset, MassSpecDataModule
 from massspecgym.data.transforms import (
-    MolFingerprinter, SpecBinner, SpecTokenizer, MolToFormulaVector
+    MolFingerprinter, SpecBinner, SpecTokenizer, MolToFormulaVector,
+    MISTPeakFormulaTokenizer,
 )
 from massspecgym.models.base import Stage
 from massspecgym.models.retrieval import (
-    FingerprintFFNRetrieval, FromDictRetrieval, RandomRetrieval, DeepSetsRetrieval
+    FingerprintFFNRetrieval, FromDictRetrieval, RandomRetrieval, DeepSetsRetrieval,
+    MISTFingerprintRetrieval, GenerativeRetrieval, IcebergRetrieval,
 )
 from massspecgym.models.de_novo import SmilesTransformer, FRIGIDDecoder, MolForgeDecoder, DiffMSDecoder
+from massspecgym.models.encoders.mist.encoder import SpectraEncoderGrowing
 from massspecgym.models.tokenizers import SmilesBPETokenizer, SelfiesTokenizer
 from massspecgym.data.fp2mol_dataset import FP2MolDataset
 from massspecgym.definitions import MASSSPECGYM_TEST_RESULTS_DIR
@@ -60,7 +63,7 @@ parser.add_argument('--bin_width', type=float, default=1)
 parser.add_argument('--n_peaks', type=int, default=60)
 
 # - Fingerprinter
-parser.add_argument('--fp_size', type=int, default=4096)
+parser.add_argument('--fp_size', type=int, default=2048)
 
 # Training setup
 parser.add_argument('--max_epochs', type=int, default=50)
@@ -81,6 +84,8 @@ parser.add_argument('--log_only_loss_at_stages', default=(),
     type=lambda stages: [Stage(s) for s in stages.strip().replace(' ', '').split(',')])
 parser.add_argument('--df_test_pth', type=Path, default=None)
 parser.add_argument('--checkpoint_pth', type=Path, default=None)
+parser.add_argument('--challenge', type=str, default='auto', choices=['auto', 'mass', 'formula'],
+    help='Retrieval/de novo challenge type. Formula-only models require formula.')
 
 # - De novo
 
@@ -124,6 +129,15 @@ parser.add_argument('--encoder_checkpoint', type=str, default=None,
     help='Path to pretrained MIST encoder checkpoint')
 parser.add_argument('--decoder_checkpoint', type=str, default=None,
     help='Path to pretrained decoder checkpoint')
+parser.add_argument('--gen_checkpoint', type=str, default=None,
+    help='Path to ICEBERG fragment-generation checkpoint')
+parser.add_argument('--inten_checkpoint', type=str, default=None,
+    help='Path to ICEBERG intensity checkpoint')
+parser.add_argument('--subformulae_dir', type=str, default=None,
+    help='Path to precomputed MIST subformulae JSON directory')
+parser.add_argument('--decoder_type', type=str, default='frigid',
+    choices=['frigid', 'molforge', 'diffms'],
+    help='FP2Mol decoder type for generative retrieval')
 parser.add_argument('--num_generation_samples', type=int, default=10,
     help='Number of molecules to generate per spectrum')
 parser.add_argument('--mol_repr', type=str, default='smiles',
@@ -131,9 +145,53 @@ parser.add_argument('--mol_repr', type=str, default='smiles',
     help='Molecular representation for FP2Mol training data')
 
 
+FORMULA_ONLY_MODELS = {
+    ('retrieval', 'mist_fingerprint'),
+    ('retrieval', 'generative_retrieval'),
+    ('de_novo', 'frigid'),
+    ('de_novo', 'molforge'),
+    ('de_novo', 'diffms'),
+}
+
+
+def _infer_challenge(args) -> str:
+    if args.challenge != 'auto':
+        return args.challenge
+    if args.candidates_pth == 'bonus':
+        return 'formula'
+    if args.candidates_pth and 'formula' in str(args.candidates_pth).lower():
+        return 'formula'
+    return 'mass'
+
+
+def _validate_challenge(args) -> None:
+    if args.task == 'de_novo' and args.training_mode == 'fp2mol_pretrain':
+        return
+    challenge = _infer_challenge(args)
+    if (args.task, args.model) in FORMULA_ONLY_MODELS and challenge != 'formula':
+        raise ValueError(
+            f"Model {args.model!r} requires the formula-based challenge because it "
+            "uses precursor formula/subformula features."
+        )
+
+
+def _build_mist_encoder(output_size: int) -> SpectraEncoderGrowing:
+    return SpectraEncoderGrowing(
+        form_embedder="pos-cos",
+        output_size=output_size,
+        hidden_size=256,
+        peak_attn_layers=4,
+        num_heads=8,
+        refine_layers=4,
+        set_pooling="cls",
+        pairwise_featurization=True,
+    )
+
+
 def main(args):
     # Seed everything
     pl.seed_everything(args.seed)
+    _validate_challenge(args)
 
     # Get current time
     now = datetime.datetime.now()
@@ -153,6 +211,12 @@ def main(args):
     if args.task == 'retrieval':
         if args.model == 'fingerprint_ffn':
             spec_transform = SpecBinner(max_mz=args.max_mz, bin_width=args.bin_width)
+        elif args.model in {'mist_fingerprint', 'generative_retrieval'}:
+            spec_transform = MISTPeakFormulaTokenizer(
+                n_peaks=args.n_peaks,
+                subformulae_dir=args.subformulae_dir,
+                mz_to=args.max_mz,
+            )
         else:
             spec_transform = SpecTokenizer(n_peaks=args.n_peaks, matchms_kwargs=dict(mz_to=args.max_mz))
         dataset = RetrievalDataset(
@@ -168,6 +232,16 @@ def main(args):
                 mol_repr=args.mol_repr,
                 fp_bits=args.fp_size,
                 exclude_inchikeys=args.exclude_inchikeys,
+            )
+        elif args.model in {'frigid', 'molforge', 'diffms'}:
+            dataset = MassSpecDataset(
+                pth=args.dataset_pth,
+                spec_transform=MISTPeakFormulaTokenizer(
+                    n_peaks=args.n_peaks,
+                    subformulae_dir=args.subformulae_dir,
+                    mz_to=args.max_mz,
+                ),
+                mol_transform=None,
             )
         else:
             dataset = MassSpecDataset(
@@ -221,6 +295,27 @@ def main(args):
             model = RandomRetrieval(
                 **common_kwargs
             )
+        elif args.model == 'mist_fingerprint':
+            model = MISTFingerprintRetrieval(
+                encoder_checkpoint=args.encoder_checkpoint,
+                fp_bits=args.fp_size,
+                similarity="tanimoto",
+                **common_kwargs
+            )
+        elif args.model == 'generative_retrieval':
+            model = GenerativeRetrieval(
+                decoder_type=args.decoder_type,
+                decoder_checkpoint=args.decoder_checkpoint,
+                encoder_checkpoint=args.encoder_checkpoint,
+                fp_bits=args.fp_size,
+                **common_kwargs
+            )
+        elif args.model == 'iceberg_retrieval':
+            model = IcebergRetrieval(
+                gen_checkpoint=args.gen_checkpoint,
+                inten_checkpoint=args.inten_checkpoint,
+                **common_kwargs
+            )
         else:
             raise NotImplementedError(f"Model {args.model} not implemented.")
     elif args.task == 'de_novo':
@@ -249,6 +344,8 @@ def main(args):
             )
         elif args.model == 'frigid':
             model = FRIGIDDecoder(
+                encoder=_build_mist_encoder(args.fp_size) if args.training_mode == 'spec2mol' else None,
+                fingerprint_bits=args.fp_size,
                 training_mode=args.training_mode,
                 encoder_checkpoint=args.encoder_checkpoint,
                 num_generation_samples=args.num_generation_samples,
@@ -256,6 +353,8 @@ def main(args):
             )
         elif args.model == 'molforge':
             model = MolForgeDecoder(
+                encoder=_build_mist_encoder(args.fp_size) if args.training_mode == 'spec2mol' else None,
+                fingerprint_bits=args.fp_size,
                 training_mode=args.training_mode,
                 encoder_checkpoint=args.encoder_checkpoint,
                 num_generation_samples=args.num_generation_samples,
@@ -263,6 +362,8 @@ def main(args):
             )
         elif args.model == 'diffms':
             model = DiffMSDecoder(
+                encoder=_build_mist_encoder(args.fp_size) if args.training_mode == 'spec2mol' else None,
+                fingerprint_bits=args.fp_size,
                 training_mode=args.training_mode,
                 encoder_checkpoint=args.encoder_checkpoint,
                 num_generation_samples=args.num_generation_samples,

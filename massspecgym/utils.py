@@ -358,14 +358,14 @@ class MyopicMCES():
         self.threshold = threshold
         self.always_stronger_bound = always_stronger_bound
         if solver_options is None:
-            solver_options = dict(msg=0)  # make ILP solver silent
+            solver_options = dict(msg=0, timeLimit=600)  # make ILP solver silent, limit time
         self.solver_options = solver_options
 
     def __call__(self, smiles_1: str, smiles_2: str) -> float:
         retval = MCES(
-            s1=smiles_1,
-            s2=smiles_2,
-            ind=self.ind,
+            smiles1=smiles_1,
+            smiles2=smiles_2,
+            i=self.ind,
             threshold=self.threshold,
             always_stronger_bound=self.always_stronger_bound,
             solver=self.solver,

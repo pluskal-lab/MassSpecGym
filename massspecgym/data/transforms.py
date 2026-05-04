@@ -1,8 +1,10 @@
+import json
 import numpy as np
 import torch
 import matchms
 import matchms.filtering as ms_filters
 from rdkit.Chem import AllChem as Chem
+from pathlib import Path
 from typing import Optional
 from abc import ABC, abstractmethod
 import torch
@@ -92,6 +94,150 @@ class SpecTokenizer(SpecTransform):
                 self.n_peaks + 1 if self.prec_mz_intensity is not None else self.n_peaks
             )
         return torch.from_numpy(spec_t)
+
+
+class MISTPeakFormulaTokenizer(SpecTransform):
+    """MIST-compatible peak-formula featurizer.
+
+    The MIST encoder consumes subformula-annotated peaks rather than raw
+    ``(m/z, intensity)`` pairs. This transform builds that representation from
+    either precomputed subformula JSON files or on the fly assignment using the
+    spectrum metadata fields ``formula`` and ``adduct``.
+    """
+
+    cat_types = {"frags": 0, "loss": 1, "ms1": 2, "cls": 3}
+
+    def __init__(
+        self,
+        n_peaks: int = 50,
+        subformulae_dir: Optional[str | Path] = None,
+        mass_diff_thresh: float = 20.0,
+        mz_from: float = 10.0,
+        mz_to: float = 1000.0,
+        cls_type: str = "ms1",
+    ) -> None:
+        self.n_peaks = n_peaks
+        self.subformulae_dir = Path(subformulae_dir) if subformulae_dir else None
+        self.mass_diff_thresh = mass_diff_thresh
+        self.mz_from = mz_from
+        self.mz_to = mz_to
+        self.cls_type = cls_type
+
+    def matchms_transforms(self, spec: matchms.Spectrum) -> matchms.Spectrum:
+        return default_matchms_transforms(
+            spec,
+            n_max_peaks=self.n_peaks,
+            mz_from=self.mz_from,
+            mz_to=self.mz_to,
+        )
+
+    def __call__(self, spec: matchms.Spectrum) -> dict:
+        spec = self.matchms_transforms(spec)
+        return self.matchms_to_torch(spec)
+
+    def _load_or_assign_subformulae(self, spec: matchms.Spectrum) -> tuple[dict, bool]:
+        from massspecgym.data.subformulae import assign_subformulae_single
+
+        metadata = spec.metadata
+        identifier = metadata.get("identifier") or metadata.get("feature_id") or metadata.get("title")
+
+        if self.subformulae_dir is not None and identifier is not None:
+            subform_path = self.subformulae_dir / f"{identifier}.json"
+            if subform_path.exists():
+                with open(subform_path, "r") as fp:
+                    tree = json.load(fp)
+                return tree, tree.get("output_tbl") is not None
+
+        formula = metadata.get("formula")
+        adduct = metadata.get("adduct") or metadata.get("ionization")
+        if formula is None or adduct is None:
+            return {"cand_form": "C", "cand_ion": "[M+H]+", "output_tbl": None}, False
+
+        spectrum = np.vstack([spec.peaks.mz, spec.peaks.intensities]).T
+        try:
+            tree = assign_subformulae_single(
+                str(formula),
+                spectrum,
+                str(adduct),
+                mass_diff_thresh=self.mass_diff_thresh,
+            )
+            return tree, tree.get("output_tbl") is not None
+        except Exception:
+            return {"cand_form": "C", "cand_ion": "[M+H]+", "output_tbl": None}, False
+
+    def matchms_to_torch(self, spec: matchms.Spectrum) -> dict:
+        from massspecgym.models.encoders.mist.chem_constants import (
+            formula_to_dense,
+            get_instr_idx,
+            get_ion_idx,
+        )
+
+        tree, processable = self._load_or_assign_subformulae(spec)
+        root_form = tree.get("cand_form") or "C"
+        root_ion = tree.get("cand_ion") or "[M+H]+"
+        output_tbl = tree.get("output_tbl")
+
+        if output_tbl is None:
+            frags, intens, ions = [], [], []
+        else:
+            frags = list(output_tbl.get("formula", []))
+            intens = list(output_tbl.get("ms2_inten", []))
+            ions = list(output_tbl.get("ions", []))
+
+        if self.n_peaks is not None and len(frags) > self.n_peaks:
+            order = np.argsort(np.asarray(intens))[::-1][:self.n_peaks]
+            frags = [frags[i] for i in order]
+            intens = [intens[i] for i in order]
+            ions = [ions[i] for i in order]
+
+        try:
+            form_vecs = [formula_to_dense(f) for f in frags]
+            root_vec = formula_to_dense(root_form)
+            root_ion_idx = get_ion_idx(root_ion)
+            ion_vec = [get_ion_idx(i) for i in ions]
+        except Exception:
+            form_vecs = []
+            root_vec = formula_to_dense("C")
+            root_ion_idx = get_ion_idx("[M+H]+")
+            ion_vec = []
+            processable = False
+
+        if self.cls_type == "ms1":
+            form_vecs.append(root_vec)
+            intens.append(1.0)
+            ion_vec.append(root_ion_idx)
+        else:
+            form_vecs.append(np.zeros_like(root_vec))
+            intens.append(0.0)
+            ion_vec.append(root_ion_idx)
+
+        peak_types = [self.cat_types["frags"]] * (len(form_vecs) - 1) + [self.cat_types["cls"]]
+        num_peaks = len(form_vecs)
+        target_len = (self.n_peaks or len(form_vecs)) + 1
+        pad_len = max(target_len - num_peaks, 0)
+
+        if pad_len:
+            form_vecs.extend([np.zeros_like(root_vec)] * pad_len)
+            intens.extend([0.0] * pad_len)
+            ion_vec.extend([0] * pad_len)
+            peak_types.extend([0] * pad_len)
+
+        instrument = (
+            spec.metadata.get("instrument_type")
+            or spec.metadata.get("instrument")
+            or spec.metadata.get("instrumentation")
+            or "unknown"
+        )
+
+        return {
+            "num_peaks": torch.tensor(num_peaks, dtype=torch.long),
+            "types": torch.tensor(peak_types[:target_len], dtype=torch.long),
+            "instruments": torch.tensor(get_instr_idx(str(instrument)), dtype=torch.long),
+            "ion_vec": torch.tensor(ion_vec[:target_len], dtype=torch.long),
+            "form_vec": torch.tensor(np.asarray(form_vecs[:target_len]), dtype=torch.float32),
+            "intens": torch.tensor(intens[:target_len], dtype=torch.float32),
+            "processable_mask": torch.tensor(bool(processable), dtype=torch.bool),
+        }
 
 
 class SpecBinner(SpecTransform):
