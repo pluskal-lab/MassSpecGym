@@ -7,9 +7,6 @@ from dash import dcc, html, Input, Output, State, callback
 import dash_ag_grid as dag
 import plotly.graph_objects as go
 
-# ---------------------------
-# 1) Load CSVs
-# ---------------------------
 RESULTS_DIR = Path("results")
 
 DF_MAP: Dict[str, pd.DataFrame] = {
@@ -36,9 +33,6 @@ for name, df in DF_MAP.items():
     DF_MAP[name] = df.copy()
     DF_MAP[name][date_col] = pd.to_datetime(DF_MAP[name][date_col], errors="coerce")
 
-# ---------------------------
-# 2) Metric discovery
-# ---------------------------
 def list_metrics(df: pd.DataFrame) -> List[str]:
     """Return numeric metric columns (exclude Method, date, CI columns, and metadata)."""
     date_col = find_date_col(df)
@@ -61,11 +55,6 @@ METRICS_BY_BENCH: Dict[str, List[str]] = {
     bench: list_metrics(df) for bench, df in DF_MAP.items()
 }
 
-# ---------------------------
-# Sorting priorities per benchmark
-# (col, ascending) — ascending=True means smaller is better (e.g., MCES)
-# Only columns that actually exist are applied.
-# ---------------------------
 from typing import Optional
 SORT_SPECS: Dict[str, List[Tuple[str, bool]]] = {
     "De novo molecule generation": [
@@ -344,9 +333,6 @@ def build_display_table(df: pd.DataFrame, bench: str) -> Tuple[List[dict], List[
 
     return column_defs, data
 
-# ---------------------------
-# 3) Figure builder
-# ---------------------------
 def build_figure(bench: str, metric: str) -> go.Figure:
     df = DF_MAP[bench]
     date_col = find_date_col(df)
