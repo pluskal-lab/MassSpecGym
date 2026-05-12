@@ -41,7 +41,6 @@ setup(
             "black==24.4.2",
             "pytest==8.2.1",
             "pytest-cov==5.0.0",
-            "pyarrow"
         ],
         "notebooks": [
             "jupyter==1.0.0",
