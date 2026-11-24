@@ -9,7 +9,7 @@ with open(os.path.join(here, "README.md"), encoding="utf-8") as f:
 setup(
     name="massspecgym",
     packages=find_packages(),
-    version="1.3.1",
+    version="1.3.2",
     description="MassSpecGym: A benchmark for the discovery and identification of molecules",
     author="MassSpecGym developers",
     author_email="roman.bushuiev@uochb.cas.cz",
@@ -19,6 +19,7 @@ setup(
     install_requires=[
         "torch==2.3.0",
         "pytorch-lightning==2.2.5",
+        "setuptools<82",  # pytorch-lightning 2.2.5 imports pkg_resources, removed in setuptools 82
         "torchmetrics==1.4.0",
         "torch_geometric==2.5.3",
         "tokenizers==0.19.1",
